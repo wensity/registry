@@ -1,0 +1,47 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "font-geist",
+  "type": "registry:font",
+  "title": "Geist Font",
+  "description": "Geist display font package and shadcn CSS variables for Wensity primitives.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@fontsource/geist"
+  ],
+  "registryDependencies": [],
+  "files": [],
+  "cssVars": {
+    "theme": {
+      "font-display": "Geist, ui-sans-serif, system-ui, sans-serif",
+      "primitive-font-display": "var(--font-display)"
+    }
+  },
+  "css": {},
+  "font": {
+    "family": "Geist, ui-sans-serif, system-ui, sans-serif",
+    "provider": "google",
+    "import": "Geist",
+    "variable": "--font-display",
+    "subsets": [
+      "latin"
+    ],
+    "dependency": "@fontsource/geist"
+  },
+  "docs": "Installs Geist for Wensity primitive tokens in shadcn projects. Import @fontsource/geist in your app entry if your framework does not auto-load package CSS.",
+  "categories": [
+    "wensity",
+    "font",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "font-geist",
+      "access": "free",
+      "category": "font",
+      "kind": "font",
+      "componentUrl": "https://ui.wensity.com/docs/primitives/setup",
+      "shadcnUrl": "https://ui.wensity.com/r/font-geist",
+      "cliInstall": "pnpm dlx shadcn@latest add @wensity/font-geist"
+    }
+  }
+}

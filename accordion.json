@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "accordion",
+  "type": "registry:block",
+  "title": "Accordion",
+  "description": "A keyboard-accessible accordion with a clean default look, bordered/separated/FAQ variants, and easy composition inside a Card.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "@tabler/icons-react",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/accordion.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/accordion.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Accordion as BaseAccordion } from \"@base-ui/react/accordion\";\nimport { IconChevronDown } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type AccordionType = \"single\" | \"multiple\";\n\nexport type AccordionVariant = \"bordered\" | \"separated\" | \"minimal\" | \"faq\";\n\nexport interface AccordionProps\n  extends Omit<React.HTMLAttributes<HTMLDivElement>, \"defaultValue\" | \"onChange\"> {\n  type?: AccordionType;\n  variant?: AccordionVariant;\n  value?: string | string[];\n  defaultValue?: string | string[];\n  /** For type=\"single\": allow closing the open item, leaving none open. Default true. */\n  collapsible?: boolean;\n  onValueChange?: (value: string | string[]) => void;\n  children: React.ReactNode;\n}\n\nexport interface AccordionItemProps\n  extends Omit<React.HTMLAttributes<HTMLDivElement>, \"value\"> {\n  value: string;\n  disabled?: boolean;\n}\n\nexport interface AccordionTriggerProps\n  extends React.ButtonHTMLAttributes<HTMLButtonElement> {}\n\nexport interface AccordionContentProps extends React.HTMLAttributes<HTMLDivElement> {}\n\n/* ─── Context (variant + single-collapsible policy only) ─────── */\n\ntype AccordionContextValue = {\n  variant: AccordionVariant;\n  type: AccordionType;\n  collapsible: boolean;\n};\n\nconst AccordionContext = React.createContext<AccordionContextValue | null>(null);\n\nfunction useAccordionContext() {\n  const ctx = React.useContext(AccordionContext);\n  if (!ctx) throw new Error(\"Accordion compound components must be used within <Accordion>\");\n  return ctx;\n}\n\n/* ─── Helpers ───────────────────────────────────────────────── */\n\nfunction toArray(value: string | string[] | undefined): string[] {\n  if (value === undefined) return [];\n  return Array.isArray(value) ? value : [value];\n}\n\n/* ─── Variant Styles ────────────────────────────────────────── */\n\nconst rootVariantClasses: Record<AccordionVariant, string> = {\n  bordered: cn(\n    \"overflow-hidden rounded-[var(--primitive-radius-surface)] border\",\n    \"border-[var(--primitive-border-subtle)]\",\n  ),\n  separated: \"flex flex-col gap-2\",\n  minimal: \"flex flex-col\",\n  faq: \"flex flex-col\",\n};\n\nconst itemVariantClasses: Record<AccordionVariant, string> = {\n  bordered: cn(\"border-b last:border-b-0\", \"border-[var(--primitive-border-subtle)]\"),\n  separated: cn(\n    \"overflow-hidden rounded-[var(--primitive-radius-surface)] border\",\n    \"border-[var(--border)] bg-[var(--primitive-surface-elevated)]\",\n    \"[box-shadow:var(--primitive-shadow-raised)]\",\n  ),\n  minimal: cn(\"border-b last:border-b-0\", \"border-[var(--primitive-border-subtle)]\"),\n  faq: cn(\"border-b last:border-b-0\", \"border-[var(--primitive-border-subtle)]\"),\n};\n\nconst triggerPaddingClasses: Record<AccordionVariant, string> = {\n  bordered: \"px-4 py-4 text-[15px]\",\n  separated: \"px-4 py-4 text-[15px]\",\n  minimal: \"px-0.5 py-4 text-[15px]\",\n  faq: \"px-1 py-5 text-base\",\n};\n\nconst contentPaddingClasses: Record<AccordionVariant, string> = {\n  bordered: \"px-4 pb-4 text-[14px]\",\n  separated: \"px-4 pb-4 text-[14px]\",\n  minimal: \"px-0.5 pb-4 text-[14px]\",\n  faq: \"px-1 pb-6 text-[15px]\",\n};\n\nconst triggerHoverClasses: Record<AccordionVariant, string> = {\n  bordered: \"hover:bg-[var(--primitive-surface-hover)]\",\n  separated: \"hover:bg-[var(--primitive-surface-hover)]\",\n  minimal: \"\",\n  faq: \"\",\n};\n\nconst panelMotionClass = cn(\n  \"h-[var(--accordion-panel-height)] overflow-hidden\",\n  \"transition-[height,opacity] duration-300 ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[starting-style]:h-0 data-[starting-style]:opacity-0\",\n  \"data-[ending-style]:h-0 data-[ending-style]:opacity-0 data-[ending-style]:duration-200\",\n  \"motion-reduce:transition-none motion-reduce:data-[starting-style]:opacity-100 motion-reduce:data-[ending-style]:opacity-100\",\n);\n\n/* ─── <Accordion> ───────────────────────────────────────────── */\n\nexport const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(\n  (\n    {\n      type = \"single\",\n      variant = \"minimal\",\n      value: controlledValue,\n      defaultValue,\n      collapsible = true,\n      onValueChange,\n      className,\n      children,\n      ...props\n    },\n    ref,\n  ) => {\n    const ctx = React.useMemo<AccordionContextValue>(\n      () => ({ variant, type, collapsible }),\n      [variant, type, collapsible],\n    );\n\n    const [uncontrolled, setUncontrolled] = React.useState(() => toArray(defaultValue));\n    const isControlled = controlledValue !== undefined;\n    const value = isControlled ? toArray(controlledValue) : uncontrolled;\n\n    const handleValueChange = React.useCallback(\n      (next: string[]) => {\n        if (type === \"single\" && !collapsible && next.length === 0) return;\n        if (!isControlled) setUncontrolled(next);\n        onValueChange?.(type === \"multiple\" ? next : (next[0] ?? \"\"));\n      },\n      [type, collapsible, isControlled, onValueChange],\n    );\n\n    return (\n      <AccordionContext.Provider value={ctx}>\n        <BaseAccordion.Root data-wensity-primitive=\"\"\n          ref={ref}\n          multiple={type === \"multiple\"}\n          value={value}\n          onValueChange={handleValueChange}\n          keepMounted\n          data-slot=\"accordion\"\n          data-variant={variant}\n          className={cn(rootVariantClasses[variant], className)}\n          {...props}\n        >\n          {children}\n        </BaseAccordion.Root>\n      </AccordionContext.Provider>\n    );\n  },\n);\nAccordion.displayName = \"Accordion\";\n\n/* ─── <AccordionItem> ───────────────────────────────────────── */\n\nexport const AccordionItem = React.forwardRef<HTMLDivElement, AccordionItemProps>(\n  ({ value, disabled = false, className, children, ...props }, ref) => {\n    const { variant } = useAccordionContext();\n\n    return (\n      <BaseAccordion.Item\n        ref={ref}\n        value={value}\n        disabled={disabled}\n        data-slot=\"accordion-item\"\n        className={cn(itemVariantClasses[variant], className)}\n        {...props}\n      >\n        {children}\n      </BaseAccordion.Item>\n    );\n  },\n);\nAccordionItem.displayName = \"AccordionItem\";\n\n/* ─── <AccordionTrigger> ────────────────────────────────────── */\n\nexport const AccordionTrigger = React.forwardRef<\n  HTMLButtonElement,\n  AccordionTriggerProps\n>(({ className, children, ...props }, ref) => {\n  const { variant } = useAccordionContext();\n\n  return (\n    <BaseAccordion.Header className=\"flex\">\n      <BaseAccordion.Trigger\n        ref={ref}\n        data-slot=\"accordion-trigger\"\n        className={cn(\n          \"group/accordion-trigger flex w-full flex-1 items-center justify-between gap-3 rounded-[var(--primitive-radius-control-sm)] text-left\",\n          \"font-medium leading-none tracking-[-0.01em] text-[var(--foreground)]\",\n          \"outline-none transition-[background-color,color] duration-150 ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n          \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n          \"disabled:pointer-events-none disabled:opacity-45\",\n          triggerPaddingClasses[variant],\n          triggerHoverClasses[variant],\n          className,\n        )}\n        {...props}\n      >\n        <span className=\"flex-1\">{children}</span>\n        <span\n          aria-hidden=\"true\"\n          className={cn(\n            \"flex shrink-0 items-center justify-center text-[var(--muted-foreground)]\",\n            \"transition-transform duration-200 ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n            \"group-data-[panel-open]/accordion-trigger:rotate-180\",\n            \"motion-reduce:transition-none\",\n          )}\n        >\n          <IconChevronDown className=\"size-4\" stroke={1.9} />\n        </span>\n      </BaseAccordion.Trigger>\n    </BaseAccordion.Header>\n  );\n});\nAccordionTrigger.displayName = \"AccordionTrigger\";\n\n/* ─── <AccordionContent> ────────────────────────────────────── */\n\nexport const AccordionContent = React.forwardRef<HTMLDivElement, AccordionContentProps>(\n  ({ className, children, ...props }, ref) => {\n    const { variant } = useAccordionContext();\n\n    return (\n      <BaseAccordion.Panel\n        ref={ref}\n        keepMounted\n        data-slot=\"accordion-content\"\n        className={cn(panelMotionClass, className)}\n        {...props}\n      >\n        <div\n          className={cn(\n            \"leading-6 text-[var(--primitive-text-secondary)]\",\n            contentPaddingClasses[variant],\n          )}\n        >\n          {children}\n        </div>\n      </BaseAccordion.Panel>\n    );\n  },\n);\nAccordionContent.displayName = \"AccordionContent\";\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/accordion.tsx. For Pro components and updates, use pnpm dlx wensity@latest add accordion.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "accordion",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/accordion",
+      "shadcnUrl": "https://ui.wensity.com/r/accordion",
+      "cliInstall": "pnpm dlx wensity@latest add accordion"
+    }
+  }
+}

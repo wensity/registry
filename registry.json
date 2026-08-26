@@ -1,0 +1,1428 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "wensity",
+  "homepage": "https://ui.wensity.com",
+  "count": 70,
+  "items": [
+    {
+      "name": "font-inter",
+      "type": "registry:font",
+      "title": "Inter Font",
+      "description": "Inter font package and shadcn CSS variables for Wensity primitives.",
+      "categories": [
+        "wensity",
+        "font",
+        "free"
+      ],
+      "dependencies": [
+        "@fontsource/inter"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/font-inter.json",
+      "meta": {
+        "kind": "font",
+        "docsUrl": "https://ui.wensity.com/docs/primitives/setup"
+      }
+    },
+    {
+      "name": "font-geist",
+      "type": "registry:font",
+      "title": "Geist Font",
+      "description": "Geist display font package and shadcn CSS variables for Wensity primitives.",
+      "categories": [
+        "wensity",
+        "font",
+        "free"
+      ],
+      "dependencies": [
+        "@fontsource/geist"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/font-geist.json",
+      "meta": {
+        "kind": "font",
+        "docsUrl": "https://ui.wensity.com/docs/primitives/setup"
+      }
+    },
+    {
+      "name": "wensity-base",
+      "type": "registry:base",
+      "title": "Wensity Base",
+      "description": "Wensity primitive design-system tokens for shadcn projects: fonts, base colors, controls, charts, radii, overlays, and motion.",
+      "categories": [
+        "wensity",
+        "base",
+        "design-system",
+        "free"
+      ],
+      "dependencies": [],
+      "registryDependencies": [
+        "@wensity/font-inter",
+        "@wensity/font-geist"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/wensity-base.json",
+      "meta": {
+        "kind": "base",
+        "docsUrl": "https://ui.wensity.com/docs/primitives/setup",
+        "cliInstall": "pnpm dlx wensity@latest init --preset <preset-code>"
+      }
+    },
+    {
+      "name": "liquid-multimodal-input",
+      "type": "registry:block",
+      "title": "Liquid Multimodal Input",
+      "description": "Expanding prompt area with a glowing drop-zone.",
+      "categories": [
+        "Agentic AI Interfaces",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/liquid-multimodal-input.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/liquid-multimodal-input",
+        "cliInstall": "pnpm dlx wensity@latest add liquid-multimodal-input"
+      }
+    },
+    {
+      "name": "generative-skeleton-mesh",
+      "type": "registry:block",
+      "title": "Generative Skeleton Mesh",
+      "description": "An organic loading state, not a spinner.",
+      "categories": [
+        "Agentic AI Interfaces",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/generative-skeleton-mesh.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/generative-skeleton-mesh",
+        "cliInstall": "pnpm dlx wensity@latest add generative-skeleton-mesh"
+      }
+    },
+    {
+      "name": "voice-aurora-wave",
+      "type": "registry:block",
+      "title": "Voice Aurora Wave",
+      "description": "A breathing voice orb. Never jittery, always organic.",
+      "categories": [
+        "Agentic AI Interfaces",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/voice-aurora-wave.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/voice-aurora-wave",
+        "cliInstall": "pnpm dlx wensity@latest add voice-aurora-wave"
+      }
+    },
+    {
+      "name": "model-context-switcher",
+      "type": "registry:block",
+      "title": "Model Context Switcher",
+      "description": "A Radix dropdown that scales out from the trigger and glides between options.",
+      "categories": [
+        "Agentic AI Interfaces",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react",
+        "@radix-ui/react-dropdown-menu"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/model-context-switcher.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/model-context-switcher",
+        "cliInstall": "pnpm dlx wensity@latest add model-context-switcher"
+      }
+    },
+    {
+      "name": "infinite-marquee",
+      "type": "registry:block",
+      "title": "Infinite Marquee",
+      "description": "Seamless, GPU-only logo strip that never stutters.",
+      "categories": [
+        "Cinematic Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/infinite-marquee.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/infinite-marquee",
+        "cliInstall": "pnpm dlx wensity@latest add infinite-marquee"
+      }
+    },
+    {
+      "name": "morphing-shape-background",
+      "type": "registry:block",
+      "title": "Morphing Shape Background",
+      "description": "Lava-lamp blobs that drift behind your hero at 120fps with no SVG morph.",
+      "categories": [
+        "Cinematic Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/morphing-shape-background.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/morphing-shape-background",
+        "cliInstall": "pnpm dlx wensity@latest add morphing-shape-background"
+      }
+    },
+    {
+      "name": "scrubbable-video-reveal",
+      "type": "registry:block",
+      "title": "Scrubbable Video Reveal",
+      "description": "Apple-style scroll-scrubbed image sequence on a canvas.",
+      "categories": [
+        "Cinematic Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/scrubbable-video-reveal.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/scrubbable-video-reveal",
+        "cliInstall": "pnpm dlx wensity@latest add scrubbable-video-reveal"
+      }
+    },
+    {
+      "name": "gooey-navigation-menu",
+      "type": "registry:block",
+      "title": "Gooey Navigation Menu",
+      "description": "A liquid FAB whose children stretch out of it like metal.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/gooey-navigation-menu.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
+        "cliInstall": "pnpm dlx wensity@latest add gooey-navigation-menu"
+      }
+    },
+    {
+      "name": "multi-select-token-pills",
+      "type": "registry:block",
+      "title": "Multi-Select Token Pills",
+      "description": "Tag input that pops in, slides out, and never snaps the layout.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/multi-select-token-pills.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/multi-select-token-pills",
+        "cliInstall": "pnpm dlx wensity@latest add multi-select-token-pills"
+      }
+    },
+    {
+      "name": "shimmering-skeleton-wrapper",
+      "type": "registry:block",
+      "title": "Shimmering Skeleton Wrapper",
+      "description": "One angled GPU sweep across any placeholder geometry. Never one shimmer per row.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/shimmering-skeleton-wrapper.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/shimmering-skeleton-wrapper",
+        "cliInstall": "pnpm dlx wensity@latest add shimmering-skeleton-wrapper"
+      }
+    },
+    {
+      "name": "github-activity-grid",
+      "type": "registry:block",
+      "title": "GitHub-Style Activity Grid",
+      "description": "365 squares, one shared tooltip, and a cascading reveal that ripples backward from today.",
+      "categories": [
+        "Heavy SaaS Blocks",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/github-activity-grid.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/github-activity-grid",
+        "cliInstall": "pnpm dlx wensity@latest add github-activity-grid"
+      }
+    },
+    {
+      "name": "button",
+      "type": "registry:block",
+      "title": "Button",
+      "description": "Accessible button with variants, sizes, icons, and loading state.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/button.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/button",
+        "cliInstall": "pnpm dlx wensity@latest add button"
+      }
+    },
+    {
+      "name": "button-group",
+      "type": "registry:block",
+      "title": "Button Group",
+      "description": "Segmented action group with shared borders, split actions, and menu support.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/button-group.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/button-group",
+        "cliInstall": "pnpm dlx wensity@latest add button-group"
+      }
+    },
+    {
+      "name": "input",
+      "type": "registry:block",
+      "title": "Input",
+      "description": "Accessible text input with label, hint, error, icons, and clear action.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/input.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/input",
+        "cliInstall": "pnpm dlx wensity@latest add input"
+      }
+    },
+    {
+      "name": "text-area",
+      "type": "registry:block",
+      "title": "Text Area",
+      "description": "Accessible multi-line input with variants, auto-resize, counts, and validation.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/text-area.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/text-area",
+        "cliInstall": "pnpm dlx wensity@latest add text-area"
+      }
+    },
+    {
+      "name": "select",
+      "type": "registry:block",
+      "title": "Select",
+      "description": "Accessible select with polished triggers, grouped options, and controlled state.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/select.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/select",
+        "cliInstall": "pnpm dlx wensity@latest add select"
+      }
+    },
+    {
+      "name": "form-field",
+      "type": "registry:block",
+      "title": "Form Field",
+      "description": "Composable form field wrapper with labels, descriptions, errors, and section layouts.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/form-field.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/form-field",
+        "cliInstall": "pnpm dlx wensity@latest add form-field"
+      }
+    },
+    {
+      "name": "badge",
+      "type": "registry:block",
+      "title": "Badge",
+      "description": "Polished status and metadata badges with icons, dots, removable chips, and subtle depth.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/badge.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/badge",
+        "cliInstall": "pnpm dlx wensity@latest add badge"
+      }
+    },
+    {
+      "name": "checkbox",
+      "type": "registry:block",
+      "title": "Checkbox",
+      "description": "Accessible checkbox with focused styles, groups, cards, and indeterminate state.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/checkbox.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/checkbox",
+        "cliInstall": "pnpm dlx wensity@latest add checkbox"
+      }
+    },
+    {
+      "name": "switch",
+      "type": "registry:block",
+      "title": "Switch",
+      "description": "Accessible switch with distinct variants, smooth motion, groups, cards, and controlled state.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/switch.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/switch",
+        "cliInstall": "pnpm dlx wensity@latest add switch"
+      }
+    },
+    {
+      "name": "radio-group",
+      "type": "registry:block",
+      "title": "Radio Group",
+      "description": "Native radio selection with distinctive rows, segments, cards, and controlled state.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/radio-group.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/radio-group",
+        "cliInstall": "pnpm dlx wensity@latest add radio-group"
+      }
+    },
+    {
+      "name": "toggle",
+      "type": "registry:block",
+      "title": "Toggle",
+      "description": "Pressable on/off control with default, icon, outline, soft, and grouped selection.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/toggle.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/toggle",
+        "cliInstall": "pnpm dlx wensity@latest add toggle"
+      }
+    },
+    {
+      "name": "label",
+      "type": "registry:block",
+      "title": "Label",
+      "description": "Accessible form label with default, required, optional, muted, and inline variants.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/label.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/label",
+        "cliInstall": "pnpm dlx wensity@latest add label"
+      }
+    },
+    {
+      "name": "input-otp",
+      "type": "registry:block",
+      "title": "Input OTP",
+      "description": "Accessible one-time code input with alphanumeric, masked, and grouped variants.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/input-otp.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/input-otp",
+        "cliInstall": "pnpm dlx wensity@latest add input-otp"
+      }
+    },
+    {
+      "name": "combobox",
+      "type": "registry:block",
+      "title": "Combobox",
+      "description": "Searchable combobox with multi-select, async loading, and creatable options.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/combobox.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/combobox",
+        "cliInstall": "pnpm dlx wensity@latest add combobox"
+      }
+    },
+    {
+      "name": "avatar",
+      "type": "registry:block",
+      "title": "Avatar",
+      "description": "Profile avatars with image fallback, presence status, stacked groups, and upload.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/avatar.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/avatar",
+        "cliInstall": "pnpm dlx wensity@latest add avatar"
+      }
+    },
+    {
+      "name": "table",
+      "type": "registry:block",
+      "title": "Table",
+      "description": "Data tables with sortable columns, row selection, expandable rows, and sticky headers.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/table.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/table",
+        "cliInstall": "pnpm dlx wensity@latest add table"
+      }
+    },
+    {
+      "name": "progress",
+      "type": "registry:block",
+      "title": "Progress",
+      "description": "Progress indicators - linear, circular, segmented steps, indeterminate, and stacked.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/progress.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/progress",
+        "cliInstall": "pnpm dlx wensity@latest add progress"
+      }
+    },
+    {
+      "name": "alert",
+      "type": "registry:block",
+      "title": "Alert",
+      "description": "Status alerts for info, success, warning, error, and action-oriented messages.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/alert.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/alert",
+        "cliInstall": "pnpm dlx wensity@latest add alert"
+      }
+    },
+    {
+      "name": "skeleton",
+      "type": "registry:block",
+      "title": "Skeleton",
+      "description": "Loading placeholders for text, avatar, card, table, and custom compositions.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/skeleton.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/skeleton",
+        "cliInstall": "pnpm dlx wensity@latest add skeleton"
+      }
+    },
+    {
+      "name": "spinner",
+      "type": "registry:block",
+      "title": "Spinner",
+      "description": "Indeterminate loading indicators in default, ring, dots, pulse, and overlay styles.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/spinner.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/spinner",
+        "cliInstall": "pnpm dlx wensity@latest add spinner"
+      }
+    },
+    {
+      "name": "toast",
+      "type": "registry:block",
+      "title": "Toast",
+      "description": "Transient notifications for info, success, warning, error, and action states.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/toast.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/toast",
+        "cliInstall": "pnpm dlx wensity@latest add toast"
+      }
+    },
+    {
+      "name": "dialog",
+      "type": "registry:block",
+      "title": "Dialog",
+      "description": "Modal dialogs for focused tasks - default, confirmation, form, fullscreen, and scrollable layouts.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/dialog.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/dialog",
+        "cliInstall": "pnpm dlx wensity@latest add dialog"
+      }
+    },
+    {
+      "name": "sheet",
+      "type": "registry:block",
+      "title": "Sheet",
+      "description": "Edge-mounted panels that slide in from any side, with an optional persistent mode.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/sheet.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/sheet",
+        "cliInstall": "pnpm dlx wensity@latest add sheet"
+      }
+    },
+    {
+      "name": "drawer",
+      "type": "registry:block",
+      "title": "Drawer",
+      "description": "Gesture-driven drawers with velocity dismiss, snap points, and multi-side support.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/drawer.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/drawer",
+        "cliInstall": "pnpm dlx wensity@latest add drawer"
+      }
+    },
+    {
+      "name": "popover",
+      "type": "registry:block",
+      "title": "Popover",
+      "description": "Floating panels for menus, inline forms, rich previews, and controlled state.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/popover.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/popover",
+        "cliInstall": "pnpm dlx wensity@latest add popover"
+      }
+    },
+    {
+      "name": "tooltip",
+      "type": "registry:block",
+      "title": "Tooltip",
+      "description": "Contextual hints with rich content, keyboard shortcuts, and cursor tracking.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/tooltip.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/tooltip",
+        "cliInstall": "pnpm dlx wensity@latest add tooltip"
+      }
+    },
+    {
+      "name": "tabs",
+      "type": "registry:block",
+      "title": "Tabs",
+      "description": "Tabbed navigation with sliding indicators, segmented controls, and vertical layouts.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/tabs.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/tabs",
+        "cliInstall": "pnpm dlx wensity@latest add tabs"
+      }
+    },
+    {
+      "name": "breadcrumb",
+      "type": "registry:block",
+      "title": "Breadcrumb",
+      "description": "Wayfinding trail with smart collapsing, dropdowns, and animated hover states.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/breadcrumb.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/breadcrumb",
+        "cliInstall": "pnpm dlx wensity@latest add breadcrumb"
+      }
+    },
+    {
+      "name": "pagination",
+      "type": "registry:block",
+      "title": "Pagination",
+      "description": "Page navigation with sliding indicators, compact counters, and progressive loading.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/pagination.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/pagination",
+        "cliInstall": "pnpm dlx wensity@latest add pagination"
+      }
+    },
+    {
+      "name": "card",
+      "type": "registry:block",
+      "title": "Card",
+      "description": "Premium content containers with interactive, media, stat, and feature variants.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/card.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/card",
+        "cliInstall": "pnpm dlx wensity@latest add card"
+      }
+    },
+    {
+      "name": "separator",
+      "type": "registry:block",
+      "title": "Separator",
+      "description": "Custom dividers with text labels, gradient fades, and dashed borders.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/separator.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/separator",
+        "cliInstall": "pnpm dlx wensity@latest add separator"
+      }
+    },
+    {
+      "name": "scroll-area",
+      "type": "registry:block",
+      "title": "Scroll Area",
+      "description": "Styled scrolling container with auto-hide scrollbars for constrained content regions.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/scroll-area.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/scroll-area",
+        "cliInstall": "pnpm dlx wensity@latest add scroll-area"
+      }
+    },
+    {
+      "name": "resizable",
+      "type": "registry:block",
+      "title": "Resizable",
+      "description": "Flexible resizable layouts featuring draggable splitter bars, panel snappers, and local persistence.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/resizable.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/resizable",
+        "cliInstall": "pnpm dlx wensity@latest add resizable"
+      }
+    },
+    {
+      "name": "hover-card",
+      "type": "registry:block",
+      "title": "Hover Card",
+      "description": "Snappy preview card overlays triggered on hovering links/text without click interruption.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/hover-card.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/hover-card",
+        "cliInstall": "pnpm dlx wensity@latest add hover-card"
+      }
+    },
+    {
+      "name": "accordion",
+      "type": "registry:block",
+      "title": "Accordion",
+      "description": "Expandable content sections for FAQs and interfaces.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/accordion.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/accordion",
+        "cliInstall": "pnpm dlx wensity@latest add accordion"
+      }
+    },
+    {
+      "name": "aspect-ratio",
+      "type": "registry:block",
+      "title": "Aspect Ratio",
+      "description": "Maintains consistent media dimensions across responsive layouts.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/aspect-ratio.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/aspect-ratio",
+        "cliInstall": "pnpm dlx wensity@latest add aspect-ratio"
+      }
+    },
+    {
+      "name": "attachment",
+      "type": "registry:block",
+      "title": "Attachment",
+      "description": "Displays uploaded files in chats and interfaces.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/attachment.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/attachment",
+        "cliInstall": "pnpm dlx wensity@latest add attachment"
+      }
+    },
+    {
+      "name": "calendar",
+      "type": "registry:block",
+      "title": "Calendar",
+      "description": "Displays and selects dates across scheduling interfaces.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/calendar.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/calendar",
+        "cliInstall": "pnpm dlx wensity@latest add calendar"
+      }
+    },
+    {
+      "name": "carousel",
+      "type": "registry:block",
+      "title": "Carousel",
+      "description": "Displays scrollable content across galleries and showcases.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/carousel.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/carousel",
+        "cliInstall": "pnpm dlx wensity@latest add carousel"
+      }
+    },
+    {
+      "name": "chart",
+      "type": "registry:block",
+      "title": "Chart",
+      "description": "Visualizes data, trends, comparisons, and distributions.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "recharts",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/chart.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/chart",
+        "cliInstall": "pnpm dlx wensity@latest add chart"
+      }
+    },
+    {
+      "name": "collapsible",
+      "type": "registry:block",
+      "title": "Collapsible",
+      "description": "Hides and reveals secondary content sections.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/collapsible.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/collapsible",
+        "cliInstall": "pnpm dlx wensity@latest add collapsible"
+      }
+    },
+    {
+      "name": "slider",
+      "type": "registry:block",
+      "title": "Slider",
+      "description": "A keyboard- and pointer-accessible slider built on Base UI with a value bubble that reveals on drag or focus.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/slider.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/slider",
+        "cliInstall": "pnpm dlx wensity@latest add slider"
+      }
+    },
+    {
+      "name": "command",
+      "type": "registry:block",
+      "title": "Command",
+      "description": "Provides fast searchable actions and navigation interfaces.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/command.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/command",
+        "cliInstall": "pnpm dlx wensity@latest add command"
+      }
+    },
+    {
+      "name": "context-menu",
+      "type": "registry:block",
+      "title": "Context Menu",
+      "description": "Displays contextual actions on right-click interactions.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/context-menu.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/context-menu",
+        "cliInstall": "pnpm dlx wensity@latest add context-menu"
+      }
+    },
+    {
+      "name": "data-table",
+      "type": "registry:block",
+      "title": "Data Table",
+      "description": "Organizes complex datasets with sorting, filtering, selection, pagination, and expandable rows.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/data-table.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/data-table",
+        "cliInstall": "pnpm dlx wensity@latest add data-table"
+      }
+    },
+    {
+      "name": "date-picker",
+      "type": "registry:block",
+      "title": "Date Picker",
+      "description": "Selects dates and ranges through calendar popovers with presets, time, and month/year quick-nav.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/date-picker.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/date-picker",
+        "cliInstall": "pnpm dlx wensity@latest add date-picker"
+      }
+    },
+    {
+      "name": "direction",
+      "type": "registry:block",
+      "title": "Direction",
+      "description": "Controls interface layout for LTR, RTL, and dynamic language-based reading directions.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/direction.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/direction",
+        "cliInstall": "pnpm dlx wensity@latest add direction"
+      }
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "registry:block",
+      "title": "Dropdown Menu",
+      "description": "Displays compact actions and options from triggers with grouped sections, nested submenus, checkboxes, radio groups, and destructive items.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/dropdown-menu.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/dropdown-menu",
+        "cliInstall": "pnpm dlx wensity@latest add dropdown-menu"
+      }
+    },
+    {
+      "name": "empty-state",
+      "type": "registry:block",
+      "title": "Empty State",
+      "description": "Communicates missing content and guides next actions with basic, action, illustration, avatar, search, and error variants.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/empty-state.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/empty-state",
+        "cliInstall": "pnpm dlx wensity@latest add empty-state"
+      }
+    },
+    {
+      "name": "field",
+      "type": "registry:block",
+      "title": "Field",
+      "description": "Composable field wrapper with labels, descriptions, and validation states.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/field.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/field",
+        "cliInstall": "pnpm dlx wensity@latest add field"
+      }
+    },
+    {
+      "name": "kbd",
+      "type": "registry:block",
+      "title": "Kbd",
+      "description": "Displays keyboard keys and shortcuts across interfaces.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/kbd.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/kbd",
+        "cliInstall": "pnpm dlx wensity@latest add kbd"
+      }
+    },
+    {
+      "name": "marker",
+      "type": "registry:block",
+      "title": "Marker",
+      "description": "Highlights positions, points, and statuses visually.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/marker.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/marker",
+        "cliInstall": "pnpm dlx wensity@latest add marker"
+      }
+    },
+    {
+      "name": "native-select",
+      "type": "registry:block",
+      "title": "Native Select",
+      "description": "Provides browser-native option selection for forms.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/native-select.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/native-select",
+        "cliInstall": "pnpm dlx wensity@latest add native-select"
+      }
+    },
+    {
+      "name": "navigation-menu",
+      "type": "registry:block",
+      "title": "Navigation Menu",
+      "description": "Organizes primary navigation with expandable content menus.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/navigation-menu.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/navigation-menu",
+        "cliInstall": "pnpm dlx wensity@latest add navigation-menu"
+      }
+    },
+    {
+      "name": "sidebar",
+      "type": "registry:block",
+      "title": "Sidebar",
+      "description": "Organizes application navigation, sections, and workspace actions.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/sidebar.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/sidebar",
+        "cliInstall": "pnpm dlx wensity@latest add sidebar"
+      }
+    },
+    {
+      "name": "typography",
+      "type": "registry:block",
+      "title": "Typography",
+      "description": "Styles and structures readable content across interfaces.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/ksparth12/wensity-shadcn-registry/main/typography.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/typography",
+        "cliInstall": "pnpm dlx wensity@latest add typography"
+      }
+    }
+  ]
+}

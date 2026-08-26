@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "liquid-multimodal-input",
+  "type": "registry:block",
+  "title": "Liquid Multimodal Input",
+  "description": "Drop a file, type a thought. The input breathes open and glows to meet you.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/liquid-multimodal-input.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/liquid-multimodal-input.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { motion, AnimatePresence, LayoutGroup } from \"framer-motion\";\nimport { createPortal } from \"react-dom\";\nimport {\n  IconPaperclip,\n  IconPhoto,\n  IconArrowUp,\n  IconX,\n  IconRocket,\n  IconBulb,\n  IconSparkles,\n  IconCheck,\n  IconChevronDown,\n  IconFileDescription,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type LiquidModel = \"fast\" | \"thinking\" | \"pro\";\n\nexport interface LiquidMultimodalInputProps {\n  /** Placeholder text when empty */\n  placeholder?: string;\n  /** Maximum height in px before scrolling */\n  maxHeight?: number;\n  /** Accepted file MIME types */\n  accept?: string;\n  /** Initial selected model (default \"pro\") */\n  defaultModel?: LiquidModel;\n  /** Fired when user submits (Enter without Shift, or click) */\n  onSubmit?: (value: string, files: File[], model: LiquidModel) => void;\n  /** Fired on every text change */\n  onChange?: (value: string) => void;\n  /** Fired when the model selection changes */\n  onModelChange?: (model: LiquidModel) => void;\n  /** Hide the built-in model selector (e.g. when the host app owns model state) */\n  hideModel?: boolean;\n  /** Optional className for the outer container */\n  className?: string;\n}\n\ntype AttachedFile = { id: string; file: File; preview?: string };\n\nconst LIQUID_MATTE_NOISE = `url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.65 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")`;\n\nexport function LiquidMultimodalInput({\n  placeholder = \"Ask anything, or drop files…\",\n  maxHeight = 250,\n  accept = \"image/*,application/pdf,text/*\",\n  defaultModel = \"pro\",\n  onSubmit,\n  onChange,\n  onModelChange,\n  hideModel = false,\n  className,\n}: LiquidMultimodalInputProps) {\n  const [value, setValue] = React.useState(\"\");\n  const [files, setFiles] = React.useState<AttachedFile[]>([]);\n  const [dragOver, setDragOver] = React.useState(false);\n  const [model, setModel] = React.useState<LiquidModel>(defaultModel);\n  const taRef = React.useRef<HTMLTextAreaElement>(null);\n  const fileInputRef = React.useRef<HTMLInputElement>(null);\n  const dragCounter = React.useRef(0);\n\n  React.useEffect(() => {\n    const ta = taRef.current;\n    if (!ta) return;\n    ta.style.height = \"auto\";\n    ta.style.height = Math.min(Math.max(ta.scrollHeight, 80), maxHeight) + \"px\";\n  }, [value, maxHeight]);\n\n  function addFiles(list: FileList | File[]) {\n    const arr = Array.from(list).map((f) => ({\n      id: crypto.randomUUID(),\n      file: f,\n      preview: f.type.startsWith(\"image/\") ? URL.createObjectURL(f) : undefined,\n    }));\n    setFiles((prev) => [...prev, ...arr]);\n  }\n\n  function removeFile(id: string) {\n    setFiles((prev) => {\n      const f = prev.find((x) => x.id === id);\n      if (f?.preview) URL.revokeObjectURL(f.preview);\n      return prev.filter((x) => x.id !== id);\n    });\n  }\n\n  function submit() {\n    if (!value.trim() && files.length === 0) return;\n    onSubmit?.(value, files.map((f) => f.file), model);\n    setValue(\"\");\n    files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));\n    setFiles([]);\n    if (taRef.current) taRef.current.style.height = \"80px\";\n  }\n\n  function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {\n    if (e.key === \"Enter\" && !e.shiftKey) {\n      e.preventDefault();\n      submit();\n    }\n  }\n\n  function onDragEnter(e: React.DragEvent) {\n    e.preventDefault();\n    dragCounter.current++;\n    if (e.dataTransfer.types.includes(\"Files\")) setDragOver(true);\n  }\n  function onDragLeave(e: React.DragEvent) {\n    e.preventDefault();\n    dragCounter.current--;\n    if (dragCounter.current === 0) setDragOver(false);\n  }\n  function onDrop(e: React.DragEvent) {\n    e.preventDefault();\n    dragCounter.current = 0;\n    setDragOver(false);\n    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);\n  }\n\n  return (\n    <div\n      className={cn(\"w-full max-w-3xl\", className)}\n      onDragEnter={onDragEnter}\n      onDragLeave={onDragLeave}\n      onDragOver={(e) => e.preventDefault()}\n      onDrop={onDrop}\n      style={{ willChange: \"transform\" }}\n    >\n      <div className=\"relative w-full flex flex-col items-center\">\n        {/* Outer Aurora Glow (Drop target) */}\n        <motion.div\n          aria-hidden\n          className=\"pointer-events-none absolute -inset-[2px] rounded-[30px] opacity-0 blur-[10px]\"\n          animate={{ opacity: dragOver ? 0.9 : 0 }}\n          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}\n          style={{\n            background:\n              \"conic-gradient(from 0deg, #cd1c18, #ffa896, #cd1c18, #9b1313, #cd1c18)\",\n            willChange: \"opacity\",\n          }}\n        />\n\n        {/* Main Form Container (Exact structural styling from snippet) */}\n        <div\n          className={cn(\n            \"group relative isolate flex w-full flex-col gap-2 overflow-hidden rounded-[28px] p-3 transition-all duration-150 ease-in-out\",\n            // Light Mode Styles\n            \"border border-black/[0.08] bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#ffffff_0%,#f4f4f5_72%)] text-base\",\n            \"shadow-[0_1px_2px_rgba(0,0,0,.06),0_8px_24px_-12px_rgba(0,0,0,.08)]\",\n            \"hover:border-black/[0.12] focus-within:border-black/[0.14]\",\n            // Dark Mode Styles\n            \"dark:border-white/[0.06] dark:bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#15151b_0%,#0a0a0b_72%)]\",\n            \"dark:shadow-[0_1px_2px_rgba(0,0,0,.4),0_8px_24px_-12px_rgba(0,0,0,.6)]\",\n            \"dark:hover:border-white/[0.12] dark:focus-within:border-white/[0.16]\",\n            // Active Drop Override\n            dragOver && \"border-chili-500/45 dark:border-chili-500/45\"\n          )}\n        >\n          <div\n            aria-hidden\n            className=\"pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-overlay dark:opacity-[0.055]\"\n            style={{\n              backgroundImage: LIQUID_MATTE_NOISE,\n              backgroundSize: \"240px 240px\",\n            }}\n          />\n          <div\n            aria-hidden\n            className=\"pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.035)_0%,transparent_30%,transparent_72%,rgba(0,0,0,0.055)_100%)] dark:bg-[linear-gradient(to_bottom,rgba(0,0,0,0.12)_0%,transparent_28%,transparent_72%,rgba(0,0,0,0.22)_100%)]\"\n          />\n\n          {/* Animated Gradient Thin Inner Edge (1px) */}\n          <div\n            aria-hidden\n            className=\"lmi-border pointer-events-none absolute inset-0 z-10 rounded-[28px] opacity-50 transition-opacity duration-500 group-focus-within:opacity-100 group-hover:opacity-100\"\n            style={{\n              padding: \"1px\",\n              WebkitMask:\n                \"linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)\",\n              WebkitMaskComposite: \"xor\",\n              maskComposite: \"exclude\",\n              background:\n                \"conic-gradient(from var(--lmi-angle, 0deg), transparent 65%, rgba(205,28,24,0.6) 80%, #ffa896 95%, transparent 100%)\",\n            }}\n          />\n          <style>{`\n            @property --lmi-angle {\n              syntax: '<angle>';\n              initial-value: 0deg;\n              inherits: false;\n            }\n            .lmi-border {\n              animation: lmi-spin 4s linear infinite;\n            }\n            @keyframes lmi-spin {\n              to { --lmi-angle: 360deg; }\n            }\n          `}</style>\n\n          <div className=\"w-full min-w-0 relative z-20\">\n            <div className=\"relative grid w-full flex-1\">\n              \n              {/* Attachments Gallery (No bottom border, uses natural gap) */}\n              <AnimatePresence initial={false}>\n                {files.length > 0 && (\n                  <motion.div\n                    initial={{ opacity: 0, height: 0 }}\n                    animate={{ opacity: 1, height: \"auto\" }}\n                    exit={{ opacity: 0, height: 0 }}\n                    transition={{ duration: 0.2 }}\n                    className=\"flex flex-wrap gap-3 px-2 pt-1 pb-4\"\n                  >\n                    {files.map((f) => (\n                      <motion.div\n                        key={f.id}\n                        layout\n                        initial={{ opacity: 0, scale: 0.8 }}\n                        animate={{ opacity: 1, scale: 1 }}\n                        exit={{ opacity: 0, scale: 0.8 }}\n                        transition={{ type: \"spring\", stiffness: 400, damping: 28 }}\n                        className=\"group/file relative flex shrink-0 items-center justify-center\"\n                      >\n                        {f.preview ? (\n                          // 1:1 Image Preview Card (Click to preview)\n                          <button\n                            type=\"button\"\n                            onClick={() => window.open(f.preview, \"_blank\")}\n                            className=\"relative h-20 w-20 overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10 cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-chili-500/50\"\n                          >\n                            {/* eslint-disable-next-line @next/next/no-img-element */}\n                            <img\n                              src={f.preview}\n                              alt={f.file.name}\n                              className=\"h-full w-full object-cover transition-transform duration-300 group-hover/file:scale-105\"\n                            />\n                            <div className=\"absolute inset-0 bg-black/10 opacity-0 transition-opacity duration-200 group-hover/file:opacity-100\" />\n                          </button>\n                        ) : (\n                          // File Preview Card\n                          <div className=\"flex h-14 max-w-[160px] items-center gap-2 rounded-xl border border-black/5 bg-black/5 px-3 shadow-sm dark:border-white/10 dark:bg-white/5\">\n                            <IconFileDescription\n                              size={20}\n                              className=\"shrink-0 text-slate-400 dark:text-muted-foreground\"\n                            />\n                            <span className=\"truncate text-xs font-medium text-slate-700 dark:text-foreground\">\n                              {f.file.name}\n                            </span>\n                          </div>\n                        )}\n\n                        {/* Floating Remove Button (Always slightly visible, pops on hover) */}\n                        <button\n                          type=\"button\"\n                          onClick={(e) => {\n                            e.stopPropagation();\n                            removeFile(f.id);\n                          }}\n                          aria-label={`Remove ${f.file.name}`}\n                          className={cn(\n                            \"absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-slate-800 text-white shadow-md transition-all duration-200\",\n                            \"opacity-70 hover:bg-chili-500 hover:opacity-100 focus:opacity-100\",\n                            \"dark:bg-slate-700 dark:hover:bg-chili-500\"\n                          )}\n                        >\n                          <IconX size={14} stroke={2.5} />\n                        </button>\n                      </motion.div>\n                    ))}\n                  </motion.div>\n                )}\n              </AnimatePresence>\n\n              {/* Textarea */}\n              <textarea\n                ref={taRef}\n                value={value}\n                onChange={(e) => {\n                  setValue(e.target.value);\n                  onChange?.(e.target.value);\n                }}\n                onKeyDown={handleKey}\n                placeholder={placeholder}\n                aria-label=\"Chat input\"\n                className=\"w-full resize-none bg-transparent px-3 py-1 text-[16px] leading-snug text-foreground outline-none placeholder:text-muted-foreground md:text-base\"\n                style={{ minHeight: \"80px\", maxHeight }}\n              />\n            </div>\n          </div>\n\n          {/* Toolbar Container */}\n          <div className=\"relative z-20 flex flex-wrap items-center gap-1 mt-auto w-full px-1\">\n            <div className=\"flex items-center gap-1\">\n              <button\n                type=\"button\"\n                onClick={() => fileInputRef.current?.click()}\n                aria-label=\"Attach files\"\n                className=\"grid h-8 w-8 place-items-center rounded-full text-slate-500 transition-colors hover:bg-black/5 hover:text-foreground dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-foreground\"\n              >\n                <IconPaperclip size={18} />\n              </button>\n              <button\n                type=\"button\"\n                onClick={() => fileInputRef.current?.click()}\n                aria-label=\"Attach images\"\n                className=\"grid h-8 w-8 place-items-center rounded-full text-slate-500 transition-colors hover:bg-black/5 hover:text-foreground dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-foreground\"\n              >\n                <IconPhoto size={18} />\n              </button>\n              <input\n                ref={fileInputRef}\n                type=\"file\"\n                multiple\n                accept={accept}\n                hidden\n                onChange={(e) => {\n                  if (e.target.files?.length) addFiles(e.target.files);\n                  e.target.value = \"\";\n                }}\n              />\n            </div>\n\n            <div className=\"ml-auto flex items-center gap-2\">\n              {!hideModel && (\n                <ModelSelector\n                  value={model}\n                  onChange={(m) => {\n                    setModel(m);\n                    onModelChange?.(m);\n                  }}\n                />\n              )}\n\n              <motion.button\n                type=\"button\"\n                onClick={submit}\n                disabled={!value.trim() && files.length === 0}\n                aria-label=\"Send message\"\n                whileTap={{ scale: 0.92 }}\n                transition={{ type: \"spring\", stiffness: 400, damping: 22 }}\n                className={cn(\n                  \"grid h-8 w-8 place-items-center rounded-full transition-all ml-1 shrink-0\",\n                  \"bg-chili-500 text-white shadow-[0_2px_8px_-2px_rgba(205,28,24,0.4)]\",\n                  \"hover:bg-chili-600 hover:shadow-[0_4px_12px_-2px_rgba(205,28,24,0.6)]\",\n                  \"disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none\",\n                  \"dark:disabled:bg-white/10 dark:disabled:text-white/30\"\n                )}\n                style={{ willChange: \"transform\" }}\n              >\n                <IconArrowUp size={16} stroke={2.5} />\n              </motion.button>\n            </div>\n          </div>\n\n          {/* Drop overlay */}\n          <AnimatePresence>\n            {dragOver && (\n              <motion.div\n                initial={{ opacity: 0 }}\n                animate={{ opacity: 1 }}\n                exit={{ opacity: 0 }}\n                transition={{ duration: 0.18 }}\n                className=\"pointer-events-none absolute inset-0 z-30 grid place-items-center rounded-[28px] bg-white/40 backdrop-blur-[2px] dark:bg-[#121212]/60\"\n                style={{ willChange: \"opacity\" }}\n              >\n                <div className=\"flex items-center gap-2 rounded-full border border-chili-500/20 bg-white px-5 py-2.5 text-sm font-semibold text-chili-600 shadow-xl dark:border-chili-500/30 dark:bg-[#1a1a1a] dark:text-chili-500\">\n                  <IconPaperclip size={16} />\n                  Drop files here\n                </div>\n              </motion.div>\n            )}\n          </AnimatePresence>\n        </div>\n      </div>\n    </div>\n  );\n}\n\n/* ───────────────────────── Model selector ───────────────────────── */\n\nconst MODELS: ReadonlyArray<{\n  id: LiquidModel;\n  label: string;\n  blurb: string;\n  icon: React.ComponentType<{ size?: number; className?: string }>;\n}> = [\n  {\n    id: \"fast\",\n    label: \"Fast\",\n    blurb: \"Snappiest replies. Great for quick edits\",\n    icon: IconRocket,\n  },\n  {\n    id: \"thinking\",\n    label: \"Thinking\",\n    blurb: \"Step-by-step reasoning for tougher prompts\",\n    icon: IconBulb,\n  },\n  {\n    id: \"pro\",\n    label: \"Pro\",\n    blurb: \"Top quality with multimodal + tools\",\n    icon: IconSparkles,\n  },\n];\n\ntype ModelMenuPosition = {\n  top: number;\n  left: number;\n  width: number;\n  maxHeight: number;\n  placement: \"bottom\" | \"top\";\n};\n\nfunction ModelSelector({\n  value,\n  onChange,\n}: {\n  value: LiquidModel;\n  onChange: (m: LiquidModel) => void;\n}) {\n  const [open, setOpen] = React.useState(false);\n  const [hoverId, setHoverId] = React.useState<LiquidModel | null>(null);\n  const [menuPosition, setMenuPosition] =\n    React.useState<ModelMenuPosition | null>(null);\n  const wrapRef = React.useRef<HTMLDivElement>(null);\n  const buttonRef = React.useRef<HTMLButtonElement>(null);\n  const menuRef = React.useRef<HTMLDivElement>(null);\n  const listboxId = React.useId();\n  const current = MODELS.find((m) => m.id === value) ?? MODELS[0];\n  const CurrentIcon = current.icon;\n\n  const updateMenuPosition = React.useCallback(() => {\n    const button = buttonRef.current;\n    if (!button || typeof window === \"undefined\") return;\n\n    const rect = button.getBoundingClientRect();\n    const viewportPadding = 12;\n    const scrollX = window.scrollX;\n    const scrollY = window.scrollY;\n    const menuWidth = Math.min(280, window.innerWidth - viewportPadding * 2);\n    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding - 10;\n    const maxHeight = Math.max(132, spaceBelow);\n\n    const left =\n      scrollX +\n      Math.max(\n        viewportPadding,\n        Math.min(\n          rect.right - menuWidth,\n          window.innerWidth - menuWidth - viewportPadding\n        )\n      );\n    const top = scrollY + rect.bottom + 10;\n\n    setMenuPosition({\n      top,\n      left,\n      width: menuWidth,\n      maxHeight,\n      placement: \"bottom\",\n    });\n  }, []);\n\n  React.useEffect(() => {\n    if (!open) {\n      setMenuPosition(null);\n      setHoverId(null);\n      return;\n    }\n\n    updateMenuPosition();\n\n    function onDoc(e: MouseEvent) {\n      const target = e.target as Node;\n      if (\n        wrapRef.current?.contains(target) ||\n        menuRef.current?.contains(target)\n      ) {\n        return;\n      }\n      setOpen(false);\n    }\n    function onKey(e: KeyboardEvent) {\n      if (e.key === \"Escape\") setOpen(false);\n    }\n    function onViewportChange() {\n      updateMenuPosition();\n    }\n\n    document.addEventListener(\"mousedown\", onDoc);\n    document.addEventListener(\"keydown\", onKey);\n    window.addEventListener(\"resize\", onViewportChange);\n    window.addEventListener(\"scroll\", onViewportChange, true);\n\n    return () => {\n      document.removeEventListener(\"mousedown\", onDoc);\n      document.removeEventListener(\"keydown\", onKey);\n      window.removeEventListener(\"resize\", onViewportChange);\n      window.removeEventListener(\"scroll\", onViewportChange, true);\n    };\n  }, [open, updateMenuPosition]);\n\n  React.useLayoutEffect(() => {\n    if (!open) return;\n    updateMenuPosition();\n  }, [open, updateMenuPosition]);\n\n  const menu =\n    open && menuPosition\n      ? createPortal(\n          <AnimatePresence>\n            <motion.div\n              key={listboxId}\n              ref={menuRef}\n              role=\"listbox\"\n              id={listboxId}\n              initial={{\n                opacity: 0,\n                y: menuPosition.placement === \"bottom\" ? -8 : 8,\n                scale: 0.92,\n                filter: \"blur(8px)\",\n              }}\n              animate={{ opacity: 1, y: 0, scale: 1, filter: \"blur(0px)\" }}\n              exit={{\n                opacity: 0,\n                y: menuPosition.placement === \"bottom\" ? -8 : 8,\n                scale: 0.96,\n                filter: \"blur(6px)\",\n              }}\n              transition={{ type: \"spring\", stiffness: 400, damping: 25 }}\n              className={cn(\n                \"absolute isolate z-[140] overflow-hidden rounded-2xl border border-black/[0.08] p-1.5\",\n                \"bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#ffffff_0%,#f4f4f5_72%)]\",\n                \"shadow-[0_1px_2px_rgba(0,0,0,.06),0_24px_60px_-18px_rgba(0,0,0,.22)]\",\n                \"dark:border-white/[0.06] dark:bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#15151b_0%,#0a0a0b_72%)]\",\n                \"dark:shadow-[0_1px_2px_rgba(0,0,0,.4),0_24px_60px_-16px_rgba(0,0,0,.72)]\"\n              )}\n              style={{\n                top: menuPosition.top,\n                left: menuPosition.left,\n                width: menuPosition.width,\n                maxHeight: menuPosition.maxHeight,\n                transformOrigin: \"top right\",\n                willChange: \"transform, opacity, filter\",\n              }}\n            >\n              <div\n                aria-hidden\n                className=\"pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-overlay dark:opacity-[0.055]\"\n                style={{\n                  backgroundImage: LIQUID_MATTE_NOISE,\n                  backgroundSize: \"240px 240px\",\n                }}\n              />\n              <div\n                aria-hidden\n                className=\"pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.035)_0%,transparent_30%,transparent_72%,rgba(0,0,0,0.055)_100%)] dark:bg-[linear-gradient(to_bottom,rgba(0,0,0,0.12)_0%,transparent_28%,transparent_72%,rgba(0,0,0,0.22)_100%)]\"\n              />\n              <LayoutGroup id=\"liquid-model-menu\">\n                <div\n                  className=\"relative z-10 max-h-[inherit] overflow-y-auto overscroll-contain\"\n                  onMouseLeave={() => setHoverId(null)}\n                >\n                  {MODELS.map((m) => {\n                    const Icon = m.icon;\n                    const selected = m.id === value;\n                    const highlighted = hoverId === m.id || (!hoverId && selected);\n                    return (\n                      <button\n                        key={m.id}\n                        role=\"option\"\n                        aria-selected={selected}\n                        onMouseEnter={() => setHoverId(m.id)}\n                        onFocus={() => setHoverId(m.id)}\n                        onClick={() => {\n                          onChange(m.id);\n                          setOpen(false);\n                        }}\n                        className={cn(\n                          \"group/opt relative flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left outline-none\",\n                          \"transition-colors\",\n                          highlighted\n                            ? \"text-[var(--foreground)]\"\n                            : \"text-[var(--foreground)]/85\"\n                        )}\n                      >\n                        {highlighted && (\n                          <motion.span\n                            layoutId=\"liquid-model-menu-highlight\"\n                            className=\"absolute inset-0 rounded-xl bg-[var(--surface-muted)] ring-1 ring-black/[0.04] dark:ring-white/[0.06]\"\n                            transition={{\n                              type: \"spring\",\n                              stiffness: 400,\n                              damping: 32,\n                              mass: 0.6,\n                            }}\n                            style={{ willChange: \"transform\" }}\n                            aria-hidden\n                          />\n                        )}\n\n                        <span\n                          className={cn(\n                            \"relative z-10 mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors\",\n                            selected\n                              ? \"bg-white text-[var(--foreground)] dark:bg-white/[0.08]\"\n                              : \"bg-[var(--surface-muted)] text-[var(--muted-foreground)]\",\n                            highlighted && \"bg-white dark:bg-white/[0.08]\"\n                          )}\n                        >\n                          <Icon size={15} />\n                        </span>\n                        <span className=\"relative z-10 min-w-0 flex-1\">\n                          <span className=\"flex items-center gap-1.5\">\n                            <span className=\"text-[13px] font-semibold leading-tight tracking-tight\">\n                              {m.label}\n                            </span>\n                            <AnimatePresence>\n                              {selected && (\n                                <motion.span\n                                  key=\"check\"\n                                  initial={{ scale: 0, opacity: 0 }}\n                                  animate={{ scale: 1, opacity: 1 }}\n                                  exit={{ scale: 0, opacity: 0 }}\n                                  transition={{\n                                    type: \"spring\",\n                                    stiffness: 500,\n                                    damping: 28,\n                                  }}\n                                  className=\"text-[var(--foreground)]\"\n                                  style={{ willChange: \"transform\" }}\n                                >\n                                  <IconCheck size={13} stroke={3} />\n                                </motion.span>\n                              )}\n                            </AnimatePresence>\n                          </span>\n                          <span className=\"mt-0.5 block text-[11.5px] leading-snug text-[var(--muted-foreground)]\">\n                            {m.blurb}\n                          </span>\n                        </span>\n                      </button>\n                    );\n                  })}\n                </div>\n              </LayoutGroup>\n            </motion.div>\n          </AnimatePresence>,\n          document.body\n        )\n      : null;\n\n  return (\n    <div ref={wrapRef} className=\"relative\">\n      <button\n        ref={buttonRef}\n        type=\"button\"\n        aria-haspopup=\"listbox\"\n        aria-expanded={open}\n        aria-controls={open ? listboxId : undefined}\n        aria-label={`Model: ${current.label}`}\n        onClick={() => setOpen((v) => !v)}\n        className={cn(\n          \"inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium transition-all duration-200\",\n          \"bg-transparent text-slate-600 hover:text-slate-900 hover:bg-black/5\",\n          \"dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10\",\n          open && \"bg-black/5 text-slate-900 dark:bg-white/10 dark:text-white\"\n        )}\n      >\n        <span className=\"text-inherit\">\n          <CurrentIcon size={16} />\n        </span>\n        <span>{current.label}</span>\n        <motion.span\n          aria-hidden\n          animate={{ rotate: open ? 180 : 0 }}\n          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}\n          className=\"inline-flex text-inherit opacity-70\"\n          style={{ willChange: \"transform\" }}\n        >\n          <IconChevronDown size={14} />\n        </motion.span>\n      </button>\n      {menu}\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/liquid-multimodal-input.tsx. For Pro components and updates, use pnpm dlx wensity@latest add liquid-multimodal-input.",
+  "categories": [
+    "Agentic AI Interfaces",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "liquid-multimodal-input",
+      "access": "free",
+      "category": "Agentic AI Interfaces",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/liquid-multimodal-input",
+      "shadcnUrl": "https://ui.wensity.com/r/liquid-multimodal-input",
+      "cliInstall": "pnpm dlx wensity@latest add liquid-multimodal-input"
+    }
+  }
+}

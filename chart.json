@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "chart",
+  "type": "registry:block",
+  "title": "Chart",
+  "description": "A Recharts-backed chart primitive with Line, Bar, Area, Pie, and Radar variants, a CVD-validated categorical palette, and a shared tooltip/legend.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "recharts",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/chart.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/chart.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { useReducedMotion } from \"framer-motion\";\nimport {\n  Area,\n  AreaChart,\n  Bar,\n  BarChart,\n  CartesianGrid,\n  Cell,\n  Legend,\n  Line,\n  LineChart,\n  Pie,\n  PieChart,\n  PolarAngleAxis,\n  PolarGrid,\n  Radar,\n  RadarChart,\n  ResponsiveContainer,\n  Tooltip,\n  XAxis,\n  YAxis,\n} from \"recharts\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Chart Config & Theming ────────────────────────────────── */\n\nexport type ChartConfig = Record<\n  string,\n  {\n    label: React.ReactNode;\n    color?: string;\n  }\n>;\n\n/**\n * Six-slot categorical order (E-06), validated for CVD-safe adjacent contrast.\n * Light/dark values live on `--primitive-chart-N`; slot order is the safety\n * mechanism — always assign in this fixed order, never reshuffle per-chart.\n */\nconst CHART_PALETTE = [\n  \"var(--primitive-chart-1)\",\n  \"var(--primitive-chart-2)\",\n  \"var(--primitive-chart-3)\",\n  \"var(--primitive-chart-4)\",\n  \"var(--primitive-chart-5)\",\n  \"var(--primitive-chart-6)\",\n] as const;\n\nconst ChartContext = React.createContext<{ config: ChartConfig } | null>(null);\n\nfunction useChart() {\n  const ctx = React.useContext(ChartContext);\n  if (!ctx) throw new Error(\"Chart subcomponents must be used inside <ChartContainer>.\");\n  return ctx;\n}\n\n/**\n * Resolves the config/color key for a tooltip or legend entry. For\n * multi-series charts (Line/Bar/Area/Radar) Recharts sets `dataKey` to the\n * series key. For Pie, every slice shares the same `dataKey` (the chart's\n * `dataKey=\"value\"`), so the per-slice identity instead lives in `name` —\n * prefer whichever candidate is an actual config key.\n */\nfunction resolveChartKey(config: ChartConfig, ...candidates: Array<string | number | undefined>) {\n  for (const candidate of candidates) {\n    if (candidate !== undefined && config[String(candidate)]) return String(candidate);\n  }\n  return String(candidates.find((c) => c !== undefined) ?? \"\");\n}\n\nexport interface ChartContainerProps extends React.HTMLAttributes<HTMLDivElement> {\n  config: ChartConfig;\n  height?: number;\n  children: React.ReactElement;\n}\n\n/**\n * Wraps any Recharts chart with the CVD-validated palette (injected as\n * `--color-<key>` CSS variables pointing at `--primitive-chart-N`) and a\n * responsive frame. Theme switching is handled by the CSS token maps.\n */\nexport const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(\n  ({ config, height = 280, className, children, id, ...props }, ref) => {\n    const generatedId = React.useId().replace(/:/g, \"\");\n    const chartId = id ?? `chart-${generatedId}`;\n    const entries = Object.entries(config);\n\n    const colorVars = entries\n      .map(([key, value], index) => {\n        const color = value.color ?? CHART_PALETTE[index % CHART_PALETTE.length]!;\n        return `--color-${key}: ${color};`;\n      })\n      .join(\" \");\n\n    return (\n      <ChartContext.Provider value={{ config }}>\n        <div data-wensity-primitive=\"\"\n          ref={ref}\n          data-chart={chartId}\n          className={cn(\"w-full [&_.recharts-surface]:overflow-visible\", className)}\n          style={{ height }}\n          {...props}\n        >\n          <style\n            // Scoped CSS variables; the fixed palette order is the CVD-safety\n            // mechanism, so keys always map to the same slot.\n            dangerouslySetInnerHTML={{\n              __html: `[data-chart=${chartId}]{${colorVars}}`,\n            }}\n          />\n          <ResponsiveContainer width=\"100%\" height=\"100%\">\n            {children}\n          </ResponsiveContainer>\n        </div>\n      </ChartContext.Provider>\n    );\n  }\n);\nChartContainer.displayName = \"ChartContainer\";\n\n/* ─── Tooltip ────────────────────────────────────────────────── */\n\nexport const ChartTooltip = Tooltip;\n\nexport interface ChartTooltipContentProps {\n  active?: boolean;\n  label?: string | number;\n  payload?: Array<{ dataKey?: string | number; name?: string; value?: string | number; color?: string }>;\n  labelFormatter?: (label: string | number) => React.ReactNode;\n  valueFormatter?: (value: string | number, key: string) => React.ReactNode;\n  /** Force every row's label to this config key's label (e.g. a shared \"views\" unit) instead of resolving per-series. */\n  nameKey?: string;\n  className?: string;\n}\n\nexport function ChartTooltipContent({\n  active,\n  label,\n  payload,\n  labelFormatter,\n  valueFormatter,\n  nameKey,\n  className,\n}: ChartTooltipContentProps) {\n  const { config } = useChart();\n\n  if (!active || !payload?.length) return null;\n\n  return (\n    <div\n      className={cn(\n        \"min-w-32 rounded-[var(--primitive-radius-surface)] border border-[var(--border)] bg-[var(--primitive-surface-overlay)] px-2.5 py-2 text-xs text-[var(--foreground)] [box-shadow:var(--primitive-shadow-overlay)]\",\n        className\n      )}\n    >\n      {label !== undefined && (\n        <div className=\"mb-1 font-medium text-[var(--foreground)]\">\n          {labelFormatter ? labelFormatter(label) : label}\n        </div>\n      )}\n      <div className=\"flex flex-col gap-1\">\n        {payload.map((item, index) => {\n          const seriesKey = resolveChartKey(config, item.name, item.dataKey);\n          const labelEntry = config[nameKey ?? seriesKey];\n          return (\n            <div key={`${seriesKey}-${index}`} className=\"flex items-center justify-between gap-4\">\n              <div className=\"flex items-center gap-1.5 text-[var(--muted-foreground)]\">\n                <span\n                  className=\"size-2 shrink-0 rounded-[2px]\"\n                  style={{ backgroundColor: item.color ?? `var(--color-${seriesKey})` }}\n                />\n                <span>{labelEntry?.label ?? item.name ?? seriesKey}</span>\n              </div>\n              <span className=\"font-medium tabular-nums text-[var(--foreground)]\">\n                {item.value !== undefined\n                  ? valueFormatter?.(item.value, seriesKey) ?? item.value\n                  : null}\n              </span>\n            </div>\n          );\n        })}\n      </div>\n    </div>\n  );\n}\n\n/* ─── Legend ─────────────────────────────────────────────────── */\n\nexport const ChartLegend = Legend;\n\nexport interface ChartLegendContentProps {\n  payload?: Array<{ dataKey?: string | number; value?: string; color?: string }>;\n  className?: string;\n}\n\nexport function ChartLegendContent({ payload, className }: ChartLegendContentProps) {\n  const { config } = useChart();\n\n  if (!payload?.length) return null;\n\n  return (\n    <div className={cn(\"flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 pt-3\", className)}>\n      {payload.map((item, index) => {\n        const key = resolveChartKey(config, item.value, item.dataKey);\n        const entry = config[key];\n        return (\n          <div key={`${key}-${index}`} className=\"flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]\">\n            <span\n              className=\"size-2 shrink-0 rounded-[2px]\"\n              style={{ backgroundColor: item.color ?? `var(--color-${key})` }}\n            />\n            <span>{entry?.label ?? item.value ?? key}</span>\n          </div>\n        );\n      })}\n    </div>\n  );\n}\n\n/* ─── Shared axis chrome ─────────────────────────────────────── */\n\nconst axisTick = {\n  fill: \"var(--muted-foreground)\",\n  fontSize: \"var(--primitive-text-hint)\",\n  fontVariantNumeric: \"tabular-nums\" as const,\n};\nconst gridStroke = \"var(--border)\";\n\nfunction useChartMotion() {\n  const reduced = useReducedMotion();\n  return {\n    isAnimationActive: !reduced,\n    animationDuration: reduced ? 0 : 700,\n    animationEasing: \"ease-out\" as const,\n  };\n}\n\n/* ─── Ready-made chart variants ─────────────────────────────── */\n\nexport interface ChartSeriesDatum {\n  [key: string]: string | number;\n}\n\nexport interface ChartVariantProps {\n  data: ChartSeriesDatum[];\n  config: ChartConfig;\n  xKey: string;\n  className?: string;\n  height?: number;\n  showLegend?: boolean;\n  showGrid?: boolean;\n  stacked?: boolean;\n}\n\n/** Line — displays trends and changes over time. */\nexport function ChartLine({\n  data,\n  config,\n  xKey,\n  className,\n  height,\n  showLegend = true,\n  showGrid = true,\n}: ChartVariantProps) {\n  const motionProps = useChartMotion();\n  const seriesKeys = Object.keys(config);\n\n  return (\n    <ChartContainer config={config} className={className} height={height}>\n      <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>\n        {showGrid && <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray=\"0\" />}\n        <XAxis dataKey={xKey} tickLine={false} axisLine={false} tick={axisTick} tickMargin={8} />\n        <YAxis tickLine={false} axisLine={false} tick={axisTick} tickMargin={8} width={32} />\n        <Tooltip cursor={{ stroke: gridStroke, strokeWidth: 1 }} content={<ChartTooltipContent />} />\n        {showLegend && seriesKeys.length > 1 && <Legend content={<ChartLegendContent />} />}\n        {seriesKeys.map((key) => (\n          <Line\n            key={key}\n            type=\"monotone\"\n            dataKey={key}\n            stroke={`var(--color-${key})`}\n            strokeWidth={2}\n            dot={{ r: 4, fill: `var(--color-${key})`, stroke: \"var(--background)\", strokeWidth: 2 }}\n            activeDot={{ r: 5, stroke: \"var(--background)\", strokeWidth: 2 }}\n            {...motionProps}\n          />\n        ))}\n      </LineChart>\n    </ChartContainer>\n  );\n}\n\n/** Bar — compares values across different categories. */\nexport function ChartBar({\n  data,\n  config,\n  xKey,\n  className,\n  height,\n  showLegend = true,\n  showGrid = true,\n  stacked = false,\n}: ChartVariantProps) {\n  const motionProps = useChartMotion();\n  const seriesKeys = Object.keys(config);\n\n  return (\n    <ChartContainer config={config} className={className} height={height}>\n      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={4}>\n        {showGrid && <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray=\"0\" />}\n        <XAxis dataKey={xKey} tickLine={false} axisLine={false} tick={axisTick} tickMargin={8} />\n        <YAxis tickLine={false} axisLine={false} tick={axisTick} tickMargin={8} width={32} />\n        <Tooltip cursor={{ fill: \"var(--muted)\" }} content={<ChartTooltipContent />} />\n        {showLegend && seriesKeys.length > 1 && <Legend content={<ChartLegendContent />} />}\n        {seriesKeys.map((key, index) => (\n          <Bar\n            key={key}\n            dataKey={key}\n            fill={`var(--color-${key})`}\n            stackId={stacked ? \"stack\" : undefined}\n            maxBarSize={24}\n            radius={\n              stacked\n                ? index === seriesKeys.length - 1\n                  ? [4, 4, 0, 0]\n                  : [0, 0, 0, 0]\n                : [4, 4, 0, 0]\n            }\n            {...motionProps}\n          />\n        ))}\n      </BarChart>\n    </ChartContainer>\n  );\n}\n\n/** Area — shows trends with emphasized data volume. */\nexport function ChartArea({\n  data,\n  config,\n  xKey,\n  className,\n  height,\n  showLegend = true,\n  showGrid = true,\n  stacked = false,\n}: ChartVariantProps) {\n  const motionProps = useChartMotion();\n  const seriesKeys = Object.keys(config);\n\n  return (\n    <ChartContainer config={config} className={className} height={height}>\n      <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>\n        {showGrid && <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray=\"0\" />}\n        <XAxis dataKey={xKey} tickLine={false} axisLine={false} tick={axisTick} tickMargin={8} />\n        <YAxis tickLine={false} axisLine={false} tick={axisTick} tickMargin={8} width={32} />\n        <Tooltip cursor={{ stroke: gridStroke, strokeWidth: 1 }} content={<ChartTooltipContent />} />\n        {showLegend && seriesKeys.length > 1 && <Legend content={<ChartLegendContent />} />}\n        {seriesKeys.map((key) => (\n          <Area\n            key={key}\n            type=\"monotone\"\n            dataKey={key}\n            stackId={stacked ? \"stack\" : undefined}\n            stroke={`var(--color-${key})`}\n            strokeWidth={2}\n            fill={`var(--color-${key})`}\n            fillOpacity={0.1}\n            {...motionProps}\n          />\n        ))}\n      </AreaChart>\n    </ChartContainer>\n  );\n}\n\n/** Pie — displays proportional parts of a whole. */\nexport interface ChartPieDatum {\n  name: string;\n  value: number;\n}\n\nexport interface ChartPieProps {\n  data: ChartPieDatum[];\n  config: ChartConfig;\n  className?: string;\n  height?: number;\n  /** Hole size — number (px) or percentage string (e.g. `\"68%\"`). Prefer `%` for responsive donuts. */\n  innerRadius?: number | string;\n  outerRadius?: number | string;\n  showLegend?: boolean;\n  /**\n   * Content centered on the donut hole. Positioned against the chart frame so it\n   * stays aligned with the ring (do not overlay from outside ChartPie).\n   */\n  centerLabel?: React.ReactNode;\n  /**\n   * Gap between slices in degrees. Defaults to `0` for a continuous ring.\n   * Pass a small value (e.g. `2`) for separated wedges.\n   */\n  paddingAngle?: number;\n  /**\n   * Slice outline width. Defaults to `0` so adjacent fills meet cleanly.\n   * Pair with `stroke` when you want separated segments.\n   */\n  strokeWidth?: number;\n  /** Slice outline color. Only visible when `strokeWidth` > 0. */\n  stroke?: string;\n}\n\nexport function ChartPie({\n  data,\n  config,\n  className,\n  height = 280,\n  innerRadius = 0,\n  outerRadius,\n  showLegend = true,\n  centerLabel,\n  paddingAngle = 0,\n  strokeWidth = 0,\n  stroke = \"var(--background)\",\n}: ChartPieProps) {\n  const motionProps = useChartMotion();\n  // Symmetric margins keep the ring’s visual center on the frame mid-point so\n  // `centerLabel` (and external overlays on the same box) stay aligned.\n  const margin = showLegend\n    ? { top: 8, right: 8, left: 8, bottom: 8 }\n    : { top: 0, right: 0, left: 0, bottom: 0 };\n  const resolvedOuterRadius = outerRadius ?? (showLegend ? \"75%\" : \"90%\");\n\n  return (\n    <div\n      className={cn(\"relative w-full\", className)}\n      style={{ height }}\n      data-slot=\"chart-pie\"\n    >\n      <ChartContainer config={config} className=\"h-full\" height={height}>\n        <PieChart margin={margin}>\n          <Tooltip content={<ChartTooltipContent />} />\n          {showLegend ? <Legend content={<ChartLegendContent />} /> : null}\n          <Pie\n            data={data}\n            dataKey=\"value\"\n            nameKey=\"name\"\n            cx=\"50%\"\n            cy=\"50%\"\n            innerRadius={innerRadius}\n            outerRadius={resolvedOuterRadius}\n            paddingAngle={paddingAngle}\n            stroke={stroke}\n            strokeWidth={strokeWidth}\n            {...motionProps}\n          >\n            {data.map((entry) => (\n              <Cell key={entry.name} fill={`var(--color-${entry.name})`} />\n            ))}\n          </Pie>\n        </PieChart>\n      </ChartContainer>\n      {centerLabel ? (\n        <div\n          className={cn(\n            \"pointer-events-none absolute inset-0 z-[1] flex flex-col items-center justify-center text-center\",\n            // Legend sits under the plot; nudge the hole label up to the ring center.\n            showLegend && \"-translate-y-3\",\n          )}\n        >\n          {centerLabel}\n        </div>\n      ) : null}\n    </div>\n  );\n}\n\n/** Radar — compares multiple metrics across categories. */\nexport function ChartRadar({\n  data,\n  config,\n  xKey,\n  className,\n  height,\n  showLegend = true,\n}: Omit<ChartVariantProps, \"showGrid\" | \"stacked\">) {\n  const motionProps = useChartMotion();\n  const seriesKeys = Object.keys(config);\n\n  return (\n    <ChartContainer config={config} className={className} height={height}>\n      <RadarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>\n        <PolarGrid stroke={gridStroke} />\n        <PolarAngleAxis dataKey={xKey} tick={axisTick} />\n        <Tooltip content={<ChartTooltipContent />} />\n        {showLegend && seriesKeys.length > 1 && <Legend content={<ChartLegendContent />} />}\n        {seriesKeys.map((key) => (\n          <Radar\n            key={key}\n            dataKey={key}\n            stroke={`var(--color-${key})`}\n            strokeWidth={2}\n            fill={`var(--color-${key})`}\n            fillOpacity={0.1}\n            {...motionProps}\n          />\n        ))}\n      </RadarChart>\n    </ChartContainer>\n  );\n}\n\n/* ─── Interactive bar chart (toggleable series + running totals) ────── */\n\nexport interface ChartBarInteractiveProps {\n  data: ChartSeriesDatum[];\n  config: ChartConfig;\n  xKey: string;\n  /** Toggleable series keys, in display order. Defaults to every key in `config`. */\n  series?: string[];\n  title: React.ReactNode;\n  description?: React.ReactNode;\n  /** Overrides the tooltip row label for every series (e.g. a shared unit like \"Page Views\"). */\n  unitLabel?: React.ReactNode;\n  className?: string;\n  height?: number;\n  /** Format the xKey axis/tooltip label as a date (expects ISO date strings). */\n  dateFormat?: boolean;\n  /**\n   * Force exactly this many data points between shown x-axis ticks (e.g. 4 for\n   * daily data = a tick every 4 days). Omit to let ticks auto-space to fit —\n   * the safe default for larger datasets, since a fixed gap can overlap when\n   * there are many points.\n   */\n  tickGapDays?: number;\n}\n\nconst shortDateFormatter = new Intl.DateTimeFormat(\"en-US\", { month: \"short\", day: \"numeric\" });\nconst longDateFormatter = new Intl.DateTimeFormat(\"en-US\", { month: \"short\", day: \"numeric\", year: \"numeric\" });\n\nexport function ChartBarInteractive({\n  data,\n  config,\n  xKey,\n  series,\n  title,\n  description,\n  unitLabel,\n  className,\n  height = 250,\n  dateFormat = false,\n  tickGapDays,\n}: ChartBarInteractiveProps) {\n  const motionProps = useChartMotion();\n  const seriesKeys = series ?? Object.keys(config);\n  const [active, setActive] = React.useState(seriesKeys[0]);\n\n  const totals = React.useMemo(() => {\n    const sums: Record<string, number> = {};\n    for (const key of seriesKeys) {\n      sums[key] = data.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);\n    }\n    return sums;\n  }, [data, seriesKeys]);\n\n  const chartConfig = React.useMemo(\n    () => (unitLabel ? { ...config, __unit: { label: unitLabel } } : config),\n    [config, unitLabel]\n  );\n\n  return (\n    <div\n      data-wensity-primitive=\"\"\n      className={cn(\n        \"overflow-hidden rounded-[var(--primitive-radius-surface)] border border-[var(--border)] bg-[var(--primitive-surface-elevated)] text-[var(--foreground)] [box-shadow:var(--primitive-shadow-raised)]\",\n        className\n      )}\n    >\n      <div className=\"flex flex-col items-stretch border-b border-[var(--border)] sm:flex-row\">\n        <div className=\"flex flex-1 flex-col justify-center gap-1 px-6 py-4\">\n          <span className=\"font-[family-name:var(--primitive-font-display)] font-semibold text-base leading-none tracking-tight text-[var(--foreground)]\">\n            {title}\n          </span>\n          {description && (\n            <span className=\"text-xs text-[var(--muted-foreground)]\">{description}</span>\n          )}\n        </div>\n        <div className=\"flex\">\n          {seriesKeys.map((key) => (\n            <button\n              key={key}\n              type=\"button\"\n              data-active={active === key}\n              onClick={() => setActive(key)}\n              className={cn(\n                \"relative flex flex-1 flex-col justify-center gap-1 border-t border-[var(--border)] px-6 py-4 text-left transition-colors duration-150 ease-out\",\n                \"even:border-l\",\n                \"active:scale-[0.98] motion-reduce:active:scale-100\",\n                \"sm:border-t-0 sm:border-l sm:px-8 sm:py-6\",\n                active === key && \"bg-[var(--primitive-surface-selected)]\"\n              )}\n            >\n              <span className=\"text-xs text-[var(--muted-foreground)]\">\n                {config[key]?.label ?? key}\n              </span>\n              <span className=\"text-lg font-semibold leading-none tabular-nums text-[var(--foreground)] sm:text-3xl\">\n                {(totals[key] ?? 0).toLocaleString()}\n              </span>\n            </button>\n          ))}\n        </div>\n      </div>\n      <div className=\"px-2 py-4 sm:p-6\">\n        <ChartContainer config={chartConfig} height={height}>\n          <BarChart data={data} margin={{ left: 12, right: 12 }} barCategoryGap={2}>\n            <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray=\"0\" />\n            <XAxis\n              dataKey={xKey}\n              tickLine={false}\n              axisLine={false}\n              tick={axisTick}\n              tickMargin={8}\n              minTickGap={32}\n              interval={tickGapDays !== undefined ? Math.max(0, tickGapDays - 1) : \"preserveEnd\"}\n              tickFormatter={dateFormat ? (value) => shortDateFormatter.format(new Date(value)) : undefined}\n            />\n            <Tooltip\n              cursor={{ fill: \"var(--muted)\" }}\n              content={\n                <ChartTooltipContent\n                  nameKey={unitLabel ? \"__unit\" : undefined}\n                  labelFormatter={dateFormat ? (value) => longDateFormatter.format(new Date(value)) : undefined}\n                />\n              }\n            />\n            <Bar dataKey={active} fill={`var(--color-${active})`} {...motionProps} />\n          </BarChart>\n        </ChartContainer>\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/chart.tsx. For Pro components and updates, use pnpm dlx wensity@latest add chart.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "chart",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/chart",
+      "shadcnUrl": "https://ui.wensity.com/r/chart",
+      "cliInstall": "pnpm dlx wensity@latest add chart"
+    }
+  }
+}

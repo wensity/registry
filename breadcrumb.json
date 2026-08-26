@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "breadcrumb",
+  "type": "registry:block",
+  "title": "Breadcrumb",
+  "description": "Breadcrumb navigation for trails, collapsed paths, and overflow menus.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/breadcrumb.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/breadcrumb.tsx",
+      "content": "\"use client\";\n\n/**\n * Breadcrumb — custom (Phase 5). Reduced-motion gated expand/dropdown motion.\n * Dropdown overflow uses overlay + menu-item tokens. RTL: prefer IconChevronLeft\n * when `dir=\"rtl\"` is set on an ancestor (consumers should flip chevrons).\n */\n\nimport * as React from \"react\";\nimport { motion, AnimatePresence, useReducedMotion } from \"framer-motion\";\nimport {\n  IconChevronRight,\n  IconDots,\n  IconSlash,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type BreadcrumbVariant =\n  | \"default\"\n  | \"with-icons\"\n  | \"collapsed\"\n  | \"dropdown\"\n  | \"custom-separator\";\n\nexport interface BreadcrumbProps extends React.HTMLAttributes<HTMLElement> {\n  variant?: BreadcrumbVariant;\n  /** Custom separator node — used by all variants but most visible in `custom-separator`. */\n  separator?: React.ReactNode;\n  /** For collapsed/dropdown variants: maximum visible items before collapsing (default 3). */\n  maxItems?: number;\n}\n\nexport interface BreadcrumbItemProps\n  extends React.HTMLAttributes<HTMLLIElement> {\n  /** Link href — omit for the current (last) page. */\n  href?: string;\n  /** Optional leading icon. */\n  icon?: React.ReactNode;\n  /** Mark as the current page — renders as static text. */\n  isCurrentPage?: boolean;\n}\n\nexport interface BreadcrumbSeparatorProps\n  extends React.HTMLAttributes<HTMLLIElement> {\n  children?: React.ReactNode;\n}\n\n/* ─── Context ───────────────────────────────────────────────── */\n\ntype BreadcrumbContextValue = {\n  variant: BreadcrumbVariant;\n  separator: React.ReactNode;\n};\n\nconst BreadcrumbContext = React.createContext<BreadcrumbContextValue>({\n  variant: \"default\",\n  separator: null,\n});\n\n/* ─── Easing ────────────────────────────────────────────────── */\n\nconst EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];\n\n/* ─── Default separators per variant ────────────────────────── */\n\nfunction getDefaultSeparator(variant: BreadcrumbVariant): React.ReactNode {\n  switch (variant) {\n    case \"with-icons\":\n      return <IconChevronRight className=\"size-3.5 text-[var(--muted-foreground)] opacity-50\" />;\n    case \"custom-separator\":\n      return (\n        <span className=\"text-[var(--muted-foreground)] opacity-40 text-xs select-none\">\n          →\n        </span>\n      );\n    default:\n      return <IconSlash className=\"size-3 text-[var(--muted-foreground)] opacity-40 -rotate-[20deg]\" />;\n  }\n}\n\n/* ─── <Breadcrumb> ──────────────────────────────────────────── */\n\nexport const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(\n  (\n    {\n      variant = \"default\",\n      separator: customSeparator,\n      maxItems = 3,\n      className,\n      children,\n      ...props\n    },\n    ref,\n  ) => {\n    const separator = customSeparator ?? getDefaultSeparator(variant);\n    const ctx = React.useMemo<BreadcrumbContextValue>(\n      () => ({ variant, separator }),\n      [variant, separator],\n    );\n\n    const items = React.Children.toArray(children);\n    const maxVisibleItems = Number.isFinite(maxItems)\n      ? Math.max(3, Math.floor(maxItems))\n      : 3;\n\n    /* ── Collapsed / Dropdown logic ──────────────────────────── */\n    if (\n      (variant === \"collapsed\" || variant === \"dropdown\") &&\n      items.length > maxVisibleItems\n    ) {\n      const visibleMiddleCount = maxVisibleItems - 3;\n      const leadingMiddleCount = Math.floor(visibleMiddleCount / 2);\n      const trailingMiddleCount = visibleMiddleCount - leadingMiddleCount;\n      const hiddenStartIndex = 1 + leadingMiddleCount;\n      const hiddenEndIndex = items.length - 1 - trailingMiddleCount;\n      const leadingItems = items.slice(0, hiddenStartIndex);\n      const hiddenItems = items.slice(hiddenStartIndex, hiddenEndIndex);\n      const trailingItems = items.slice(hiddenEndIndex);\n\n      return (\n        <BreadcrumbContext.Provider value={ctx}>\n          <nav data-wensity-primitive=\"\" ref={ref} aria-label=\"breadcrumb\" className={className} {...props}>\n            <ol className=\"flex items-center gap-1.5\">\n              {leadingItems.map((child, i) => (\n                <React.Fragment key={`leading-${i}`}>\n                  {i > 0 && <BreadcrumbSeparatorInternal separator={separator} />}\n                  <BreadcrumbItemWrapper>{child}</BreadcrumbItemWrapper>\n                </React.Fragment>\n              ))}\n              <BreadcrumbSeparatorInternal separator={separator} />\n\n              {/* Collapsed middle */}\n              <CollapsedMiddle\n                variant={variant}\n                items={hiddenItems}\n                separator={separator}\n              />\n              <BreadcrumbSeparatorInternal separator={separator} />\n\n              {trailingItems.map((child, i) => (\n                <React.Fragment key={`trailing-${i}`}>\n                  {i > 0 && <BreadcrumbSeparatorInternal separator={separator} />}\n                  <BreadcrumbItemWrapper>{child}</BreadcrumbItemWrapper>\n                </React.Fragment>\n              ))}\n            </ol>\n          </nav>\n        </BreadcrumbContext.Provider>\n      );\n    }\n\n    /* ── Standard rendering ──────────────────────────────────── */\n    return (\n      <BreadcrumbContext.Provider value={ctx}>\n        <nav data-wensity-primitive=\"\" ref={ref} aria-label=\"breadcrumb\" className={className} {...props}>\n          <ol className=\"flex flex-wrap items-center gap-1.5\">\n            {items.map((child, i) => (\n              <React.Fragment key={i}>\n                {i > 0 && <BreadcrumbSeparatorInternal separator={separator} />}\n                <BreadcrumbItemWrapper>{child}</BreadcrumbItemWrapper>\n              </React.Fragment>\n            ))}\n          </ol>\n        </nav>\n      </BreadcrumbContext.Provider>\n    );\n  },\n);\nBreadcrumb.displayName = \"Breadcrumb\";\n\n/* ─── Internal separator ────────────────────────────────────── */\n\nfunction BreadcrumbSeparatorInternal({\n  separator,\n}: {\n  separator: React.ReactNode;\n}) {\n  return (\n    <li\n      role=\"presentation\"\n      aria-hidden\n      className=\"flex items-center select-none [&_svg]:size-3\"\n    >\n      {separator}\n    </li>\n  );\n}\n\n/* ─── Item wrapper (thin pass-through for ol semantics) ────── */\n\nfunction BreadcrumbItemWrapper({ children }: { children: React.ReactNode }) {\n  return <>{children}</>;\n}\n\n/* ─── <BreadcrumbItem> ──────────────────────────────────────── */\n\nconst linkBase = cn(\n  \"inline-flex items-center gap-1.5 text-sm font-medium leading-none tracking-[-0.01em]\",\n  \"transition-colors duration-[180ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"motion-reduce:transition-none\",\n  \"outline-none select-none\",\n  \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:rounded-[var(--primitive-radius-control-sm)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n  \"[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-3.5\",\n);\n\nconst ghostIconButtonClass = cn(\n  \"inline-flex size-7 items-center justify-center rounded-[var(--primitive-radius-item)]\",\n  \"text-[var(--muted-foreground)]\",\n  \"transition-colors duration-[180ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"motion-reduce:transition-none\",\n  \"hover:text-[var(--foreground)] hover:bg-[var(--primitive-surface-hover)]\",\n  \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n  \"outline-none\",\n);\n\nexport const BreadcrumbItem = React.forwardRef<\n  HTMLLIElement,\n  BreadcrumbItemProps\n>(({ href, icon, isCurrentPage, className, children, ...props }, ref) => {\n  const { variant } = React.useContext(BreadcrumbContext);\n  const content = (\n    <BreadcrumbItemContent\n      href={href}\n      icon={icon}\n      isCurrentPage={isCurrentPage}\n      className={className}\n      variant={variant}\n    >\n      {children}\n    </BreadcrumbItemContent>\n  );\n\n  return (\n    <li ref={ref} className=\"flex items-center\" {...props}>\n      {content}\n    </li>\n  );\n});\nBreadcrumbItem.displayName = \"BreadcrumbItem\";\n\nfunction BreadcrumbItemContent({\n  href,\n  icon,\n  isCurrentPage,\n  className,\n  children,\n  variant,\n}: BreadcrumbItemProps & { variant: BreadcrumbVariant }) {\n  const showIcon = variant === \"with-icons\" && icon;\n\n  if (isCurrentPage || !href) {\n    return (\n      <span\n        aria-current={isCurrentPage ? \"page\" : undefined}\n        className={cn(\n          linkBase,\n          \"text-[var(--foreground)] cursor-default\",\n          className,\n        )}\n      >\n        {showIcon && icon}\n        {children}\n      </span>\n    );\n  }\n\n  return (\n    <a\n      href={href}\n      onClick={(e) => {\n        if (href === \"#\") {\n          e.preventDefault();\n        }\n      }}\n      className={cn(\n        linkBase,\n        \"text-[var(--muted-foreground)]\",\n        \"hover:text-[var(--foreground)]\",\n        \"group/crumb relative\",\n        className,\n      )}\n    >\n      {showIcon && icon}\n      <span className=\"relative\">\n        {children}\n        {/* Underline slide-in from left on hover */}\n        <span\n          className={cn(\n            \"absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0\",\n            \"bg-[var(--foreground)] opacity-40\",\n            \"transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]\",\n            \"group-hover/crumb:scale-x-100\",\n          )}\n        />\n      </span>\n    </a>\n  );\n}\n\n/* ─── <BreadcrumbSeparator> (public, for custom-separator) ─── */\n\nexport const BreadcrumbSeparator = React.forwardRef<\n  HTMLLIElement,\n  BreadcrumbSeparatorProps\n>(({ className, children, ...props }, ref) => {\n  const { separator } = React.useContext(BreadcrumbContext);\n  return (\n    <li\n      ref={ref}\n      role=\"presentation\"\n      aria-hidden\n      className={cn(\"flex items-center select-none [&_svg]:size-3\", className)}\n      {...props}\n    >\n      {children ?? separator}\n    </li>\n  );\n});\nBreadcrumbSeparator.displayName = \"BreadcrumbSeparator\";\n\n/* ─── Collapsed middle items ────────────────────────────────── */\n\nfunction CollapsedMiddle({\n  variant,\n  items,\n  separator,\n}: {\n  variant: BreadcrumbVariant;\n  items: React.ReactNode[];\n  separator: React.ReactNode;\n}) {\n  const reduceMotion = useReducedMotion();\n  const [expanded, setExpanded] = React.useState(false);\n  const [dropdownOpen, setDropdownOpen] = React.useState(false);\n  const dropdownRef = React.useRef<HTMLLIElement>(null);\n\n  /* Close dropdown on outside click */\n  React.useEffect(() => {\n    if (!dropdownOpen) return;\n    function handleClick(e: MouseEvent) {\n      if (\n        dropdownRef.current &&\n        !dropdownRef.current.contains(e.target as Node)\n      ) {\n        setDropdownOpen(false);\n      }\n    }\n    document.addEventListener(\"mousedown\", handleClick);\n    return () => document.removeEventListener(\"mousedown\", handleClick);\n  }, [dropdownOpen]);\n\n  /* ── Collapsed variant: expand inline ───── */\n  if (variant === \"collapsed\") {\n    if (expanded) {\n      return (\n        <>\n          {items.map((child, i) => (\n            <React.Fragment key={i}>\n              <AnimatedBreadcrumbItem child={child} index={i} />\n              {i < items.length - 1 && (\n                <motion.li\n                  role=\"presentation\"\n                  aria-hidden\n                  initial={reduceMotion ? false : { opacity: 0 }}\n                  animate={{ opacity: 1 }}\n                  transition={\n                    reduceMotion\n                      ? { duration: 0 }\n                      : { duration: 0.15, delay: i * 0.04 + 0.05 }\n                  }\n                  className=\"flex items-center select-none [&_svg]:size-3\"\n                >\n                  {separator}\n                </motion.li>\n              )}\n            </React.Fragment>\n          ))}\n        </>\n      );\n    }\n\n    return (\n      <li className=\"flex items-center\">\n        <button\n          type=\"button\"\n          aria-label={`Show ${items.length} more items`}\n          onClick={() => setExpanded(true)}\n          className={ghostIconButtonClass}\n        >\n          <IconDots className=\"size-3.5\" />\n        </button>\n      </li>\n    );\n  }\n\n  /* ── Dropdown variant: floating menu ───── */\n  return (\n    <li className=\"relative flex items-center\" ref={dropdownRef}>\n      <button\n        type=\"button\"\n        aria-label={`Show ${items.length} more items`}\n        aria-expanded={dropdownOpen}\n        onClick={() => setDropdownOpen((v) => !v)}\n        className={cn(\n          ghostIconButtonClass,\n          dropdownOpen &&\n            \"text-[var(--foreground)] bg-[var(--primitive-surface-selected)]\",\n        )}\n      >\n        <IconDots className=\"size-3.5\" />\n      </button>\n\n      <AnimatePresence>\n        {dropdownOpen && (\n          <motion.div\n            initial={reduceMotion ? false : { opacity: 0, scale: 0.96, y: 4 }}\n            animate={{ opacity: 1, scale: 1, y: 0 }}\n            exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96, y: 4 }}\n            transition={\n              reduceMotion\n                ? { duration: 0 }\n                : { duration: 0.18, ease: EASE_OUT }\n            }\n            className={cn(\n              \"absolute bottom-full left-1/2 z-[var(--primitive-z-popover)] mb-2 -translate-x-1/2\",\n              \"min-w-[140px] rounded-[var(--primitive-radius-surface)] p-1\",\n              \"border border-[var(--border)]\",\n              \"bg-[var(--primitive-surface-overlay)]\",\n              \"[box-shadow:var(--primitive-shadow-overlay)]\",\n            )}\n            style={{ transformOrigin: \"bottom center\" }}\n          >\n            {items.map((child, i) => {\n              /* Extract text/href from BreadcrumbItem children */\n              const childEl = child as React.ReactElement<BreadcrumbItemProps>;\n              const href = childEl?.props?.href;\n              const label = childEl?.props?.children;\n              const icon = childEl?.props?.icon;\n\n              return (\n                <a\n                  key={i}\n                  href={href ?? \"#\"}\n                  onClick={(e) => {\n                    setDropdownOpen(false);\n                    if (!href || href === \"#\") {\n                      e.preventDefault();\n                    }\n                  }}\n                  className={cn(\n                    \"flex items-center gap-2.5 rounded-[var(--primitive-radius-item)] px-2.5 py-2 text-sm font-medium\",\n                    \"text-[var(--muted-foreground)]\",\n                    \"transition-colors duration-[150ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n                    \"motion-reduce:transition-none\",\n                    \"hover:text-[var(--foreground)] hover:bg-[var(--primitive-surface-selected)]\",\n                    \"outline-none\",\n                    \"[&_svg]:size-3.5 [&_svg]:shrink-0\",\n                  )}\n                >\n                  {icon}\n                  {label}\n                </a>\n              );\n            })}\n          </motion.div>\n        )}\n      </AnimatePresence>\n    </li>\n  );\n}\n\nfunction AnimatedBreadcrumbItem({\n  child,\n  index,\n}: {\n  child: React.ReactNode;\n  index: number;\n}) {\n  const { variant } = React.useContext(BreadcrumbContext);\n  const reduceMotion = useReducedMotion();\n  const transition = reduceMotion\n    ? { duration: 0 }\n    : { duration: 0.2, ease: EASE_OUT, delay: index * 0.04 };\n\n  if (!React.isValidElement<BreadcrumbItemProps>(child)) {\n    return (\n      <li className=\"flex items-center\">\n        <motion.div\n          initial={reduceMotion ? false : { opacity: 0, y: 4 }}\n          animate={{ opacity: 1, y: 0 }}\n          transition={transition}\n          className=\"flex items-center\"\n        >\n          {child}\n        </motion.div>\n      </li>\n    );\n  }\n\n  const { href, icon, isCurrentPage, className, children, ...props } =\n    child.props;\n\n  return (\n    <li {...props} className=\"flex items-center\">\n      <motion.div\n        initial={reduceMotion ? false : { opacity: 0, y: 4 }}\n        animate={{ opacity: 1, y: 0 }}\n        transition={transition}\n        className=\"flex items-center\"\n      >\n        <BreadcrumbItemContent\n          href={href}\n          icon={icon}\n          isCurrentPage={isCurrentPage}\n          className={className}\n          variant={variant}\n        >\n          {children}\n        </BreadcrumbItemContent>\n      </motion.div>\n    </li>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/breadcrumb.tsx. For Pro components and updates, use pnpm dlx wensity@latest add breadcrumb.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "breadcrumb",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/breadcrumb",
+      "shadcnUrl": "https://ui.wensity.com/r/breadcrumb",
+      "cliInstall": "pnpm dlx wensity@latest add breadcrumb"
+    }
+  }
+}

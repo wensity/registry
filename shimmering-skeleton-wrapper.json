@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "shimmering-skeleton-wrapper",
+  "type": "registry:block",
+  "title": "Shimmering Skeleton Wrapper",
+  "description": "Wrap any placeholder and a single light sweep breathes across it. Loading that feels premium.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/shimmering-skeleton-wrapper.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/shimmering-skeleton-wrapper.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { useReducedMotion } from \"framer-motion\";\nimport { cn } from \"@/lib/utils\";\n\n/* ════════════════════════════════════════════════════════════════════════\n *  ShimmeringSkeletonWrapper\n *  ───────────────────────────────────────────────────────────────────────\n *  How premium skeletons actually work (Vercel, Linear, GitHub):\n *\n *    • Each placeholder box paints its OWN slowly-moving gradient via\n *      `background-position`. The shimmer therefore only appears ON the\n *      placeholder geometry — never on the gaps between boxes. (The old\n *      overlay-sweep approach made it look like an unrelated white\n *      highlight gliding across the entire card, which is why earlier\n *      attempts felt \"off\".)\n *    • The wrapper itself is purely a context provider — it owns the\n *      `loading` flag, the speed, and the colour tokens so every box in\n *      the same wrapper sweeps in lockstep.\n *    • One CSS keyframe (`wensity-shimmer-bg`) shifts the gradient\n *      `background-position` from 200% to -200% — composited on the\n *      box's own paint surface, never inflating layout.\n *\n *  GPU contract: animates only `background-position`, which is composited\n *  on the same layer as the box's existing background — zero layout, zero\n *  paint of surrounding geometry.\n * ════════════════════════════════════════════════════════════════════════ */\n\ntype Ctx = {\n  loading: boolean;\n  reduce: boolean;\n  duration: number; // seconds\n  highlight: string;\n  base: string;\n};\n\nconst SkeletonCtx = React.createContext<Ctx | null>(null);\n\nfunction useSkeletonCtx(): Ctx {\n  // Sensible defaults so primitives can be used standalone too.\n  return (\n    React.useContext(SkeletonCtx) ?? {\n      loading: true,\n      reduce: false,\n      duration: 1.6,\n      highlight: \"var(--shimmer-hi)\",\n      base: \"var(--shimmer-base)\",\n    }\n  );\n}\n\nexport interface ShimmeringSkeletonWrapperProps {\n  children: React.ReactNode;\n  /** Show the skeleton state. When `false`, renders children with no shimmer. */\n  loading?: boolean;\n  /** Sweep cycle duration in seconds. Premium feel = slow. Default 1.6s. */\n  duration?: number;\n  /** Highlight colour of the moving slice. */\n  highlight?: string;\n  /** Resting colour of each placeholder box. */\n  base?: string;\n  /** Optional border-radius applied to the wrapper itself. */\n  rounded?: string;\n  className?: string;\n}\n\nexport function ShimmeringSkeletonWrapper({\n  children,\n  loading = true,\n  duration = 1.6,\n  highlight,\n  base,\n  rounded,\n  className,\n}: ShimmeringSkeletonWrapperProps) {\n  const reduce = useReducedMotion() ?? false;\n\n  const ctx: Ctx = React.useMemo(\n    () => ({\n      loading,\n      reduce,\n      duration,\n      highlight: highlight ?? \"var(--shimmer-hi)\",\n      base: base ?? \"var(--shimmer-base)\",\n    }),\n    [loading, reduce, duration, highlight, base]\n  );\n\n  return (\n    <SkeletonCtx.Provider value={ctx}>\n      <div\n        aria-busy={loading || undefined}\n        aria-live={loading ? \"polite\" : undefined}\n        className={cn(\n          \"relative\",\n          // Theme-aware tokens. Light = warm slate; dark = soft white-on-black.\n          \"[--shimmer-base:rgb(228_228_231/0.9)] [--shimmer-hi:rgb(244_244_245/1)]\",\n          \"dark:[--shimmer-base:rgb(255_255_255/0.045)] dark:[--shimmer-hi:rgb(255_255_255/0.10)]\",\n          rounded,\n          className\n        )}\n      >\n        {children}\n      </div>\n    </SkeletonCtx.Provider>\n  );\n}\n\n/* ───────────────── Skeleton primitives ───────────────── */\n\ninterface SkeletonShellProps {\n  className?: string;\n  width?: number | string;\n  height?: number | string;\n  radius?: number | string;\n  /** Per-box stagger in milliseconds for cascading shimmer. Default 0. */\n  delay?: number;\n  style?: React.CSSProperties;\n}\n\nfunction SkeletonShell({\n  className,\n  width,\n  height,\n  radius = 10,\n  delay = 0,\n  style,\n}: SkeletonShellProps) {\n  const { loading, reduce, duration, highlight, base } = useSkeletonCtx();\n\n  const r = typeof radius === \"number\" ? `${radius}px` : radius;\n\n  if (!loading) {\n    return (\n      <div\n        className={className}\n        style={{ width, height, borderRadius: r, ...style }}\n      />\n    );\n  }\n\n  // Resting fill is the base colour; the moving gradient lives ON the box.\n  const bgImage = `linear-gradient(90deg, ${base} 0%, ${base} 35%, ${highlight} 50%, ${base} 65%, ${base} 100%)`;\n\n  return (\n    <div\n      className={className}\n      style={{\n        width,\n        height,\n        borderRadius: r,\n        backgroundColor: base,\n        backgroundImage: reduce ? undefined : bgImage,\n        backgroundSize: \"200% 100%\",\n        backgroundRepeat: \"no-repeat\",\n        animation: reduce\n          ? undefined\n          : `wensity-shimmer-bg ${duration}s linear infinite`,\n        animationDelay: reduce ? undefined : `${delay}ms`,\n        willChange: \"background-position\",\n        ...style,\n      }}\n    />\n  );\n}\n\nexport interface SkeletonBoxProps {\n  className?: string;\n  width?: number | string;\n  height?: number | string;\n  radius?: number | string;\n  delay?: number;\n}\n\nexport function SkeletonBox(props: SkeletonBoxProps) {\n  return <SkeletonShell {...props} />;\n}\n\nexport interface SkeletonLineProps {\n  className?: string;\n  width?: number | string;\n  height?: number | string;\n  delay?: number;\n}\n\nexport function SkeletonLine({\n  className,\n  width = \"100%\",\n  height = 12,\n  delay = 0,\n}: SkeletonLineProps) {\n  return (\n    <SkeletonShell\n      className={className}\n      width={width}\n      height={height}\n      radius={9999}\n      delay={delay}\n    />\n  );\n}\n\nexport interface SkeletonCircleProps {\n  className?: string;\n  size?: number | string;\n  delay?: number;\n}\n\nexport function SkeletonCircle({\n  className,\n  size = 40,\n  delay = 0,\n}: SkeletonCircleProps) {\n  return (\n    <SkeletonShell\n      className={className}\n      width={size}\n      height={size}\n      radius=\"9999px\"\n      delay={delay}\n    />\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/shimmering-skeleton-wrapper.tsx. For Pro components and updates, use pnpm dlx wensity@latest add shimmering-skeleton-wrapper.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "shimmering-skeleton-wrapper",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/shimmering-skeleton-wrapper",
+      "shadcnUrl": "https://ui.wensity.com/r/shimmering-skeleton-wrapper",
+      "cliInstall": "pnpm dlx wensity@latest add shimmering-skeleton-wrapper"
+    }
+  }
+}

@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "calendar",
+  "type": "registry:block",
+  "title": "Calendar",
+  "description": "A date grid with single, range, and multiple selection modes, fast month/year navigation, booked-date and event-indicator support.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/calendar.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/calendar.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { motion, AnimatePresence, useReducedMotion } from \"framer-motion\";\nimport { IconChevronLeft, IconChevronRight } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type CalendarMode = \"single\" | \"range\" | \"multiple\";\n\nexport interface DateRange {\n  from?: Date;\n  to?: Date;\n}\n\nexport interface CalendarEvent {\n  date: Date;\n  label?: string;\n}\n\ninterface CalendarSharedProps {\n  /** Month currently displayed (controlled). */\n  month?: Date;\n  /** Initial displayed month (uncontrolled). Defaults to today's month. */\n  defaultMonth?: Date;\n  onMonthChange?: (month: Date) => void;\n  /** 0 = Sunday, 1 = Monday. Default 0. */\n  weekStartsOn?: 0 | 1;\n  /** Return true to disable a date from selection. */\n  disabled?: (date: Date) => boolean;\n  /** Dates that are unavailable/reserved — shown struck-through and disabled. */\n  bookedDates?: Date[];\n  /** Dates with a scheduled-event indicator dot. */\n  events?: CalendarEvent[];\n  /** Enables the fast month/year jump view when clicking the header label. Default true. */\n  quickNav?: boolean;\n  className?: string;\n}\n\ninterface CalendarSingleProps extends CalendarSharedProps {\n  mode?: \"single\";\n  selected?: Date;\n  defaultSelected?: Date;\n  onSelect?: (date: Date | undefined) => void;\n}\n\ninterface CalendarMultipleProps extends CalendarSharedProps {\n  mode: \"multiple\";\n  selected?: Date[];\n  defaultSelected?: Date[];\n  onSelect?: (dates: Date[]) => void;\n}\n\ninterface CalendarRangeProps extends CalendarSharedProps {\n  mode: \"range\";\n  selected?: DateRange;\n  defaultSelected?: DateRange;\n  onSelect?: (range: DateRange | undefined) => void;\n}\n\nexport type CalendarProps = CalendarSingleProps | CalendarMultipleProps | CalendarRangeProps;\n\n/* ─── Easing ────────────────────────────────────────────────── */\n\nconst EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];\n\n/* ─── Date Helpers ──────────────────────────────────────────── */\n\nconst MONTH_NAMES = [\n  \"January\", \"February\", \"March\", \"April\", \"May\", \"June\",\n  \"July\", \"August\", \"September\", \"October\", \"November\", \"December\",\n];\nconst WEEKDAY_LABELS_SUN = [\"Su\", \"Mo\", \"Tu\", \"We\", \"Th\", \"Fr\", \"Sa\"];\nconst WEEKDAY_LABELS_MON = [\"Mo\", \"Tu\", \"We\", \"Th\", \"Fr\", \"Sa\", \"Su\"];\n\nfunction isSameDay(a?: Date, b?: Date): boolean {\n  if (!a || !b) return false;\n  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();\n}\n\nfunction isSameMonth(a: Date, b: Date): boolean {\n  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();\n}\n\nfunction startOfDay(date: Date): Date {\n  return new Date(date.getFullYear(), date.getMonth(), date.getDate());\n}\n\nfunction addMonths(date: Date, amount: number): Date {\n  return new Date(date.getFullYear(), date.getMonth() + amount, 1);\n}\n\nfunction isBefore(a: Date, b: Date): boolean {\n  return startOfDay(a).getTime() < startOfDay(b).getTime();\n}\n\nfunction isWithinRange(date: Date, range: DateRange): boolean {\n  if (!range.from || !range.to) return false;\n  const t = startOfDay(date).getTime();\n  const from = startOfDay(range.from).getTime();\n  const to = startOfDay(range.to).getTime();\n  return t > Math.min(from, to) && t < Math.max(from, to);\n}\n\nfunction buildMonthGrid(month: Date, weekStartsOn: 0 | 1): Date[] {\n  const firstOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);\n  const firstWeekday = firstOfMonth.getDay();\n  const leading = weekStartsOn === 1 ? (firstWeekday + 6) % 7 : firstWeekday;\n  const gridStart = new Date(firstOfMonth);\n  gridStart.setDate(gridStart.getDate() - leading);\n\n  return Array.from({ length: 42 }, (_, i) => {\n    const d = new Date(gridStart);\n    d.setDate(gridStart.getDate() + i);\n    return d;\n  });\n}\n\n/* ─── Quick-Nav Tooltip ─────────────────────────────────────── */\n\n/**\n * Minimal CSS-only tooltip for the header's month/year quick-nav controls.\n * Kept local instead of the Tooltip primitive: it needs no portal/positioning\n * logic for a fixed-position label, so a Tooltip (+ Radix) dependency isn't\n * worth it here — and primitives can't import each other's source directly.\n */\nfunction QuickNavTooltip({\n  label,\n  disabled,\n  children,\n}: {\n  label: string;\n  disabled?: boolean;\n  children: React.ReactElement;\n}) {\n  if (disabled) return children;\n\n  return (\n    <span className=\"group/tip relative inline-flex\">\n      {children}\n      <span\n        role=\"tooltip\"\n        aria-hidden=\"true\"\n        className={cn(\n          \"pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap\",\n          \"rounded-[var(--primitive-radius-control-sm)] bg-[var(--foreground)] px-1.5 py-0.5 text-[10.5px] font-medium text-[var(--background)]\",\n          \"origin-top scale-95 opacity-0 transition-[opacity,transform] delay-0 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]\",\n          // Hover-only: no focus-within trigger (would fire on click since\n          // the button receives focus) and force-hidden on :active so a\n          // click can't leave a stale label visible mid-transition.\n          \"group-hover/tip:scale-100 group-hover/tip:opacity-100 group-hover/tip:delay-300\",\n          \"group-active/tip:!opacity-0 group-active/tip:!delay-0 group-active/tip:!duration-0\",\n        )}\n      >\n        {label}\n      </span>\n    </span>\n  );\n}\n\n/* ─── <Calendar> ────────────────────────────────────────────── */\n\nexport const Calendar = React.forwardRef<HTMLDivElement, CalendarProps>((props, ref) => {\n  const {\n    mode = \"single\",\n    month: controlledMonth,\n    defaultMonth,\n    onMonthChange,\n    weekStartsOn = 0,\n    disabled,\n    bookedDates,\n    events,\n    quickNav = true,\n    className,\n    selected,\n    defaultSelected,\n    onSelect,\n  } = props as CalendarSharedProps & {\n    mode?: CalendarMode;\n    selected?: Date | Date[] | DateRange;\n    defaultSelected?: Date | Date[] | DateRange;\n    onSelect?: (value: Date | undefined | Date[] | DateRange | undefined) => void;\n  };\n\n  const prefersReducedMotion = useReducedMotion();\n  const today = React.useMemo(() => startOfDay(new Date()), []);\n\n  const [internalMonth, setInternalMonth] = React.useState(() =>\n    startOfDay(defaultMonth ?? controlledMonth ?? new Date()),\n  );\n  const isMonthControlled = controlledMonth !== undefined;\n  const displayedMonth = isMonthControlled ? controlledMonth : internalMonth;\n\n  const [navView, setNavView] = React.useState<\"days\" | \"months\" | \"years\">(\"days\");\n  const [direction, setDirection] = React.useState(1);\n  // Center of the 12-year picker grid — independent of displayedMonth so\n  // paging through years (via the picker's own prev/next) doesn't require\n  // navigating the actual displayed month.\n  const [yearAnchor, setYearAnchor] = React.useState(() => displayedMonth.getFullYear());\n\n  function openYearsView() {\n    setYearAnchor(displayedMonth.getFullYear());\n    setNavView(\"years\");\n  }\n\n  // When keyboard nav crosses a month boundary, the day grid remounts (its\n  // motion.div key changes) so the old DOM node queried synchronously is the\n  // exiting month's grid, not the one containing the target date. Stash the\n  // target here and focus it once the new month's grid is actually mounted.\n  const dayGridRef = React.useRef<HTMLDivElement | null>(null);\n  const pendingFocusDateRef = React.useRef<Date | null>(null);\n\n  React.useEffect(() => {\n    if (!pendingFocusDateRef.current) return;\n    const iso = pendingFocusDateRef.current.toDateString();\n    pendingFocusDateRef.current = null;\n    (dayGridRef.current?.querySelector(`[data-date-key=\"${iso}\"]`) as HTMLElement | null)?.focus();\n  }, [displayedMonth]);\n\n  const setMonth = React.useCallback(\n    (next: Date, dir: number) => {\n      setDirection(dir);\n      if (!isMonthControlled) setInternalMonth(next);\n      onMonthChange?.(next);\n    },\n    [isMonthControlled, onMonthChange],\n  );\n\n  // Internal selection state, used when the caller does not control `selected`.\n  const [internalSingle, setInternalSingle] = React.useState<Date | undefined>(\n    mode === \"single\" ? (defaultSelected as Date | undefined) : undefined,\n  );\n  const [internalMultiple, setInternalMultiple] = React.useState<Date[]>(\n    mode === \"multiple\" ? ((defaultSelected as Date[] | undefined) ?? []) : [],\n  );\n  const [internalRange, setInternalRange] = React.useState<DateRange | undefined>(\n    mode === \"range\" ? (defaultSelected as DateRange | undefined) : undefined,\n  );\n\n  const isSelectedControlled = selected !== undefined;\n\n  const currentSingle = mode === \"single\" ? ((isSelectedControlled ? selected : internalSingle) as Date | undefined) : undefined;\n  const currentMultiple = mode === \"multiple\" ? ((isSelectedControlled ? selected : internalMultiple) as Date[]) : [];\n  const currentRange = mode === \"range\" ? ((isSelectedControlled ? selected : internalRange) as DateRange | undefined) : undefined;\n\n  function isDisabled(date: Date): boolean {\n    if (bookedDates?.some((b) => isSameDay(b, date))) return true;\n    return disabled?.(date) ?? false;\n  }\n\n  function isBooked(date: Date): boolean {\n    return bookedDates?.some((b) => isSameDay(b, date)) ?? false;\n  }\n\n  function eventFor(date: Date): CalendarEvent | undefined {\n    return events?.find((e) => isSameDay(e.date, date));\n  }\n\n  function handleSelectDay(date: Date) {\n    if (isDisabled(date)) return;\n\n    if (mode === \"single\") {\n      const next = isSameDay(currentSingle, date) ? undefined : date;\n      if (!isSelectedControlled) setInternalSingle(next);\n      (onSelect as CalendarSingleProps[\"onSelect\"])?.(next);\n      return;\n    }\n\n    if (mode === \"multiple\") {\n      const exists = currentMultiple.some((d) => isSameDay(d, date));\n      const next = exists ? currentMultiple.filter((d) => !isSameDay(d, date)) : [...currentMultiple, date];\n      if (!isSelectedControlled) setInternalMultiple(next);\n      (onSelect as CalendarMultipleProps[\"onSelect\"])?.(next);\n      return;\n    }\n\n    // range\n    const from = currentRange?.from;\n    const to = currentRange?.to;\n    let next: DateRange;\n    if (!from || (from && to)) {\n      next = { from: date, to: undefined };\n    } else if (isBefore(date, from)) {\n      next = { from: date, to: from };\n    } else {\n      next = { from, to: date };\n    }\n    if (!isSelectedControlled) setInternalRange(next);\n    (onSelect as CalendarRangeProps[\"onSelect\"])?.(next);\n  }\n\n  function goToMonth(offset: number) {\n    setMonth(addMonths(displayedMonth, offset), offset >= 0 ? 1 : -1);\n  }\n\n  const weekdayLabels = weekStartsOn === 1 ? WEEKDAY_LABELS_MON : WEEKDAY_LABELS_SUN;\n  const grid = React.useMemo(\n    () => buildMonthGrid(displayedMonth, weekStartsOn),\n    [displayedMonth, weekStartsOn],\n  );\n\n  // Roving tabindex target: the selected day if it falls in the displayed\n  // month, otherwise today if visible, otherwise the 1st of the month.\n  const focusableDate = React.useMemo(() => {\n    if (mode === \"single\" && currentSingle && isSameMonth(currentSingle, displayedMonth)) return currentSingle;\n    if (isSameMonth(today, displayedMonth)) return today;\n    return new Date(displayedMonth.getFullYear(), displayedMonth.getMonth(), 1);\n  }, [mode, currentSingle, displayedMonth, today]);\n\n  function cellState(date: Date) {\n    const outsideMonth = !isSameMonth(date, displayedMonth);\n    const isToday = isSameDay(date, today);\n    const isBookedDay = isBooked(date);\n    const event = eventFor(date);\n    const isDayDisabled = isDisabled(date);\n\n    let isSelected = false;\n    let isRangeStart = false;\n    let isRangeEnd = false;\n    let isInRange = false;\n\n    if (mode === \"single\") {\n      isSelected = isSameDay(currentSingle, date);\n    } else if (mode === \"multiple\") {\n      isSelected = currentMultiple.some((d) => isSameDay(d, date));\n    } else if (mode === \"range\" && currentRange) {\n      isRangeStart = isSameDay(currentRange.from, date);\n      isRangeEnd = isSameDay(currentRange.to, date);\n      isInRange = isWithinRange(date, currentRange);\n      isSelected = isRangeStart || isRangeEnd;\n    }\n\n    return { outsideMonth, isToday, isBookedDay, event, isDayDisabled, isSelected, isRangeStart, isRangeEnd, isInRange };\n  }\n\n  const monthLabel = `${MONTH_NAMES[displayedMonth.getMonth()]} ${displayedMonth.getFullYear()}`;\n  const weeks = React.useMemo(() => {\n    const rows: Date[][] = [];\n    for (let i = 0; i < grid.length; i += 7) {\n      rows.push(grid.slice(i, i + 7));\n    }\n    return rows;\n  }, [grid]);\n\n  return (\n    <div data-wensity-primitive=\"\"\n      ref={ref}\n      data-slot=\"calendar\"\n      data-mode={mode}\n      className={cn(\n        \"w-full max-w-[300px] select-none rounded-[var(--primitive-radius-surface)] border border-[var(--border)] p-3\",\n        \"bg-[var(--background)]\",\n        className,\n      )}\n    >\n      {/* Screen-reader announcement when the displayed month changes. */}\n      <div className=\"sr-only\" aria-live=\"polite\" aria-atomic=\"true\">\n        {monthLabel}\n      </div>\n\n      {/* Header */}\n      <div className=\"mb-2 flex items-center justify-between gap-1\">\n        <button\n          type=\"button\"\n          aria-label=\"Previous month\"\n          onClick={() => goToMonth(-1)}\n          className={cn(\n            \"flex size-7 shrink-0 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[var(--muted-foreground)]\",\n            \"outline-none transition-colors duration-150\",\n            \"hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n            \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n          )}\n        >\n          <IconChevronLeft className=\"size-4\" stroke={1.9} />\n        </button>\n\n        <div className=\"flex items-center gap-0.5\">\n          <QuickNavTooltip label=\"Jump to month\" disabled={!quickNav}>\n            <button\n              type=\"button\"\n              disabled={!quickNav}\n              aria-label=\"Show month picker\"\n              onClick={() => setNavView(\"months\")}\n              className={cn(\n                \"rounded-[var(--primitive-radius-control-sm)] px-1.5 py-1 text-[13px] font-medium tracking-[-0.01em] text-[var(--foreground)]\",\n                \"outline-none transition-colors duration-150\",\n                quickNav && \"hover:bg-[var(--primitive-surface-hover)]\",\n                \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                navView === \"months\" && \"bg-[var(--primitive-surface-selected)]\",\n              )}\n            >\n              {MONTH_NAMES[displayedMonth.getMonth()]}\n            </button>\n          </QuickNavTooltip>\n\n          <QuickNavTooltip label={navView === \"months\" ? \"Jump to year\" : \"Quick navigation\"} disabled={!quickNav}>\n            <button\n              type=\"button\"\n              disabled={!quickNav}\n              aria-label=\"Toggle month or year picker\"\n              onClick={() => (navView === \"months\" ? openYearsView() : setNavView(\"months\"))}\n              className={cn(\n                \"rounded-[var(--primitive-radius-control-sm)] px-0.5 py-1 text-[13px] font-medium text-[var(--muted-foreground)]/40\",\n                \"outline-none transition-colors duration-150\",\n                quickNav && \"hover:text-[var(--muted-foreground)]\",\n                \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n              )}\n            >\n              |\n            </button>\n          </QuickNavTooltip>\n\n          <QuickNavTooltip label=\"Jump to year\" disabled={!quickNav}>\n            <button\n              type=\"button\"\n              disabled={!quickNav}\n              aria-label=\"Show year picker\"\n              onClick={openYearsView}\n              className={cn(\n                \"rounded-[var(--primitive-radius-control-sm)] px-1.5 py-1 text-[13px] font-medium tracking-[-0.01em] text-[var(--foreground)]\",\n                \"outline-none transition-colors duration-150\",\n                quickNav && \"hover:bg-[var(--primitive-surface-hover)]\",\n                \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                navView === \"years\" && \"bg-[var(--primitive-surface-selected)]\",\n              )}\n            >\n              {displayedMonth.getFullYear()}\n            </button>\n          </QuickNavTooltip>\n        </div>\n\n        <button\n          type=\"button\"\n          aria-label=\"Next month\"\n          onClick={() => goToMonth(1)}\n          className={cn(\n            \"flex size-7 shrink-0 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[var(--muted-foreground)]\",\n            \"outline-none transition-colors duration-150\",\n            \"hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n            \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n          )}\n        >\n          <IconChevronRight className=\"size-4\" stroke={1.9} />\n        </button>\n      </div>\n\n      <div className=\"relative overflow-hidden\">\n        <AnimatePresence mode=\"popLayout\" initial={false} custom={direction}>\n          {navView === \"days\" && (\n            <motion.div\n              key={`${displayedMonth.getFullYear()}-${displayedMonth.getMonth()}`}\n              custom={direction}\n              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: direction * 12 }}\n              animate={{ opacity: 1, x: 0 }}\n              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: direction * -12 }}\n              transition={{ duration: prefersReducedMotion ? 0.12 : 0.18, ease: EASE_OUT }}\n            >\n              {/* Weekday row */}\n              <div className=\"mb-1 grid grid-cols-7\">\n                {weekdayLabels.map((label, i) => (\n                  <div\n                    key={`${label}-${i}`}\n                    className=\"flex h-7 items-center justify-center text-[length:var(--primitive-text-hint)] font-medium text-[var(--muted-foreground)]\"\n                  >\n                    {label}\n                  </div>\n                ))}\n              </div>\n\n              {/* Day grid — ARIA grid with row/gridcell required children. */}\n              <div\n                ref={dayGridRef}\n                role=\"grid\"\n                aria-label={monthLabel}\n                className=\"grid grid-cols-7 gap-y-0.5\"\n                onKeyDown={(e) => {\n                  const deltas: Record<string, number> = {\n                    ArrowLeft: -1,\n                    ArrowRight: 1,\n                    ArrowUp: -7,\n                    ArrowDown: 7,\n                  };\n                  let targetDate: Date | undefined;\n                  if (e.key in deltas) {\n                    const current = new Date((e.target as HTMLElement).dataset.date ?? \"\");\n                    current.setDate(current.getDate() + deltas[e.key]!);\n                    targetDate = current;\n                  } else if (e.key === \"Home\" || e.key === \"End\") {\n                    const current = new Date((e.target as HTMLElement).dataset.date ?? \"\");\n                    const weekday = weekStartsOn === 1 ? (current.getDay() + 6) % 7 : current.getDay();\n                    current.setDate(current.getDate() + (e.key === \"Home\" ? -weekday : 6 - weekday));\n                    targetDate = current;\n                  } else if (e.key === \"PageUp\" || e.key === \"PageDown\") {\n                    e.preventDefault();\n                    const current = new Date((e.target as HTMLElement).dataset.date ?? \"\");\n                    targetDate = addMonths(current, e.key === \"PageUp\" ? -1 : 1);\n                    // Clamp to the target month's last day (e.g. Jan 31 -> Feb 28).\n                    const daysInTargetMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();\n                    targetDate.setDate(Math.min(current.getDate(), daysInTargetMonth));\n                  }\n                  if (!targetDate) return;\n                  e.preventDefault();\n                  if (!isSameMonth(targetDate, displayedMonth)) {\n                    pendingFocusDateRef.current = targetDate;\n                    setMonth(new Date(targetDate.getFullYear(), targetDate.getMonth(), 1), isBefore(targetDate, displayedMonth) ? -1 : 1);\n                    return;\n                  }\n                  const iso = targetDate.toDateString();\n                  (dayGridRef.current?.querySelector(`[data-date-key=\"${iso}\"]`) as HTMLElement | null)?.focus();\n                }}\n              >\n                {weeks.map((week, weekIndex) => (\n                  <div key={weekIndex} role=\"row\" className=\"contents\">\n                    {week.map((date) => {\n                      const state = cellState(date);\n                      return (\n                        <div\n                          key={date.toISOString()}\n                          role=\"gridcell\"\n                          aria-selected={state.isSelected || undefined}\n                          className=\"relative flex h-8 items-center justify-center\"\n                        >\n                          {/* Range band: full width between the endpoints, half width\n                              on the endpoint cells themselves so it visually meets\n                              the solid selected circle instead of leaving a gap. */}\n                          {mode === \"range\" &&\n                            currentRange?.from &&\n                            currentRange?.to &&\n                            !isSameDay(currentRange.from, currentRange.to) &&\n                            (state.isInRange || state.isRangeStart || state.isRangeEnd) && (\n                              <div\n                                className={cn(\n                                  \"absolute inset-y-0 bg-[var(--primitive-surface-selected)]\",\n                                  state.isRangeStart ? \"left-1/2 right-0\" : state.isRangeEnd ? \"left-0 right-1/2\" : \"inset-x-0\",\n                                )}\n                              />\n                            )}\n                          <button\n                            type=\"button\"\n                            disabled={state.isDayDisabled}\n                            aria-label={date.toDateString()}\n                            data-date={date.toISOString()}\n                            data-date-key={date.toDateString()}\n                            tabIndex={isSameDay(date, focusableDate) ? 0 : -1}\n                            onClick={() => handleSelectDay(date)}\n                            className={cn(\n                              \"relative z-10 flex size-8 items-center justify-center rounded-full text-[13px] tabular-nums\",\n                              \"outline-none transition-colors duration-150\",\n                              \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                              state.outsideMonth ? \"text-[var(--muted-foreground)]/40\" : \"text-[var(--foreground)]\",\n                              !state.isSelected &&\n                                !state.isDayDisabled &&\n                                \"hover:bg-[var(--primitive-surface-hover)]\",\n                              state.isSelected &&\n                                \"bg-[var(--primitive-control-solid)] text-[var(--primitive-control-solid-foreground)] hover:bg-[var(--primitive-control-solid-hover)]\",\n                              state.isToday &&\n                                !state.isSelected &&\n                                \"border border-[var(--border)] font-semibold\",\n                              state.isDayDisabled &&\n                                !state.isBookedDay &&\n                                \"pointer-events-none text-[var(--muted-foreground)] opacity-30\",\n                              state.isBookedDay &&\n                                \"pointer-events-none text-[var(--muted-foreground)]/50 line-through\",\n                            )}\n                          >\n                            {date.getDate()}\n                            {state.event && !state.isSelected && (\n                              <span className=\"absolute bottom-0.5 size-1 rounded-full bg-[var(--primitive-info)]\" />\n                            )}\n                          </button>\n                        </div>\n                      );\n                    })}\n                  </div>\n                ))}\n              </div>\n            </motion.div>\n          )}\n\n          {navView === \"months\" && (\n            <motion.div\n              key=\"months\"\n              initial={{ opacity: 0 }}\n              animate={{ opacity: 1 }}\n              exit={{ opacity: 0 }}\n              transition={{ duration: prefersReducedMotion ? 0.12 : 0.15, ease: EASE_OUT }}\n              className=\"grid grid-cols-3 gap-1 py-1\"\n            >\n              {MONTH_NAMES.map((name, i) => (\n                <button\n                  key={name}\n                  type=\"button\"\n                  onClick={() => {\n                    setMonth(new Date(displayedMonth.getFullYear(), i, 1), 1);\n                    setNavView(\"days\");\n                  }}\n                  className={cn(\n                    \"flex h-10 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[13px] text-[var(--foreground)]\",\n                    \"outline-none transition-colors duration-150\",\n                    \"hover:bg-[var(--primitive-surface-hover)]\",\n                    i === displayedMonth.getMonth() &&\n                      \"bg-[var(--primitive-control-solid)] text-[var(--primitive-control-solid-foreground)]\",\n                  )}\n                >\n                  {name.slice(0, 3)}\n                </button>\n              ))}\n            </motion.div>\n          )}\n\n          {navView === \"years\" && (\n            <motion.div\n              key=\"years\"\n              initial={{ opacity: 0 }}\n              animate={{ opacity: 1 }}\n              exit={{ opacity: 0 }}\n              transition={{ duration: prefersReducedMotion ? 0.12 : 0.15, ease: EASE_OUT }}\n            >\n              {/* Decade pager — the 12-year grid below is a window, not the full range. */}\n              <div className=\"mb-1 flex items-center justify-between px-0.5\">\n                <button\n                  type=\"button\"\n                  aria-label=\"Previous years\"\n                  onClick={() => setYearAnchor((y) => y - 12)}\n                  className={cn(\n                    \"flex size-7 shrink-0 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[var(--muted-foreground)]\",\n                    \"outline-none transition-colors duration-150\",\n                    \"hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n                    \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                  )}\n                >\n                  <IconChevronLeft className=\"size-4\" stroke={1.9} />\n                </button>\n                <span className=\"text-[length:var(--primitive-text-hint)] font-medium text-[var(--muted-foreground)]\">\n                  {yearAnchor - 5}–{yearAnchor + 6}\n                </span>\n                <button\n                  type=\"button\"\n                  aria-label=\"Next years\"\n                  onClick={() => setYearAnchor((y) => y + 12)}\n                  className={cn(\n                    \"flex size-7 shrink-0 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[var(--muted-foreground)]\",\n                    \"outline-none transition-colors duration-150\",\n                    \"hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n                    \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                  )}\n                >\n                  <IconChevronRight className=\"size-4\" stroke={1.9} />\n                </button>\n              </div>\n\n              <div className=\"grid grid-cols-3 gap-1 py-1\">\n                {Array.from({ length: 12 }, (_, i) => yearAnchor - 5 + i).map((year) => (\n                  <button\n                    key={year}\n                    type=\"button\"\n                    onClick={() => {\n                      setMonth(new Date(year, displayedMonth.getMonth(), 1), 1);\n                      setNavView(\"months\");\n                    }}\n                    className={cn(\n                      \"flex h-10 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[13px] tabular-nums text-[var(--foreground)]\",\n                      \"outline-none transition-colors duration-150\",\n                      \"hover:bg-[var(--primitive-surface-hover)]\",\n                      year === displayedMonth.getFullYear() &&\n                        \"bg-[var(--primitive-control-solid)] text-[var(--primitive-control-solid-foreground)]\",\n                    )}\n                  >\n                    {year}\n                  </button>\n                ))}\n              </div>\n            </motion.div>\n          )}\n        </AnimatePresence>\n      </div>\n    </div>\n  );\n});\nCalendar.displayName = \"Calendar\";\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/calendar.tsx. For Pro components and updates, use pnpm dlx wensity@latest add calendar.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "calendar",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/calendar",
+      "shadcnUrl": "https://ui.wensity.com/r/calendar",
+      "cliInstall": "pnpm dlx wensity@latest add calendar"
+    }
+  }
+}

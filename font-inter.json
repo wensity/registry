@@ -1,0 +1,47 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "font-inter",
+  "type": "registry:font",
+  "title": "Inter Font",
+  "description": "Inter font package and shadcn CSS variables for Wensity primitives.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@fontsource/inter"
+  ],
+  "registryDependencies": [],
+  "files": [],
+  "cssVars": {
+    "theme": {
+      "font-sans": "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+      "primitive-font-sans": "var(--font-sans)"
+    }
+  },
+  "css": {},
+  "font": {
+    "family": "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+    "provider": "google",
+    "import": "Inter",
+    "variable": "--font-sans",
+    "subsets": [
+      "latin"
+    ],
+    "dependency": "@fontsource/inter"
+  },
+  "docs": "Installs Inter for Wensity primitive tokens in shadcn projects. Import @fontsource/inter in your app entry if your framework does not auto-load package CSS.",
+  "categories": [
+    "wensity",
+    "font",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "font-inter",
+      "access": "free",
+      "category": "font",
+      "kind": "font",
+      "componentUrl": "https://ui.wensity.com/docs/primitives/setup",
+      "shadcnUrl": "https://ui.wensity.com/r/font-inter",
+      "cliInstall": "pnpm dlx shadcn@latest add @wensity/font-inter"
+    }
+  }
+}

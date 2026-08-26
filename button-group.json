@@ -1,0 +1,301 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "button-group",
+  "type": "registry:block",
+  "title": "Button Group",
+  "description": "A grouped action primitive for related commands that should read as one control.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [
+    "@wensity/button"
+  ],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/button-group.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/button-group.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Menu } from \"@base-ui/react/menu\";\nimport { cn } from \"@/lib/utils\";\nimport { Button, buttonVariants, type ButtonProps } from \"@/components/wensity/button\";\n\nexport interface ButtonGroupProps extends React.HTMLAttributes<HTMLDivElement> {\n  orientation?: \"horizontal\" | \"vertical\";\n}\n\nexport function ButtonGroup({\n  className,\n  orientation = \"horizontal\",\n  ...props\n}: ButtonGroupProps) {\n  return (\n    <div\n      role=\"group\"\n      data-orientation={orientation}\n      className={cn(\n        // Shared shell only — hover/press belong on each segment, not the group.\n        \"group/button-group relative inline-flex shrink-0 overflow-hidden rounded-[var(--primitive-radius-control)] border border-[var(--border-strong)] bg-transparent\",\n        orientation === \"horizontal\" ? \"flex-row items-stretch\" : \"flex-col\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nconst groupItemClass =\n  \"rounded-none border-0 shadow-none min-h-9 \" +\n  \"group-data-[orientation=horizontal]/button-group:first:rounded-l-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=horizontal]/button-group:last:rounded-r-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=vertical]/button-group:first:rounded-t-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=vertical]/button-group:last:rounded-b-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"focus-visible:relative focus-visible:z-10 hover:relative hover:z-10\";\n\nconst groupIconItemClass =\n  \"h-9 w-10 min-w-10 shrink-0 px-0 text-[var(--foreground)] \" +\n  \"[&_svg]:!size-4 [&_svg]:!opacity-100 [&_svg]:stroke-current\";\n\nexport type ButtonGroupItemProps = ButtonProps;\n\nexport const ButtonGroupItem = React.forwardRef<\n  HTMLButtonElement,\n  ButtonGroupItemProps\n>(({ className, variant = \"outline\", size, ...props }, ref) => {\n  return (\n    <Button\n      ref={ref}\n      variant={variant}\n      size={size}\n      className={cn(\n        groupItemClass,\n        size === \"icon\" && groupIconItemClass,\n        className,\n      )}\n      {...props}\n    />\n  );\n});\n\nButtonGroupItem.displayName = \"ButtonGroupItem\";\n\nexport interface ButtonGroupSeparatorProps\n  extends React.HTMLAttributes<HTMLDivElement> {\n  orientation?: \"horizontal\" | \"vertical\";\n}\n\nexport function ButtonGroupSeparator({\n  className,\n  orientation = \"vertical\",\n  ...props\n}: ButtonGroupSeparatorProps) {\n  return (\n    <div\n      role=\"separator\"\n      aria-orientation={orientation}\n      className={cn(\n        \"shrink-0 bg-[var(--border-strong)]\",\n        orientation === \"vertical\" ? \"w-px self-stretch\" : \"h-px w-full\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nconst elevatedOverlaySurfaceClass = cn(\n  \"bg-[var(--primitive-surface-overlay)] border border-[var(--border)]\",\n  \"[box-shadow:var(--primitive-shadow-overlay)]\",\n);\n\nexport type ButtonGroupMenuProps = React.ComponentProps<typeof Menu.Root>;\n\nexport function ButtonGroupMenu(props: ButtonGroupMenuProps) {\n  return <Menu.Root modal={false} {...props} />;\n}\n\nconst menuTriggerClass =\n  \"data-[popup-open]:z-20 data-[popup-open]:bg-[var(--primitive-surface-hover)]\";\n\nexport const ButtonGroupMenuTrigger = React.forwardRef<\n  HTMLButtonElement,\n  ButtonGroupItemProps\n>(\n  (\n    {\n      className,\n      variant = \"outline\",\n      size = \"icon\",\n      loading = false,\n      disabled = false,\n      leftIcon,\n      rightIcon,\n      leftIconMotion: _leftIconMotion,\n      rightIconMotion: _rightIconMotion,\n      asChild: _asChild,\n      focusableWhenDisabled: _focusableWhenDisabled,\n      type,\n      children,\n      ...props\n    },\n    ref,\n  ) => {\n    const isDisabled = disabled || loading;\n\n    return (\n      <Menu.Trigger\n        ref={ref}\n        nativeButton\n        disabled={isDisabled}\n        type={type ?? \"button\"}\n        aria-busy={loading ? true : undefined}\n        data-loading={loading ? \"\" : undefined}\n        className={cn(\n          buttonVariants({ variant, size }),\n          groupItemClass,\n          size === \"icon\" && groupIconItemClass,\n          menuTriggerClass,\n          className,\n        )}\n        {...props}\n      >\n        {loading ? (\n          <span\n            aria-hidden=\"true\"\n            className=\"relative z-10 size-3.5 shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\"\n          />\n        ) : null}\n        {!loading && leftIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0\">{leftIcon}</span>\n        ) : null}\n        {size === \"icon\" && !loading && !leftIcon && !rightIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0 items-center justify-center\">\n            {children}\n          </span>\n        ) : (\n          <span className=\"relative z-10 inline-flex items-center gap-2\">\n            {children}\n          </span>\n        )}\n        {!loading && rightIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0\">\n            {rightIcon}\n          </span>\n        ) : null}\n      </Menu.Trigger>\n    );\n  },\n);\n\nButtonGroupMenuTrigger.displayName = \"ButtonGroupMenuTrigger\";\n\nexport interface ButtonGroupMenuContentProps\n  extends Omit<\n    React.ComponentPropsWithoutRef<typeof Menu.Popup>,\n    \"align\" | \"sideOffset\"\n  > {\n  align?: \"start\" | \"center\" | \"end\";\n  sideOffset?: number;\n  side?: \"top\" | \"right\" | \"bottom\" | \"left\";\n  container?: React.ComponentProps<typeof Menu.Portal>[\"container\"];\n}\n\nexport function ButtonGroupMenuContent({\n  className,\n  align = \"end\",\n  sideOffset = 8,\n  side,\n  container,\n  ...props\n}: ButtonGroupMenuContentProps) {\n  return (\n    <Menu.Portal container={container}>\n      <Menu.Positioner\n        align={align}\n        sideOffset={sideOffset}\n        side={side}\n        collisionPadding={12}\n        className=\"z-[var(--primitive-z-popover)] outline-none\"\n      >\n        <Menu.Popup\n          data-wensity-primitive=\"\"\n          className={cn(\n            elevatedOverlaySurfaceClass,\n            \"min-w-[12.5rem] origin-top-right rounded-[var(--primitive-radius-surface)] p-1 outline-none\",\n            \"transition-[opacity,transform] duration-150 ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n            \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n            \"motion-reduce:transition-none\",\n            className,\n          )}\n          {...props}\n        />\n      </Menu.Positioner>\n    </Menu.Portal>\n  );\n}\n\nexport interface ButtonGroupMenuItemProps\n  extends React.ComponentPropsWithoutRef<typeof Menu.Item> {\n  icon?: React.ReactNode;\n  destructive?: boolean;\n  shortcut?: string;\n}\n\nexport const ButtonGroupMenuItem = React.forwardRef<\n  HTMLDivElement,\n  ButtonGroupMenuItemProps\n>(\n  (\n    { className, children, icon, destructive = false, shortcut, ...props },\n    ref,\n  ) => {\n    return (\n      <Menu.Item\n        ref={ref as React.Ref<HTMLElement>}\n        className={cn(\n          \"group/menu-item relative flex cursor-pointer select-none items-center gap-2.5 rounded-[var(--primitive-radius-item)] px-2.5 py-2 text-sm outline-none\",\n          \"transition-colors duration-150\",\n          destructive\n            ? \"text-[var(--primitive-destructive)] data-highlighted:bg-[var(--primitive-destructive-surface)] data-highlighted:text-[var(--primitive-destructive)]\"\n            : \"text-[var(--foreground)] data-highlighted:bg-[var(--primitive-surface-selected)]\",\n          \"data-disabled:pointer-events-none data-disabled:opacity-45\",\n          className,\n        )}\n        {...props}\n      >\n        {icon ? (\n          <span\n            className={cn(\n              \"inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4\",\n              destructive\n                ? \"text-[var(--primitive-destructive)]\"\n                : \"text-[var(--muted-foreground)] group-data-highlighted/menu-item:text-[var(--foreground)]\",\n            )}\n          >\n            {icon}\n          </span>\n        ) : null}\n        <span className=\"min-w-0 flex-1 truncate\">{children}</span>\n        {shortcut ? (\n          <span className=\"ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]\">\n            {shortcut}\n          </span>\n        ) : null}\n      </Menu.Item>\n    );\n  },\n);\n\nButtonGroupMenuItem.displayName = \"ButtonGroupMenuItem\";\n\nexport type ButtonGroupMenuSeparatorProps =\n  React.HTMLAttributes<HTMLDivElement>;\n\nexport function ButtonGroupMenuSeparator({\n  className,\n  ...props\n}: ButtonGroupMenuSeparatorProps) {\n  return (\n    <div\n      role=\"separator\"\n      className={cn(\"my-1 h-px bg-[var(--border)]\", className)}\n      {...props}\n    />\n  );\n}\n\nexport type ButtonGroupMenuLabelProps = React.HTMLAttributes<HTMLDivElement>;\n\nexport function ButtonGroupMenuLabel({\n  className,\n  ...props\n}: ButtonGroupMenuLabelProps) {\n  return (\n    <div\n      className={cn(\n        \"px-2.5 py-1.5 text-[11px] font-medium uppercase text-[var(--muted-foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/button-group.tsx. For Pro components and updates, use pnpm dlx wensity@latest add button-group.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "button-group",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/button-group",
+      "shadcnUrl": "https://ui.wensity.com/r/button-group",
+      "cliInstall": "pnpm dlx wensity@latest add button-group"
+    }
+  }
+}

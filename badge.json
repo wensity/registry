@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "badge",
+  "type": "registry:block",
+  "title": "Badge",
+  "description": "A compact badge for status, metadata, and filter chips.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "@tabler/icons-react",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/badge.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/badge.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { IconX } from \"@tabler/icons-react\";\nimport { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/utils\";\n\nexport type BadgeVariant =\n  | \"neutral\"\n  | \"success\"\n  | \"warning\"\n  | \"danger\"\n  | \"info\"\n  | \"brand\"\n  | \"carbon\"\n  | \"outline\";\n\nexport type BadgeSize = \"sm\" | \"md\" | \"lg\";\nexport type BadgeRadius = \"sm\" | \"md\" | \"pill\";\n\nexport interface BadgeProps extends React.HTMLAttributes<HTMLElement> {\n  variant?: BadgeVariant;\n  size?: BadgeSize;\n  radius?: BadgeRadius;\n  asChild?: boolean;\n  interactive?: boolean;\n  dot?: boolean;\n  pulseDot?: boolean;\n  leftIcon?: React.ReactNode;\n  rightIcon?: React.ReactNode;\n  onRemove?: () => void;\n  removeLabel?: string;\n}\n\nconst base = cn(\n  \"group/badge relative inline-flex max-w-full shrink-0 items-center justify-center overflow-hidden\",\n  \"border font-medium leading-none tracking-[-0.005em] select-none\",\n  \"transition-[background,border-color,color,box-shadow,opacity] duration-200 ease-[var(--primitive-ease,cubic-bezier(0.22,1,0.36,1))]\",\n  \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n  \"[&_svg]:pointer-events-none [&_svg]:shrink-0\",\n);\n\nconst interactiveClasses = \"cursor-default\";\n\nconst sizes: Record<BadgeSize, string> = {\n  sm: \"h-6 gap-1.5 px-2.5 text-[11px] [&_svg]:size-3\",\n  md: \"h-7 gap-1.5 px-3 text-xs [&_svg]:size-3.5\",\n  lg: \"h-8 gap-2 px-3.5 text-[13px] [&_svg]:size-4\",\n};\n\nconst radii: Record<BadgeRadius, string> = {\n  sm: \"rounded-[var(--primitive-radius-control-sm)]\",\n  md: \"rounded-[var(--primitive-radius-control)]\",\n  pill: \"rounded-full\",\n};\n\n/** Solid status/token fills — decorative radial layers removed (Phase 7). */\nconst variants: Record<BadgeVariant, string> = {\n  neutral: cn(\n    \"border-[var(--primitive-border-subtle)] text-[var(--foreground)]\",\n    \"bg-[color-mix(in_srgb,var(--foreground)_6%,var(--background))]\",\n  ),\n  success: cn(\n    \"border-[var(--primitive-success-border)] text-[var(--primitive-success)]\",\n    \"bg-[var(--primitive-success-surface)]\",\n  ),\n  warning: cn(\n    \"border-[var(--primitive-warning-border)] text-[var(--primitive-warning)]\",\n    \"bg-[var(--primitive-warning-surface)]\",\n  ),\n  danger: cn(\n    \"border-[var(--primitive-destructive-border)] text-[var(--primitive-destructive)]\",\n    \"bg-[var(--primitive-destructive-surface)]\",\n  ),\n  info: cn(\n    \"border-[var(--primitive-info-border)] text-[var(--primitive-info)]\",\n    \"bg-[var(--primitive-info-surface)]\",\n  ),\n  brand: cn(\n    \"border-[color-mix(in_srgb,var(--primitive-control-solid)_35%,transparent)] text-[var(--primitive-control-solid)]\",\n    \"bg-[color-mix(in_srgb,var(--primitive-control-solid)_10%,transparent)]\",\n    \"dark:text-[var(--primitive-control-solid)] dark:border-[color-mix(in_srgb,var(--primitive-control-solid)_40%,transparent)]\",\n  ),\n  carbon: cn(\n    \"border-[color-mix(in_srgb,var(--primitive-control-solid)_80%,transparent)]\",\n    \"bg-[var(--primitive-control-solid)] text-[var(--primitive-control-solid-foreground)]\",\n  ),\n  outline: cn(\n    \"border-[var(--primitive-border-subtle)] text-[var(--foreground)]\",\n    \"bg-transparent\",\n  ),\n};\n\nconst dotColors: Record<BadgeVariant, string> = {\n  neutral: \"bg-[var(--muted-foreground)]\",\n  success: \"bg-[var(--primitive-success)]\",\n  warning: \"bg-[var(--primitive-warning)]\",\n  danger: \"bg-[var(--primitive-destructive)]\",\n  info: \"bg-[var(--primitive-info)]\",\n  brand: \"bg-[var(--primitive-control-solid)]\",\n  carbon: \"bg-[var(--primitive-control-solid-foreground)]\",\n  outline: \"bg-[var(--foreground)]\",\n};\n\nconst closeSizes: Record<BadgeSize, string> = {\n  sm: \"-mr-1 size-4\",\n  md: \"-mr-1 size-4.5\",\n  lg: \"-mr-1.5 size-5\",\n};\n\nexport function badgeVariants({\n  variant = \"neutral\",\n  size = \"md\",\n  radius = \"pill\",\n  interactive = false,\n  className,\n}: {\n  variant?: BadgeVariant;\n  size?: BadgeSize;\n  radius?: BadgeRadius;\n  interactive?: boolean;\n  className?: string;\n} = {}) {\n  return cn(\n    base,\n    variants[variant],\n    sizes[size],\n    radii[radius],\n    interactive && interactiveClasses,\n    className,\n  );\n}\n\nexport const Badge = React.forwardRef<HTMLElement, BadgeProps>(\n  (\n    {\n      className,\n      variant = \"neutral\",\n      size = \"md\",\n      radius = \"pill\",\n      asChild = false,\n      interactive = false,\n      dot = false,\n      pulseDot = false,\n      leftIcon,\n      rightIcon,\n      onRemove,\n      removeLabel = \"Remove\",\n      children,\n      ...props\n    },\n    ref,\n  ) => {\n    const isInteractive = interactive || Boolean(onRemove);\n    const composedClassName = badgeVariants({\n      variant,\n      size,\n      radius,\n      interactive: isInteractive,\n      className,\n    });\n\n    const body = (\n      <>\n        {dot ? (\n          <span className=\"relative z-10 inline-flex size-2 shrink-0 items-center justify-center\">\n            {pulseDot ? (\n              <span\n                className={cn(\n                  \"absolute inline-flex size-2 rounded-full opacity-40 motion-safe:animate-ping\",\n                  dotColors[variant],\n                )}\n              />\n            ) : null}\n            <span className={cn(\"relative size-1.5 rounded-full\", dotColors[variant])} />\n          </span>\n        ) : null}\n        {leftIcon ? <span className=\"relative z-10 inline-flex\">{leftIcon}</span> : null}\n        <span className=\"relative z-10 min-w-0 truncate\">{children}</span>\n        {rightIcon ? (\n          <span className=\"relative z-10 inline-flex opacity-75 transition-opacity group-hover/badge:opacity-100\">\n            {rightIcon}\n          </span>\n        ) : null}\n        {onRemove ? (\n          <button\n            type=\"button\"\n            aria-label={removeLabel}\n            onClick={(event) => {\n              event.stopPropagation();\n              onRemove();\n            }}\n            className={cn(\n              \"relative z-10 inline-flex shrink-0 items-center justify-center rounded-full text-current/62\",\n              \"transition-[background-color,color] duration-150 ease-out\",\n              \"hover:bg-current/[0.10] hover:text-current\",\n              \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/20\",\n              closeSizes[size],\n            )}\n          >\n            <IconX stroke={2} />\n          </button>\n        ) : null}\n      </>\n    );\n\n    const asChildElement =\n      asChild && React.isValidElement(children) ? children : null;\n\n    const asChildRendered = useRender({\n      enabled: Boolean(asChildElement),\n      ref: ref as React.Ref<HTMLElement>,\n      render: asChildElement ?? undefined,\n      props: {\n        \"data-slot\": \"badge\",\n        \"data-variant\": variant,\n        className: composedClassName,\n        children: body,\n        ...props,\n      },\n    });\n\n    if (asChildRendered) return asChildRendered;\n\n    return (\n      <span data-wensity-primitive=\"\"\n        ref={ref}\n        data-slot=\"badge\"\n        data-variant={variant}\n        className={composedClassName}\n        {...props}\n      >\n        {body}\n      </span>\n    );\n  },\n);\n\nBadge.displayName = \"Badge\";\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/badge.tsx. For Pro components and updates, use pnpm dlx wensity@latest add badge.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "badge",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/badge",
+      "shadcnUrl": "https://ui.wensity.com/r/badge",
+      "cliInstall": "pnpm dlx wensity@latest add badge"
+    }
+  }
+}

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "github-activity-grid",
+  "type": "registry:block",
+  "title": "GitHub-Style Activity Grid",
+  "description": "A year of work rendered in one glance. The tooltip flies between days like it's on rails.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/github-activity-grid.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/github-activity-grid.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { motion, useSpring, useMotionValue, useReducedMotion } from \"framer-motion\";\nimport { cn } from \"@/lib/utils\";\n\n/* ────────────────────────────────────────────────────────────────────────── */\n/*  Types                                                                     */\n/* ────────────────────────────────────────────────────────────────────────── */\n\nexport interface ActivityDay {\n  /** ISO date string (YYYY-MM-DD). */\n  date: string;\n  /** 0..n raw count (will be bucketed into 5 levels). */\n  count: number;\n}\n\nexport interface GitHubActivityGridProps {\n  /**\n   * Days, oldest-first. Length should be exactly the visible window\n   * (typically 365 or 371 for a clean 53-week grid).\n   */\n  days: ActivityDay[];\n  /**\n   * Maximum count used to compute level buckets. Defaults to the max in\n   * `days` (so colors are always relative to the dataset).\n   */\n  maxCount?: number;\n  /** Cell size in px. Default 11. */\n  cellSize?: number;\n  /** Gap between cells in px. Default 3. */\n  cellGap?: number;\n  className?: string;\n}\n\n// Contribution-density buckets. We use EMERALD (not the brand chili) because:\n//   1. Universally — including GitHub itself — green = \"growth / activity\".\n//   2. Painting commits in chili-red turns the entire grid into a \"blood\n//      splatter\" that reads as alarms, not progress. That's the canonical\n//      example of using the brand colour where a semantic colour should live.\n//   3. The card header text + focus ring still carry the brand, so the\n//      surface remains identifiably Wensity.\nconst LEVEL_BG = [\n  \"bg-[var(--surface-muted)]\",\n  \"bg-emerald-500/15 dark:bg-emerald-900/60\",\n  \"bg-emerald-500/35 dark:bg-emerald-700\",\n  \"bg-emerald-500/65 dark:bg-emerald-500\",\n  \"bg-emerald-500 dark:bg-emerald-400\",\n] as const;\n\nconst WEEKDAYS = [\"\", \"Mon\", \"\", \"Wed\", \"\", \"Fri\", \"\"] as const;\nconst MONTHS = [\n  \"Jan\",\n  \"Feb\",\n  \"Mar\",\n  \"Apr\",\n  \"May\",\n  \"Jun\",\n  \"Jul\",\n  \"Aug\",\n  \"Sep\",\n  \"Oct\",\n  \"Nov\",\n  \"Dec\",\n];\n\nconst ACTIVITY_MATTE_NOISE = `url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.65 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")`;\nconst WEEKDAY_LABEL_WIDTH = 22;\nconst WEEKDAY_LABEL_GAP = 4;\n\n/* ────────────────────────────────────────────────────────────────────────── */\n/*  Component                                                                 */\n/* ────────────────────────────────────────────────────────────────────────── */\n\nexport function GitHubActivityGrid({\n  days,\n  maxCount,\n  cellSize = 11,\n  cellGap = 3,\n  className,\n}: GitHubActivityGridProps) {\n  const reduce = useReducedMotion();\n  /* ---------------- bucketise into 0..4 levels --------------------------- */\n  const max = React.useMemo(() => {\n    if (typeof maxCount === \"number\" && maxCount > 0) return maxCount;\n    return Math.max(1, ...days.map((d) => d.count));\n  }, [days, maxCount]);\n\n  function level(count: number) {\n    if (count <= 0) return 0;\n    const ratio = count / max;\n    if (ratio < 0.25) return 1;\n    if (ratio < 0.5) return 2;\n    if (ratio < 0.75) return 3;\n    return 4;\n  }\n\n  /* ---------------- group into [week][weekday] grid ---------------------- */\n  // Day 0 = first cell. We pad the start to align Sunday=0 of week 0.\n  const grid = React.useMemo(() => {\n    if (days.length === 0) return { weeks: [] as (ActivityDay | null)[][], monthLabels: [] as { col: number; label: string }[] };\n    const first = new Date(days[0].date + \"T00:00:00\");\n    const startWeekday = first.getDay(); // 0..6\n    const flat: (ActivityDay | null)[] = [\n      ...Array.from({ length: startWeekday }, () => null),\n      ...days,\n    ];\n    // pad tail so each week is full\n    while (flat.length % 7 !== 0) flat.push(null);\n\n    const weeks: (ActivityDay | null)[][] = [];\n    for (let i = 0; i < flat.length; i += 7) {\n      weeks.push(flat.slice(i, i + 7));\n    }\n\n    // month labels per week column (label appears at first week containing day 1..7 of month)\n    const monthLabels: { col: number; label: string }[] = [];\n    let lastMonth = -1;\n    weeks.forEach((wk, col) => {\n      const firstReal = wk.find(Boolean) as ActivityDay | undefined;\n      if (!firstReal) return;\n      const m = new Date(firstReal.date + \"T00:00:00\").getMonth();\n      if (m !== lastMonth) {\n        monthLabels.push({ col, label: MONTHS[m] });\n        lastMonth = m;\n      }\n    });\n    return { weeks, monthLabels };\n  }, [days]);\n\n  /* ---------------- single global tooltip — springed position ----------- */\n  const containerRef = React.useRef<HTMLDivElement | null>(null);\n  const tooltipX = useMotionValue(0);\n  const tooltipY = useMotionValue(0);\n  const springX = useSpring(tooltipX, { stiffness: 480, damping: 40, mass: 0.5 });\n  const springY = useSpring(tooltipY, { stiffness: 480, damping: 40, mass: 0.5 });\n  const [hover, setHover] = React.useState<ActivityDay | null>(null);\n  const gridViewportRef = React.useRef<HTMLDivElement | null>(null);\n  const [gridViewportWidth, setGridViewportWidth] = React.useState(0);\n\n  React.useEffect(() => {\n    const node = gridViewportRef.current;\n    if (!node) return;\n\n    const measure = () => setGridViewportWidth(node.clientWidth);\n    measure();\n\n    if (typeof ResizeObserver === \"undefined\") {\n      window.addEventListener(\"resize\", measure);\n      return () => window.removeEventListener(\"resize\", measure);\n    }\n\n    const observer = new ResizeObserver(measure);\n    observer.observe(node);\n    return () => observer.disconnect();\n  }, []);\n\n  function onCellEnter(\n    e: React.PointerEvent<HTMLButtonElement>,\n    day: ActivityDay\n  ) {\n    const cont = containerRef.current;\n    if (!cont) return;\n    const r = e.currentTarget.getBoundingClientRect();\n    const cr = cont.getBoundingClientRect();\n    // Center-top of the cell, relative to container\n    tooltipX.set(r.left - cr.left + r.width / 2);\n    tooltipY.set(r.top - cr.top - 6);\n    setHover(day);\n  }\n  function onLeave() {\n    setHover(null);\n  }\n\n  const totalContributions = React.useMemo(\n    () => days.reduce((s, d) => s + d.count, 0),\n    [days]\n  );\n  const weekCount = grid.weeks.length;\n  const baseGridWidth =\n    weekCount * cellSize + Math.max(0, weekCount - 1) * cellGap;\n  const availableGridWidth = Math.max(\n    0,\n    gridViewportWidth - WEEKDAY_LABEL_WIDTH - WEEKDAY_LABEL_GAP\n  );\n  const fitScale =\n    gridViewportWidth > 0 && baseGridWidth > availableGridWidth\n      ? availableGridWidth / baseGridWidth\n      : 1;\n  const fittedCellSize = cellSize * fitScale;\n  const fittedCellGap = cellGap * fitScale;\n  const fittedGridWidth =\n    weekCount * fittedCellSize + Math.max(0, weekCount - 1) * fittedCellGap;\n\n  return (\n    <div\n      className={cn(\n        \"relative isolate w-full overflow-hidden rounded-2xl border border-black/[0.08] p-5\",\n        \"bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#ffffff_0%,#f4f4f5_72%)]\",\n        \"[box-shadow:0_1px_2px_rgba(0,0,0,.06),0_8px_24px_-12px_rgba(0,0,0,.08)]\",\n        \"dark:border-white/[0.06] dark:bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#15151b_0%,#0a0a0b_72%)]\",\n        \"dark:[box-shadow:0_1px_2px_rgba(0,0,0,.4),0_8px_24px_-12px_rgba(0,0,0,.6)]\",\n        className\n      )}\n      ref={containerRef}\n      onPointerLeave={onLeave}\n    >\n      <div\n        aria-hidden\n        className=\"pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-overlay dark:opacity-[0.055]\"\n        style={{ backgroundImage: ACTIVITY_MATTE_NOISE, backgroundSize: \"240px 240px\" }}\n      />\n      <div\n        aria-hidden\n        className=\"pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.035)_0%,transparent_30%,transparent_72%,rgba(0,0,0,0.055)_100%)] dark:bg-[linear-gradient(to_bottom,rgba(0,0,0,0.12)_0%,transparent_28%,transparent_72%,rgba(0,0,0,0.22)_100%)]\"\n      />\n\n      {/* Header */}\n      <div className=\"relative z-10 mb-3 flex items-end justify-between\">\n        <div>\n          <div className=\"font-display text-[15px] font-semibold tracking-tight text-[var(--foreground)]\">\n            <span className=\"tabular-nums\">{totalContributions.toLocaleString()}</span>\n            <span className=\"ml-1 font-normal text-[var(--muted-foreground)]\">\n              contributions in the last year\n            </span>\n          </div>\n        </div>\n        <Legend />\n      </div>\n\n      {/* Grid */}\n      <div ref={gridViewportRef} className=\"relative z-10 overflow-hidden pb-1\">\n        <div className=\"flex min-w-0 flex-col\">\n          {/* Month labels row */}\n          <div\n            className=\"relative ml-7 h-3\"\n            style={{\n              width: fittedGridWidth,\n            }}\n          >\n            {grid.monthLabels.map((m) => (\n              <span\n                key={`${m.col}-${m.label}`}\n                className=\"absolute top-0 text-[9.5px] font-medium uppercase tracking-[0.06em] text-[var(--muted-foreground)]\"\n                style={{ left: m.col * (fittedCellSize + fittedCellGap) }}\n              >\n                {m.label}\n              </span>\n            ))}\n          </div>\n\n          <div className=\"flex\">\n            {/* Weekday labels */}\n            <div\n              className=\"mr-1 flex flex-col\"\n              style={{ gap: fittedCellGap }}\n            >\n              {WEEKDAYS.map((wd, i) => (\n                <span\n                  key={i}\n                  className=\"flex items-center text-[9.5px] font-medium tracking-tight text-[var(--muted-foreground)]\"\n                  style={{ height: fittedCellSize, width: WEEKDAY_LABEL_WIDTH }}\n                >\n                  {wd}\n                </span>\n              ))}\n            </div>\n\n            {/* Cells */}\n            <div className=\"flex\" style={{ gap: fittedCellGap }}>\n              {grid.weeks.map((week, wIdx) => (\n                <div\n                  key={wIdx}\n                  className=\"flex flex-col\"\n                  style={{ gap: fittedCellGap }}\n                >\n                  {week.map((day, dIdx) => {\n                    if (!day) {\n                      return (\n                        <span\n                          key={`pad-${wIdx}-${dIdx}`}\n                          style={{\n                            width: fittedCellSize,\n                            height: fittedCellSize,\n                          }}\n                        />\n                      );\n                    }\n                    const lvl = level(day.count);\n                    // index back from the end → most recent day first\n                    const fromEnd = days.length - 1 - days.indexOf(day);\n                    const delay = fromEnd * 0.002;\n                    return (\n                      <motion.button\n                        key={day.date}\n                        type=\"button\"\n                        initial={reduce ? false : { scale: 0, opacity: 0 }}\n                        animate={reduce ? { scale: 1, opacity: 1 } : { scale: 1, opacity: 1 }}\n                        transition={\n                          reduce\n                            ? { duration: 0 }\n                            : {\n                                delay,\n                                type: \"spring\",\n                                stiffness: 420,\n                                damping: 28,\n                                mass: 0.6,\n                              }\n                        }\n                        onPointerEnter={(e) => onCellEnter(e, day)}\n                        onFocus={(e) => {\n                          // Synthesise a pointer-style enter for keyboard nav\n                          const cont = containerRef.current;\n                          if (!cont) return;\n                          const r = (\n                            e.currentTarget as HTMLButtonElement\n                          ).getBoundingClientRect();\n                          const cr = cont.getBoundingClientRect();\n                          tooltipX.set(r.left - cr.left + r.width / 2);\n                          tooltipY.set(r.top - cr.top - 6);\n                          setHover(day);\n                        }}\n                        onBlur={onLeave}\n                        aria-label={`${day.count} contributions on ${day.date}`}\n                        className={cn(\n                          \"block rounded-[3px] outline-none transition-colors\",\n                          \"ring-0 focus-visible:ring-2 focus-visible:ring-chili-500/60\",\n                          LEVEL_BG[lvl],\n                          lvl === 0 &&\n                            \"ring-1 ring-inset ring-[var(--border)]/60\"\n                        )}\n                        style={{\n                          width: fittedCellSize,\n                          height: fittedCellSize,\n                          willChange: \"transform\",\n                        }}\n                      />\n                    );\n                  })}\n                </div>\n              ))}\n            </div>\n          </div>\n        </div>\n      </div>\n\n      {/* ONE global tooltip — springs to the hovered cell */}\n      <motion.div\n        aria-hidden={!hover}\n        style={{\n          x: springX,\n          y: springY,\n          opacity: hover ? 1 : 0,\n          translateX: \"-50%\",\n          translateY: \"-100%\",\n          willChange: \"transform\",\n        }}\n        transition={{ opacity: { duration: 0.12 } }}\n        className={cn(\n          \"pointer-events-none absolute left-0 top-0 z-20 select-none rounded-md px-2 py-1 text-[10.5px] font-medium tracking-tight\",\n          \"border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]\",\n          \"shadow-[0_8px_22px_-8px_rgba(0,0,0,.25)]\"\n        )}\n      >\n        {hover ? (\n          <>\n            <span className=\"tabular-nums\">{hover.count}</span>{\" \"}\n            {hover.count === 1 ? \"contribution\" : \"contributions\"}\n            <span className=\"ml-1.5 text-[var(--muted-foreground)]\">\n              · {formatDate(hover.date)}\n            </span>\n          </>\n        ) : null}\n      </motion.div>\n    </div>\n  );\n}\n\n/* ────────────────────────────────────────────────────────────────────────── */\n/*  Helpers                                                                   */\n/* ────────────────────────────────────────────────────────────────────────── */\n\nfunction Legend() {\n  return (\n    <div className=\"flex items-center gap-1.5 text-[10px] text-[var(--muted-foreground)]\">\n      <span>Less</span>\n      {LEVEL_BG.map((bg, i) => (\n        <span\n          key={i}\n          className={cn(\n            \"h-[10px] w-[10px] rounded-[3px]\",\n            bg,\n            i === 0 && \"ring-1 ring-inset ring-[var(--border)]/60\"\n          )}\n        />\n      ))}\n      <span>More</span>\n    </div>\n  );\n}\n\nfunction formatDate(iso: string) {\n  const d = new Date(iso + \"T00:00:00\");\n  return d.toLocaleDateString(undefined, {\n    weekday: \"short\",\n    month: \"short\",\n    day: \"numeric\",\n  });\n}\n\n/* ────────────────────────────────────────────────────────────────────────── */\n/*  Convenience: deterministic mock generator (handy for previews)            */\n/* ────────────────────────────────────────────────────────────────────────── */\n\n/**\n * Deterministic seeded mock generator. Returns 371 days (53 full weeks)\n * ending on `endDate` (default = today).\n */\nexport function mockActivityYear(\n  seed = 42,\n  endDate: Date = new Date()\n): ActivityDay[] {\n  const total = 371;\n  const days: ActivityDay[] = [];\n  let s = seed;\n  function rand() {\n    s = (s * 9301 + 49297) % 233280;\n    return s / 233280;\n  }\n  const end = new Date(endDate);\n  end.setHours(0, 0, 0, 0);\n\n  for (let i = total - 1; i >= 0; i--) {\n    const d = new Date(end);\n    d.setDate(end.getDate() - i);\n    const wd = d.getDay();\n    // weekends quieter, midweek busier\n    const base = wd === 0 || wd === 6 ? 0.18 : 0.55;\n    const r = rand();\n    let count = 0;\n    if (r < 0.35) count = 0;\n    else if (r < 0.6) count = Math.floor(rand() * 3) + 1;\n    else if (r < 0.85) count = Math.floor(rand() * 6) + 3;\n    else count = Math.floor(rand() * 10) + 8;\n    if (rand() > base) count = Math.max(0, count - 2);\n    days.push({\n      date: d.toISOString().slice(0, 10),\n      count,\n    });\n  }\n  return days;\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/github-activity-grid.tsx. For Pro components and updates, use pnpm dlx wensity@latest add github-activity-grid.",
+  "categories": [
+    "Heavy SaaS Blocks",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "github-activity-grid",
+      "access": "free",
+      "category": "Heavy SaaS Blocks",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/github-activity-grid",
+      "shadcnUrl": "https://ui.wensity.com/r/github-activity-grid",
+      "cliInstall": "pnpm dlx wensity@latest add github-activity-grid"
+    }
+  }
+}

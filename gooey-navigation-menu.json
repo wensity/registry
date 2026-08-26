@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "gooey-navigation-menu",
+  "type": "registry:block",
+  "title": "Gooey Navigation Menu",
+  "description": "Tap the button and actions stretch out like liquid metal. Gooey, physical, impossible to ignore.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/gooey-navigation-menu.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/gooey-navigation-menu.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { motion, AnimatePresence, useReducedMotion } from \"framer-motion\";\nimport { IconPlus } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface GooeyMenuItem {\n  /** Stable id for the item. */\n  id: string;\n  /** Tabler-icon-shaped React element. */\n  icon: React.ReactNode;\n  /** Tooltip / aria-label. */\n  label: string;\n  /** Optional click handler. */\n  onSelect?: () => void;\n}\n\nexport interface GooeyNavigationMenuProps {\n  /** Child items that pop out of the FAB. 3–6 looks best. */\n  items: GooeyMenuItem[];\n  /** Distance (px) the children travel from the trigger center. */\n  radius?: number;\n  /** Arc, in degrees, the children fan across. 90 = quarter, 180 = half. */\n  arc?: number;\n  /** Direction the arc opens toward. */\n  direction?: \"up\" | \"down\" | \"left\" | \"right\";\n  /** Diameter of the trigger button (px). */\n  size?: number;\n  /** Diameter of each child button (px). */\n  childSize?: number;\n  /** Tailwind/CSS color class for the trigger. Defaults to chili-500. */\n  className?: string;\n}\n\n/**\n * GooeyNavigationMenu\n *\n * A floating action button whose children stretch out of it like liquid\n * metal — the classic \"metaball\" effect, achieved with a tightly-scoped\n * SVG `<filter>` (Gaussian blur + alpha-channel contrast crush).\n *\n * Performance notes (per the playbook):\n *   • The SVG filter is applied to a *small* wrapper div around the menu —\n *     never `<body>`, never the full viewport.\n *   • The filter itself is never animated; only the children's `x`/`y`\n *     coordinates animate. The blur passively bridges them in real time.\n *   • Springs are deliberately high-tension (300 / 15) so the children\n *     visibly *struggle* against the goo before snapping into place.\n *\n * GPU contract: animates only `transform` + `opacity`.\n */\nexport function GooeyNavigationMenu({\n  items,\n  radius = 96,\n  arc = 180,\n  direction = \"up\",\n  size = 60,\n  childSize = 44,\n  className,\n}: GooeyNavigationMenuProps) {\n  const [open, setOpen] = React.useState(false);\n  const reduce = useReducedMotion();\n\n  // Compute per-item polar offset (x, y) along an arc centered on the trigger.\n  const offsets = React.useMemo(() => {\n    const n = items.length;\n    if (n === 0) return [];\n    const baseAngle =\n      direction === \"up\"\n        ? -90\n        : direction === \"down\"\n          ? 90\n          : direction === \"left\"\n            ? 180\n            : 0;\n    const half = arc / 2;\n    return items.map((_, i) => {\n      const t = n === 1 ? 0.5 : i / (n - 1);\n      const deg = baseAngle - half + t * arc;\n      const rad = (deg * Math.PI) / 180;\n      return {\n        x: Math.cos(rad) * radius,\n        y: Math.sin(rad) * radius,\n      };\n    });\n  }, [items, arc, direction, radius]);\n\n  // Reserve a square area large enough to contain trigger + arc + child radius.\n  const pad = childSize / 2 + 8;\n  const stageSize = (radius + pad) * 2;\n\n  // SVG filter id is suffixed per-instance so multiple dock copies coexist.\n  const filterId = React.useId().replace(/[:]/g, \"\");\n\n  return (\n    <div\n      className={cn(\n        \"relative inline-flex items-center justify-center\",\n        className\n      )}\n      style={{\n        width: stageSize,\n        height: stageSize,\n      }}\n    >\n      {/* SVG filter is INLINE and SCOPED to the wrapper. Never global. */}\n      <svg\n        aria-hidden\n        width={0}\n        height={0}\n        className=\"absolute inset-0 pointer-events-none\"\n        focusable={false}\n      >\n        <defs>\n          <filter id={`goo-${filterId}`}>\n            <feGaussianBlur in=\"SourceGraphic\" stdDeviation=\"9\" result=\"blur\" />\n            <feColorMatrix\n              in=\"blur\"\n              type=\"matrix\"\n              // Crush the alpha channel: blurred halos become hard edges,\n              // intersecting halos form the curved liquid bridges.\n              values=\"\n                1 0 0 0 0\n                0 1 0 0 0\n                0 0 1 0 0\n                0 0 0 22 -11\"\n              result=\"goo\"\n            />\n            <feComposite in=\"SourceGraphic\" in2=\"goo\" operator=\"atop\" />\n          </filter>\n        </defs>\n      </svg>\n\n      {/* The goo \"fluid\" layer — ONLY solid circle blobs go inside the      */}\n      {/* SVG filter so the metaball bridges form cleanly. Icons + the +     */}\n      {/* glyph render in a separate, non-filtered overlay layer above so    */}\n      {/* they stay crisp instead of being blurred away into dots.           */}\n      <div\n        className=\"absolute inset-0 grid place-items-center\"\n        style={{ filter: `url(#goo-${filterId})` }}\n        aria-hidden\n      >\n        {/* Child blobs */}\n        <AnimatePresence>\n          {open &&\n            items.map((it, i) => {\n              const o = offsets[i];\n              return (\n                <motion.span\n                  key={`blob-${it.id}`}\n                  initial={{ x: 0, y: 0, opacity: 0, scale: 0.4 }}\n                  animate={{\n                    x: o.x,\n                    y: o.y,\n                    opacity: 1,\n                    scale: 1,\n                    transition: reduce\n                      ? { duration: 0 }\n                      : {\n                          type: \"spring\",\n                          stiffness: 300,\n                          damping: 15,\n                          delay: 0.02 * i,\n                        },\n                  }}\n                  exit={{\n                    x: 0,\n                    y: 0,\n                    opacity: 0,\n                    scale: 0.4,\n                    transition: { duration: 0.18, ease: [0.7, 0, 0.84, 0] },\n                  }}\n                  className=\"absolute block rounded-full bg-chili-500\"\n                  style={{\n                    width: childSize,\n                    height: childSize,\n                    willChange: \"transform, opacity\",\n                  }}\n                />\n              );\n            })}\n        </AnimatePresence>\n\n        {/* Trigger blob (always present, lives in the goo so it bridges). */}\n        <span\n          className=\"relative z-10 block rounded-full bg-chili-500\"\n          style={{ width: size, height: size }}\n        />\n      </div>\n\n      {/* ── Overlay: interactive buttons + crisp icons (NOT filtered) ── */}\n      <div className=\"absolute inset-0 grid place-items-center\">\n        <AnimatePresence>\n          {open &&\n            items.map((it, i) => {\n              const o = offsets[i];\n              const len = Math.hypot(o.x, o.y) || 1;\n              // Label sits one childSize OUTWARD from the button along the\n              // same radial vector — guaranteed outside the trigger.\n              const labelOffset = childSize / 2 + 14;\n              const labelDx = (o.x / len) * labelOffset;\n              const labelDy = (o.y / len) * labelOffset;\n              return (\n                <ChildButton\n                  key={`btn-${it.id}`}\n                  item={it}\n                  index={i}\n                  offset={o}\n                  childSize={childSize}\n                  labelDx={labelDx}\n                  labelDy={labelDy}\n                  reduce={reduce ?? false}\n                  onSelect={() => {\n                    it.onSelect?.();\n                    setOpen(false);\n                  }}\n                />\n              );\n            })}\n        </AnimatePresence>\n\n        {/* Trigger button — handles input, renders the + icon crisply. */}\n        <motion.button\n          type=\"button\"\n          onClick={() => setOpen((v) => !v)}\n          aria-expanded={open}\n          aria-label={open ? \"Close menu\" : \"Open menu\"}\n          className=\"relative z-10 inline-flex items-center justify-center rounded-full text-white outline-none focus-visible:ring-2 focus-visible:ring-chili-500/60\"\n          style={{\n            width: size,\n            height: size,\n            willChange: \"transform\",\n          }}\n          whileTap={{ scale: 0.92 }}\n          animate={{ rotate: open ? 45 : 0 }}\n          transition={{ type: \"spring\", stiffness: 320, damping: 18 }}\n        >\n          <IconPlus size={Math.round(size * 0.42)} stroke={2.4} />\n        </motion.button>\n      </div>\n    </div>\n  );\n}\n\n/* ── Single petal button + its hover tooltip ───────────────────────── */\n\ninterface ChildButtonProps {\n  item: GooeyMenuItem;\n  index: number;\n  offset: { x: number; y: number };\n  childSize: number;\n  labelDx: number;\n  labelDy: number;\n  reduce: boolean;\n  onSelect: () => void;\n}\n\nfunction ChildButton({\n  item,\n  index,\n  offset,\n  childSize,\n  labelDx,\n  labelDy,\n  reduce,\n  onSelect,\n}: ChildButtonProps) {\n  const [hovered, setHovered] = React.useState(false);\n\n  return (\n    <motion.button\n      type=\"button\"\n      onClick={onSelect}\n      onPointerEnter={() => setHovered(true)}\n      onPointerLeave={() => setHovered(false)}\n      onFocus={() => setHovered(true)}\n      onBlur={() => setHovered(false)}\n      initial={{ x: 0, y: 0, opacity: 0, scale: 0.4 }}\n      animate={{\n        x: offset.x,\n        y: offset.y,\n        opacity: 1,\n        scale: 1,\n        transition: reduce\n          ? { duration: 0 }\n          : {\n              type: \"spring\",\n              stiffness: 300,\n              damping: 15,\n              delay: 0.02 * index,\n            },\n      }}\n      exit={{\n        x: 0,\n        y: 0,\n        opacity: 0,\n        scale: 0.4,\n        transition: { duration: 0.16, ease: [0.7, 0, 0.84, 0] },\n      }}\n      aria-label={item.label}\n      className=\"absolute inline-flex items-center justify-center rounded-full text-white outline-none focus-visible:ring-2 focus-visible:ring-chili-500/60\"\n      style={{\n        width: childSize,\n        height: childSize,\n        willChange: \"transform, opacity\",\n      }}\n    >\n      <span className=\"grid h-full w-full place-items-center [&>svg]:h-[58%] [&>svg]:w-[58%]\">\n        {item.icon}\n      </span>\n\n      {/* Per-button hover tooltip — sits OUTSIDE the petal, away from\n       *  the trigger, along the same radial vector. Fades in only when\n       *  this specific button is hovered/focused. */}\n      <motion.span\n        aria-hidden\n        initial={false}\n        animate={{\n          opacity: hovered ? 1 : 0,\n          scale: hovered ? 1 : 0.92,\n          x: labelDx,\n          y: labelDy,\n        }}\n        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}\n        className=\"pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11px] font-medium tracking-tight text-[var(--foreground)] shadow-[0_6px_14px_-6px_rgba(0,0,0,0.35)]\"\n        style={{ willChange: \"transform, opacity\" }}\n      >\n        {item.label}\n      </motion.span>\n    </motion.button>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/gooey-navigation-menu.tsx. For Pro components and updates, use pnpm dlx wensity@latest add gooey-navigation-menu.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "gooey-navigation-menu",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
+      "shadcnUrl": "https://ui.wensity.com/r/gooey-navigation-menu",
+      "cliInstall": "pnpm dlx wensity@latest add gooey-navigation-menu"
+    }
+  }
+}

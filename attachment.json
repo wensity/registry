@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "attachment",
+  "type": "registry:block",
+  "title": "Attachment",
+  "description": "A file attachment row with a status-driven icon (ready, uploading, processing, uploaded, failed), shimmering title while busy, image thumbnail cards, and a smooth remove animation.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/attachment.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/attachment.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { AnimatePresence, motion, useReducedMotion } from \"framer-motion\";\nimport {\n  IconAlertTriangle,\n  IconCheck,\n  IconClock,\n  IconDownload,\n  IconFile,\n  IconFileMusic,\n  IconFileText,\n  IconFileZip,\n  IconPhoto,\n  IconRefresh,\n  IconVideo,\n  IconX,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type AttachmentVariant = \"compact\" | \"preview\" | \"upload\" | \"removable\" | \"download\";\nexport type AttachmentStatus = \"idle\" | \"pending\" | \"uploading\" | \"processing\" | \"success\" | \"error\";\n\nexport interface AttachmentProps\n  extends Omit<React.HTMLAttributes<HTMLDivElement>, \"onError\"> {\n  variant?: AttachmentVariant;\n  fileName: string;\n  /** Bytes, or a pre-formatted string like \"2.4 MB\". */\n  fileSize?: number | string;\n  /** Image URL shown as a thumbnail instead of the file-type icon (variant=\"preview\"). */\n  thumbnailSrc?: string;\n  /** 0-100. Shown as trailing text when status is \"uploading\". */\n  progress?: number;\n  status?: AttachmentStatus;\n  errorMessage?: string;\n  onRetry?: () => void;\n  /** Shows a remove button. Defaults to true for variant=\"removable\". */\n  removable?: boolean;\n  onRemove?: () => void;\n  /** Shows a download button/link. Defaults to true for variant=\"download\". */\n  downloadHref?: string;\n  onDownload?: () => void;\n}\n\n/** Library-neutral icon surface for remaining pack icons + internal MIME glyphs. */\ntype FileIconComponent = React.ComponentType<{\n  className?: string;\n  size?: number | string;\n  /** Tabler numeric width; Lucide delivery prefers `strokeWidth` (may type `stroke` as SVG color). */\n  stroke?: number | string;\n  strokeWidth?: number | string;\n  \"aria-hidden\"?: boolean | \"true\" | \"false\";\n}>;\n\n/* ─── Easing ────────────────────────────────────────────────── */\n\nconst EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];\n\n/* ─── Internal MIME glyphs (library-independent; not transform targets) ─ */\n\ntype MimeGlyphProps = {\n  className?: string;\n  size?: number | string;\n  stroke?: number | string;\n  strokeWidth?: number | string;\n  \"aria-hidden\"?: boolean | \"true\" | \"false\";\n};\n\nfunction MimeFileGlyph({\n  label,\n  className,\n  size,\n  stroke,\n  strokeWidth,\n  \"aria-hidden\": ariaHidden = true,\n}: MimeGlyphProps & { label: string }) {\n  const sw = strokeWidth ?? stroke ?? 1.75;\n  return (\n    <svg\n      aria-hidden={ariaHidden}\n      viewBox=\"0 0 24 24\"\n      fill=\"none\"\n      width={size}\n      height={size}\n      className={className}\n    >\n      <path\n        d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-6Z\"\n        stroke=\"currentColor\"\n        strokeWidth={sw}\n        strokeLinecap=\"round\"\n        strokeLinejoin=\"round\"\n      />\n      <path\n        d=\"M14 3v5a1 1 0 0 0 1 1h5\"\n        stroke=\"currentColor\"\n        strokeWidth={sw}\n        strokeLinecap=\"round\"\n        strokeLinejoin=\"round\"\n      />\n      <text\n        x=\"12\"\n        y=\"17.25\"\n        textAnchor=\"middle\"\n        fill=\"currentColor\"\n        fontSize=\"5.25\"\n        fontWeight=\"700\"\n        fontFamily=\"ui-sans-serif, system-ui, sans-serif\"\n        letterSpacing=\"0.04em\"\n      >\n        {label}\n      </text>\n    </svg>\n  );\n}\n\nfunction MimePdfGlyph(props: MimeGlyphProps) {\n  return <MimeFileGlyph label=\"PDF\" {...props} />;\n}\nfunction MimeDocGlyph(props: MimeGlyphProps) {\n  return <MimeFileGlyph label=\"DOC\" {...props} />;\n}\nfunction MimeCsvGlyph(props: MimeGlyphProps) {\n  return <MimeFileGlyph label=\"CSV\" {...props} />;\n}\nfunction MimePptGlyph(props: MimeGlyphProps) {\n  return <MimeFileGlyph label=\"PPT\" {...props} />;\n}\nfunction MimeXlsGlyph(props: MimeGlyphProps) {\n  return <MimeFileGlyph label=\"XLS\" {...props} />;\n}\n\n/** Canonical CSS spinner (Button recipe) — not an icon-pack target. */\nfunction AttachmentUploadSpinner({ className }: { className?: string }) {\n  return (\n    <span\n      aria-hidden=\"true\"\n      className={cn(\n        \"size-[62.5%] shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\",\n        className,\n      )}\n    />\n  );\n}\n\n/* ─── File Icon Resolution ──────────────────────────────────── */\n\n/** MIME-specific indicators — internal SVG only (U-2 / A-18). */\nconst mimeGlyphMap: Record<string, FileIconComponent> = {\n  pdf: MimePdfGlyph,\n  doc: MimeDocGlyph,\n  docx: MimeDocGlyph,\n  xls: MimeXlsGlyph,\n  xlsx: MimeXlsGlyph,\n  csv: MimeCsvGlyph,\n  ppt: MimePptGlyph,\n  pptx: MimePptGlyph,\n};\n\n/** Remaining action/decorative pack icons (CLI transform targets). */\n// Cast absorbs Tabler/Lucide SVG prop variance while keeping a library-neutral call site.\nconst packIconMap: Record<string, FileIconComponent> = {\n  zip: IconFileZip,\n  rar: IconFileZip,\n  \"7z\": IconFileZip,\n  png: IconPhoto,\n  jpg: IconPhoto,\n  jpeg: IconPhoto,\n  gif: IconPhoto,\n  webp: IconPhoto,\n  svg: IconPhoto,\n  mp4: IconVideo,\n  mov: IconVideo,\n  webm: IconVideo,\n  mp3: IconFileMusic,\n  wav: IconFileMusic,\n  txt: IconFileText,\n  md: IconFileText,\n} as Record<string, FileIconComponent>;\n\nfunction getFileExtension(fileName: string): string {\n  const parts = fileName.split(\".\");\n  return parts.length > 1 ? (parts.pop() ?? \"\").toLowerCase() : \"\";\n}\n\nfunction resolveFileIcon(fileName: string): FileIconComponent {\n  const extension = getFileExtension(fileName);\n  return mimeGlyphMap[extension] ?? packIconMap[extension] ?? IconFile;\n}\n\nfunction formatFileSize(bytes: number): string {\n  if (bytes <= 0) return \"0 B\";\n  const units = [\"B\", \"KB\", \"MB\", \"GB\", \"TB\"];\n  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);\n  const value = bytes / 1024 ** exponent;\n  return `${exponent === 0 ? value : value.toFixed(1)} ${units[exponent]}`;\n}\n\nfunction formatFileSizeProp(fileSize: number | string | undefined): string | undefined {\n  if (fileSize === undefined) return undefined;\n  return typeof fileSize === \"number\" ? formatFileSize(fileSize) : fileSize;\n}\n\n/* ─── Variant Layout ────────────────────────────────────────── */\n\nconst rowPadding: Record<AttachmentVariant, string> = {\n  compact: \"gap-2.5 px-2.5 py-2\",\n  preview: \"gap-3 px-3 py-3\",\n  upload: \"gap-3 px-3 py-2.5\",\n  removable: \"gap-3 px-3 py-2.5\",\n  download: \"gap-3 px-3 py-2.5\",\n};\n\nconst iconTileSize: Record<AttachmentVariant, string> = {\n  compact: \"size-8 [&_svg]:size-5\",\n  preview: \"size-11 [&_svg]:size-6\",\n  upload: \"size-10 [&_svg]:size-[22px]\",\n  removable: \"size-10 [&_svg]:size-[22px]\",\n  download: \"size-10 [&_svg]:size-[22px]\",\n};\n\n// Single shared type scale so every card (row or image) reads consistently.\nconst ATTACHMENT_NAME_TEXT = \"text-[13px]\";\nconst ATTACHMENT_META_TEXT = \"text-[11.5px]\";\n\n/* ─── Status Presentation ───────────────────────────────────── */\n\nfunction renderStatusGlyph(\n  status: AttachmentStatus,\n  FileIcon: FileIconComponent,\n): React.ReactNode {\n  if (status === \"uploading\") {\n    return <AttachmentUploadSpinner />;\n  }\n  if (status === \"pending\") {\n    return <IconClock stroke={1.75} />;\n  }\n  if (status === \"success\") {\n    return <IconCheck stroke={2.25} />;\n  }\n  if (status === \"error\") {\n    return <IconAlertTriangle stroke={1.75} />;\n  }\n  return <FileIcon stroke={1.75} />;\n}\n\nfunction defaultStatusText(\n  status: AttachmentStatus,\n  { progress, formattedSize, errorMessage }: { progress: number; formattedSize?: string; errorMessage?: string },\n): string {\n  switch (status) {\n    case \"pending\":\n      return \"Ready to upload\";\n    case \"uploading\":\n      return `Uploading · ${Math.round(progress)}%`;\n    case \"processing\":\n      return \"Processing document\";\n    case \"success\":\n      return formattedSize ? `Uploaded · ${formattedSize}` : \"Uploaded\";\n    case \"error\":\n      return errorMessage ?? \"Upload failed. Try again.\";\n    default:\n      return formattedSize ?? \"\";\n  }\n}\n\n/* ─── <Attachment> ──────────────────────────────────────────── */\n\nexport const Attachment = React.forwardRef<HTMLDivElement, AttachmentProps>(\n  (\n    {\n      variant = \"compact\",\n      fileName,\n      fileSize,\n      thumbnailSrc,\n      progress = 0,\n      status = \"idle\",\n      errorMessage,\n      onRetry,\n      removable,\n      onRemove,\n      downloadHref,\n      onDownload,\n      className,\n      ...props\n    },\n    ref,\n  ) => {\n    const [removed, setRemoved] = React.useState(false);\n    const prefersReducedMotion = useReducedMotion();\n\n    const showRemove = removable ?? variant === \"removable\";\n    const showDownload = Boolean(downloadHref || onDownload) || variant === \"download\";\n    const showThumbnail = variant === \"preview\" && Boolean(thumbnailSrc);\n    const isError = status === \"error\";\n    const isSuccess = status === \"success\";\n    const isBusy = status === \"uploading\" || status === \"processing\";\n\n    const FileIcon = resolveFileIcon(fileName);\n    const statusGlyph = renderStatusGlyph(status, FileIcon);\n    const formattedSize = formatFileSizeProp(fileSize);\n    const statusText = defaultStatusText(status, { progress, formattedSize, errorMessage });\n\n    useAttachmentShimmerStyles();\n\n    const handleRemove = React.useCallback(() => {\n      setRemoved(true);\n    }, []);\n\n    // Destructure HTML-only event handlers that conflict with Framer Motion's\n    // drag types to prevent TS2322 when spreading onto motion.div.\n    const {\n      onDrag: _onDrag,\n      onDragStart: _onDragStart,\n      onDragEnd: _onDragEnd,\n      onAnimationStart: _onAnimationStart,\n      ...safeProps\n    } = props;\n\n    if (showThumbnail) {\n      return (\n        <AttachmentImageCard\n          ref={ref}\n          fileName={fileName}\n          formattedSize={formattedSize}\n          thumbnailSrc={thumbnailSrc as string}\n          removed={removed}\n          showRemove={showRemove}\n          onRequestRemove={handleRemove}\n          onRemoveComplete={onRemove}\n          prefersReducedMotion={Boolean(prefersReducedMotion)}\n          className={className}\n          {...safeProps}\n        />\n      );\n    }\n\n    return (\n      <AnimatePresence initial={false} onExitComplete={() => onRemove?.()}>\n        {!removed && (\n          <motion.div data-wensity-primitive=\"\"\n            ref={ref}\n            data-slot=\"attachment\"\n            data-variant={variant}\n            data-status={status}\n            layout={!prefersReducedMotion}\n            initial={false}\n            exit={{ opacity: 0, height: 0 }}\n            transition={{\n              // Reduced motion: snap the structural height/layout collapse but\n              // keep a quick opacity fade so removal still reads as a transition.\n              height: { duration: prefersReducedMotion ? 0 : 0.22, ease: EASE_OUT },\n              opacity: { duration: prefersReducedMotion ? 0.15 : 0.18, ease: EASE_OUT },\n            }}\n            style={{ overflow: \"hidden\" }}\n            className={className}\n            {...safeProps}\n          >\n            <div\n              className={cn(\n                \"flex items-center rounded-[var(--primitive-radius-surface)] border transition-colors duration-200\",\n                status === \"pending\"\n                  ? \"border-dashed bg-transparent border-[color-mix(in_srgb,var(--foreground)_18%,transparent)]\"\n                  : cn(\n                      \"bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))]\",\n                      \"dark:bg-[var(--primitive-surface-elevated)]\",\n                      isError\n                        ? \"border-[var(--primitive-destructive-border)]\"\n                        : isSuccess\n                          ? \"border-[var(--primitive-success-border)]\"\n                          : \"border-[var(--border)]\",\n                    ),\n                rowPadding[variant],\n              )}\n            >\n              {/* ── Status / File Icon ── */}\n              <div\n                aria-hidden=\"true\"\n                className={cn(\n                  \"relative flex shrink-0 items-center justify-center overflow-hidden rounded-[var(--primitive-radius-control-sm)] transition-colors duration-200\",\n                  isError\n                    ? \"bg-[var(--primitive-destructive-surface)] text-[var(--primitive-destructive)]\"\n                    : isSuccess\n                      ? \"bg-[var(--primitive-success-surface)] text-[var(--primitive-success)]\"\n                      : \"bg-[color-mix(in_srgb,var(--foreground)_6%,var(--background))] text-[var(--foreground)]\",\n                  iconTileSize[variant],\n                )}\n              >\n                <AnimatePresence initial={false}>\n                  <motion.span\n                    key={status}\n                    initial={{ opacity: 0, scale: 0.85 }}\n                    animate={{ opacity: 1, scale: 1 }}\n                    exit={{ opacity: 0, scale: 0.85 }}\n                    transition={\n                      isSuccess && !prefersReducedMotion\n                        ? { type: \"spring\", stiffness: 420, damping: 18, mass: 0.6 }\n                        : { duration: prefersReducedMotion ? 0 : 0.16, ease: EASE_OUT }\n                    }\n                    className=\"absolute inset-0 flex items-center justify-center\"\n                  >\n                    {statusGlyph}\n                  </motion.span>\n                </AnimatePresence>\n              </div>\n\n              {/* ── Name / Meta ── */}\n              <div className=\"min-w-0 flex-1\">\n                <p\n                  className={cn(\n                    \"truncate font-medium leading-none tracking-[-0.01em]\",\n                    ATTACHMENT_NAME_TEXT,\n                    isBusy && !prefersReducedMotion\n                      ? \"wensity-attachment-shimmer-text\"\n                      : \"text-[var(--foreground)]\",\n                  )}\n                  title={fileName}\n                >\n                  {fileName}\n                </p>\n                <p\n                  className={cn(\n                    \"mt-1 truncate\",\n                    ATTACHMENT_META_TEXT,\n                    isError\n                      ? \"text-[var(--primitive-destructive)]\"\n                      : \"text-[var(--muted-foreground)]\",\n                  )}\n                >\n                  {statusText}\n                </p>\n              </div>\n\n              {/* ── Trailing Actions ── */}\n              <div className=\"flex shrink-0 items-center gap-1\">\n                {isError && onRetry && (\n                  <AttachmentIconButton label={`Retry ${fileName}`} onClick={onRetry}>\n                    <IconRefresh className=\"size-4\" stroke={1.9} />\n                  </AttachmentIconButton>\n                )}\n\n                {showDownload && (\n                  <AttachmentIconButton\n                    label={`Download ${fileName}`}\n                    onClick={() => {\n                      onDownload?.();\n                      if (downloadHref) window.open(downloadHref, \"_blank\", \"noopener,noreferrer\");\n                    }}\n                  >\n                    <IconDownload className=\"size-4\" stroke={1.9} />\n                  </AttachmentIconButton>\n                )}\n\n                {showRemove && (\n                  <AttachmentIconButton label={`Remove ${fileName}`} onClick={handleRemove}>\n                    <IconX className=\"size-4\" stroke={1.9} />\n                  </AttachmentIconButton>\n                )}\n              </div>\n            </div>\n          </motion.div>\n        )}\n      </AnimatePresence>\n    );\n  },\n);\nAttachment.displayName = \"Attachment\";\n\n/* ─── <AttachmentImageCard> (variant=\"preview\" with thumbnailSrc) ──── */\n\ninterface AttachmentImageCardProps extends React.HTMLAttributes<HTMLDivElement> {\n  fileName: string;\n  formattedSize?: string;\n  thumbnailSrc: string;\n  removed: boolean;\n  showRemove: boolean;\n  onRequestRemove: () => void;\n  onRemoveComplete?: () => void;\n  prefersReducedMotion: boolean;\n}\n\nconst AttachmentImageCard = React.forwardRef<HTMLDivElement, AttachmentImageCardProps>(\n  (\n    {\n      fileName,\n      formattedSize,\n      thumbnailSrc,\n      removed,\n      showRemove,\n      onRequestRemove,\n      onRemoveComplete,\n      prefersReducedMotion,\n      className,\n      ...props\n    },\n    ref,\n  ) => {\n    const extension = getFileExtension(fileName).toUpperCase();\n    const meta = [extension, formattedSize].filter(Boolean).join(\" · \");\n\n    const {\n      onDrag: _onDrag,\n      onDragStart: _onDragStart,\n      onDragEnd: _onDragEnd,\n      onAnimationStart: _onAnimationStart,\n      ...safeProps\n    } = props;\n\n    return (\n      <AnimatePresence initial={false} onExitComplete={() => onRemoveComplete?.()}>\n        {!removed && (\n          <motion.div data-wensity-primitive=\"\"\n            ref={ref}\n            data-slot=\"attachment\"\n            data-variant=\"preview\"\n            layout={!prefersReducedMotion}\n            initial={false}\n            exit={{ opacity: 0, scale: 0.94 }}\n            transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: EASE_OUT }}\n            className={cn(\"group w-[136px] shrink-0\", className)}\n            {...safeProps}\n          >\n            <div\n              className={cn(\n                \"rounded-[var(--primitive-radius-surface)] border p-2\",\n                \"border-[var(--border)]\",\n                \"bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))]\",\n                \"dark:bg-[var(--primitive-surface-elevated)]\",\n              )}\n            >\n              <div className=\"relative aspect-square w-full overflow-hidden rounded-[var(--primitive-radius-control-sm)] bg-[color-mix(in_srgb,var(--foreground)_6%,var(--background))]\">\n                {/* eslint-disable-next-line @next/next/no-img-element */}\n                <img src={thumbnailSrc} alt=\"\" className=\"size-full object-cover\" />\n\n                {showRemove && (\n                  <button\n                    type=\"button\"\n                    aria-label={`Remove ${fileName}`}\n                    onClick={onRequestRemove}\n                    className={cn(\n                      \"absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full\",\n                      \"bg-[var(--primitive-backdrop)] text-[var(--primitive-text-inverse)] backdrop-blur-sm\",\n                      \"dark:text-[var(--primitive-control-solid)]\",\n                      \"opacity-0 transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]\",\n                      \"group-hover:opacity-100 focus-visible:opacity-100\",\n                      \"outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                      \"focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--primitive-backdrop)]\",\n                    )}\n                  >\n                    <IconX className=\"size-3.5\" stroke={2} />\n                  </button>\n                )}\n              </div>\n\n              <p\n                className={cn(\n                  \"mt-2 truncate font-medium leading-none tracking-[-0.01em] text-[var(--foreground)]\",\n                  ATTACHMENT_NAME_TEXT,\n                )}\n                title={fileName}\n              >\n                {fileName}\n              </p>\n              {meta && (\n                <p className={cn(\"mt-1 truncate text-[var(--muted-foreground)]\", ATTACHMENT_META_TEXT)}>\n                  {meta}\n                </p>\n              )}\n            </div>\n          </motion.div>\n        )}\n      </AnimatePresence>\n    );\n  },\n);\nAttachmentImageCard.displayName = \"AttachmentImageCard\";\n\n/* ─── Icon Button ───────────────────────────────────────────── */\n\nfunction AttachmentIconButton({\n  label,\n  onClick,\n  children,\n}: {\n  label: string;\n  onClick: () => void;\n  children: React.ReactNode;\n}) {\n  return (\n    <motion.button\n      type=\"button\"\n      aria-label={label}\n      onClick={onClick}\n      whileTap={{ scale: 0.94 }}\n      transition={{ type: \"spring\", stiffness: 500, damping: 32 }}\n      className={cn(\n        \"flex size-7 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[var(--muted-foreground)]\",\n        \"outline-none transition-colors duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]\",\n        \"hover:bg-[color-mix(in_srgb,var(--foreground)_6%,var(--background))] hover:text-[var(--foreground)]\",\n        \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n      )}\n    >\n      {children}\n    </motion.button>\n  );\n}\n\n/* ─── Shimmer Text (uploading / processing) ─────────────────── */\n\nfunction useAttachmentShimmerStyles() {\n  React.useEffect(() => {\n    ensureAttachmentShimmerStyles();\n  }, []);\n}\n\nfunction ensureAttachmentShimmerStyles() {\n  if (typeof document === \"undefined\") return;\n  if (document.getElementById(\"wensity-attachment-styles\")) return;\n\n  const style = document.createElement(\"style\");\n  style.id = \"wensity-attachment-styles\";\n  style.textContent = `\n@media (prefers-reduced-motion: no-preference) {\n  .wensity-attachment-shimmer-text {\n    color: transparent;\n    background-image: linear-gradient(\n      90deg,\n      var(--muted-foreground) 0%,\n      var(--muted-foreground) 35%,\n      var(--foreground) 50%,\n      var(--muted-foreground) 65%,\n      var(--muted-foreground) 100%\n    );\n    background-size: 200% 100%;\n    background-clip: text;\n    -webkit-background-clip: text;\n    animation: wensity-attachment-text-shimmer 1.8s ease-in-out infinite;\n  }\n}\n\n@keyframes wensity-attachment-text-shimmer {\n  from { background-position: 200% 0; }\n  to { background-position: -200% 0; }\n}\n`;\n  document.head.appendChild(style);\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/attachment.tsx. For Pro components and updates, use pnpm dlx wensity@latest add attachment.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "attachment",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/attachment",
+      "shadcnUrl": "https://ui.wensity.com/r/attachment",
+      "cliInstall": "pnpm dlx wensity@latest add attachment"
+    }
+  }
+}

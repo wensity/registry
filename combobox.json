@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "combobox",
+  "type": "registry:block",
+  "title": "Combobox",
+  "description": "A searchable combobox for forms, filters, and async choices.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "@tabler/icons-react",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/combobox.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/combobox.tsx",
+      "content": "\"use client\";\n\n/**\n * Combobox — Base UI Combobox foundation (Phase 5).\n *\n * Public API preserved: options/value/onValueChange/multiple, async\n * (filter=false + onSearchChange), creatable (Wensity-owned action row),\n * label/hint/error, status icons, sizes, and multi-selection summary.\n *\n * D-17: onOpenChange → (open: boolean) => void.\n *\n * Tokens: solid `--primitive-surface-overlay` + `--primitive-shadow-overlay`\n * for the popup surface. Trigger heights/radius come from the control family\n * (`--primitive-control-height-*`, `--primitive-radius-control`).\n */\n\nimport * as React from \"react\";\nimport { Combobox as BaseCombobox } from \"@base-ui/react/combobox\";\nimport { IconPlus, IconSearch } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type ComboboxSize = \"sm\" | \"md\" | \"lg\";\nexport type ComboboxStatus = \"default\" | \"error\" | \"success\";\n\nexport type ComboboxOption = {\n  value: string;\n  label: React.ReactNode;\n  description?: React.ReactNode;\n  leading?: React.ReactNode;\n  disabled?: boolean;\n};\n\nexport type ComboboxGroup = {\n  label?: React.ReactNode;\n  options: ComboboxOption[];\n};\n\nexport interface ComboboxProps {\n  id?: string;\n  options: ComboboxOption[] | ComboboxGroup[];\n  value?: string | string[];\n  defaultValue?: string | string[];\n  onValueChange?: (value: string | string[]) => void;\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  multiple?: boolean;\n  creatable?: boolean;\n  onCreateOption?: (inputValue: string) => ComboboxOption | void;\n  createLabel?: (inputValue: string) => React.ReactNode;\n  loading?: boolean;\n  onSearchChange?: (query: string) => void;\n  /** Client-side filter. Set false when options are driven by `onSearchChange`. */\n  filter?: boolean;\n  name?: string;\n  required?: boolean;\n  disabled?: boolean;\n  label?: React.ReactNode;\n  hint?: React.ReactNode;\n  error?: React.ReactNode;\n  success?: React.ReactNode;\n  status?: ComboboxStatus;\n  placeholder?: string;\n  emptyMessage?: React.ReactNode;\n  /** Screen reader copy when nothing is selected in `multiple` mode. */\n  emptySelectionLabel?: React.ReactNode;\n  /** Close the list when every selectable option is chosen in `multiple` mode. */\n  closeWhenAllSelected?: boolean;\n  comboboxSize?: ComboboxSize;\n  fullWidth?: boolean;\n  leadingIcon?: React.ReactNode;\n  containerClassName?: string;\n  triggerClassName?: string;\n  contentClassName?: string;\n  \"aria-describedby\"?: string;\n  \"aria-invalid\"?: boolean | \"true\" | \"false\";\n  \"aria-required\"?: boolean | \"true\" | \"false\";\n}\n\n/** Sentinel value used for the Wensity \"create new\" action row. */\nconst CREATE_SENTINEL = \"__wensity_combobox_create__\";\n\nconst triggerHeights: Record<ComboboxSize, string> = {\n  sm: \"min-h-[var(--primitive-control-height-sm)] text-xs\",\n  md: \"min-h-[var(--primitive-control-height-md)] text-sm\",\n  lg: \"min-h-[var(--primitive-control-height-lg)] text-[15px]\",\n};\n\nconst inputHeights: Record<ComboboxSize, string> = {\n  sm: \"px-3\",\n  md: \"px-3.5\",\n  lg: \"px-4\",\n};\n\nconst contentWidths: Record<ComboboxSize, string> = {\n  sm: \"min-w-[12rem]\",\n  md: \"min-w-[15rem]\",\n  lg: \"min-w-[17rem]\",\n};\n\nconst overlaySurfaceClass = cn(\n  \"border border-[var(--border)] bg-[var(--primitive-surface-overlay)] text-[var(--foreground)]\",\n  \"[box-shadow:var(--primitive-shadow-overlay)]\",\n);\n\nconst popupMotionClass = cn(\n  \"origin-[var(--transform-origin)] transform-gpu outline-none\",\n  \"transition-[opacity,scale] duration-[180ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[ending-style]:duration-[120ms]\",\n  \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n  \"data-[starting-style]:scale-[0.96] data-[ending-style]:scale-[0.96]\",\n  \"motion-reduce:transition-none motion-reduce:data-[starting-style]:scale-100 motion-reduce:data-[ending-style]:scale-100\",\n);\n\nfunction adaptOpenChange(\n  onOpenChange?: (open: boolean) => void,\n): ((open: boolean, details: unknown) => void) | undefined {\n  if (!onOpenChange) return undefined;\n  return (open) => onOpenChange(open);\n}\n\nfunction isGroupedOptions(\n  options: ComboboxOption[] | ComboboxGroup[],\n): options is ComboboxGroup[] {\n  return options.length > 0 && \"options\" in options[0];\n}\n\nfunction flattenOptions(options: ComboboxOption[] | ComboboxGroup[]) {\n  return isGroupedOptions(options)\n    ? options.flatMap((group) => group.options)\n    : options;\n}\n\nfunction getOptionLabelText(option: ComboboxOption) {\n  return typeof option.label === \"string\" || typeof option.label === \"number\"\n    ? String(option.label)\n    : option.value;\n}\n\nfunction buildMultipleFieldSummary(\n  selectedOptions: ComboboxOption[],\n  selectedCount: number,\n  totalSelectable: number,\n) {\n  if (selectedCount === 0) return null;\n  if (totalSelectable > 0 && selectedCount >= totalSelectable) {\n    return totalSelectable === 1\n      ? getOptionLabelText(selectedOptions[0]!)\n      : `All ${totalSelectable} selected`;\n  }\n  if (selectedCount === 1 && selectedOptions[0]) {\n    return getOptionLabelText(selectedOptions[0]);\n  }\n  const first = selectedOptions[0] ? getOptionLabelText(selectedOptions[0]) : \"\";\n  const remaining = selectedCount - 1;\n  return remaining > 0 ? `${first} + ${remaining} more` : first;\n}\n\nfunction countSelectableOptions(options: ComboboxOption[]) {\n  return options.filter((option) => !option.disabled).length;\n}\n\nfunction normalizeValue(\n  value: string | string[] | undefined,\n  multiple: boolean,\n): string | string[] {\n  if (multiple) {\n    if (Array.isArray(value)) return value;\n    if (value) return [value];\n    return [];\n  }\n  return Array.isArray(value) ? (value[0] ?? \"\") : (value ?? \"\");\n}\n\n/** ButtonSpinner recipe — canonical loading indicator (PRIM-MOTION-002). */\nfunction ButtonSpinner({ className }: { className?: string }) {\n  return (\n    <span\n      aria-hidden\n      className={cn(\n        \"size-3.5 shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\",\n        className,\n      )}\n    />\n  );\n}\n\nfunction ComboboxSuccessCheck() {\n  return (\n    <svg\n      aria-hidden=\"true\"\n      viewBox=\"0 0 16 16\"\n      fill=\"none\"\n      className=\"size-4 text-[var(--primitive-success)]\"\n    >\n      <path\n        d=\"M3.25 8.1 6.35 11.2 12.75 4.6\"\n        stroke=\"currentColor\"\n        strokeWidth=\"2\"\n        strokeLinecap=\"round\"\n        strokeLinejoin=\"round\"\n      />\n    </svg>\n  );\n}\n\nfunction ComboboxErrorX() {\n  return (\n    <svg\n      aria-hidden=\"true\"\n      viewBox=\"0 0 16 16\"\n      fill=\"none\"\n      className=\"size-4 text-[var(--primitive-destructive)]\"\n    >\n      <path\n        d=\"M4.5 4.5 11.5 11.5\"\n        stroke=\"currentColor\"\n        strokeWidth=\"2\"\n        strokeLinecap=\"round\"\n      />\n      <path\n        d=\"M11.5 4.5 4.5 11.5\"\n        stroke=\"currentColor\"\n        strokeWidth=\"2\"\n        strokeLinecap=\"round\"\n      />\n    </svg>\n  );\n}\n\nexport function Combobox({\n  options,\n  id,\n  value,\n  defaultValue,\n  onValueChange,\n  open: controlledOpen,\n  defaultOpen,\n  onOpenChange,\n  multiple = false,\n  creatable = false,\n  onCreateOption,\n  createLabel,\n  loading = false,\n  onSearchChange,\n  filter = true,\n  name,\n  required,\n  disabled,\n  label,\n  hint,\n  error,\n  success,\n  status: statusProp,\n  placeholder = \"Search…\",\n  emptyMessage = \"No results found.\",\n  emptySelectionLabel = \"Nothing selected.\",\n  closeWhenAllSelected = true,\n  comboboxSize = \"md\",\n  fullWidth = true,\n  leadingIcon,\n  containerClassName,\n  triggerClassName,\n  contentClassName,\n  \"aria-describedby\": ariaDescribedBy,\n  \"aria-invalid\": ariaInvalid,\n  \"aria-required\": ariaRequired,\n}: ComboboxProps) {\n  const reactId = React.useId();\n  const comboboxId = id ?? `wensity-combobox-${reactId}`;\n  const labelId = label ? `${comboboxId}-label` : undefined;\n  const hintId = hint ? `${comboboxId}-hint` : undefined;\n  const errorId = error ? `${comboboxId}-error` : undefined;\n  const successId = success ? `${comboboxId}-success` : undefined;\n\n  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(\n    defaultOpen ?? false,\n  );\n  const [uncontrolledValue, setUncontrolledValue] = React.useState(() =>\n    normalizeValue(defaultValue, multiple),\n  );\n  const [inputValue, setInputValue] = React.useState(\"\");\n  const [createdOptions, setCreatedOptions] = React.useState<ComboboxOption[]>([]);\n\n  const open = controlledOpen ?? uncontrolledOpen;\n  const selectedValue = value ?? uncontrolledValue;\n\n  const authoredOptions = React.useMemo(() => flattenOptions(options), [options]);\n  const localCreatedOptions = React.useMemo(() => {\n    if (createdOptions.length === 0) return [];\n    const authoredValues = new Set(authoredOptions.map((option) => option.value));\n    return createdOptions.filter((option) => !authoredValues.has(option.value));\n  }, [authoredOptions, createdOptions]);\n  const flattenedOptions = React.useMemo(\n    () =>\n      localCreatedOptions.length > 0\n        ? [...authoredOptions, ...localCreatedOptions]\n        : authoredOptions,\n    [authoredOptions, localCreatedOptions],\n  );\n\n  const resolvedStatus: ComboboxStatus =\n    statusProp ?? (error ? \"error\" : success ? \"success\" : \"default\");\n\n  const selectedValues = multiple\n    ? Array.isArray(selectedValue)\n      ? selectedValue\n      : []\n    : selectedValue\n      ? [selectedValue as string]\n      : [];\n\n  const selectedOptions = flattenedOptions.filter((option) =>\n    selectedValues.includes(option.value),\n  );\n  const selectableCount = countSelectableOptions(flattenedOptions);\n  const hasSelection = selectedValues.length > 0;\n  const allSelected =\n    multiple && hasSelection && selectableCount > 0 && selectedValues.length >= selectableCount;\n\n  const describedBy =\n    [ariaDescribedBy, errorId, successId, hintId].filter(Boolean).join(\" \") ||\n    undefined;\n\n  const filterQuery = filter ? inputValue.trim().toLowerCase() : \"\";\n\n  const filteredFlat = React.useMemo(() => {\n    if (!filterQuery) return flattenedOptions;\n    return flattenedOptions.filter((option) => {\n      const labelText = getOptionLabelText(option).toLowerCase();\n      const descriptionText =\n        typeof option.description === \"string\"\n          ? option.description.toLowerCase()\n          : \"\";\n      return (\n        labelText.includes(filterQuery) ||\n        option.value.toLowerCase().includes(filterQuery) ||\n        descriptionText.includes(filterQuery)\n      );\n    });\n  }, [filterQuery, flattenedOptions]);\n\n  const canCreate =\n    creatable &&\n    inputValue.trim().length > 0 &&\n    !flattenedOptions.some(\n      (option) =>\n        getOptionLabelText(option).toLowerCase() === inputValue.trim().toLowerCase() ||\n        option.value.toLowerCase() === inputValue.trim().toLowerCase(),\n    );\n\n  const setOpen = React.useCallback(\n    (next: boolean) => {\n      if (controlledOpen === undefined) setUncontrolledOpen(next);\n      onOpenChange?.(next);\n    },\n    [controlledOpen, onOpenChange],\n  );\n\n  const commitValue = React.useCallback(\n    (next: string | string[]) => {\n      if (value === undefined) setUncontrolledValue(next);\n      onValueChange?.(next);\n    },\n    [onValueChange, value],\n  );\n\n  const performCreate = React.useCallback(() => {\n    const trimmed = inputValue.trim();\n    if (!trimmed || !creatable) return;\n\n    const created = onCreateOption?.(trimmed) ?? {\n      value: trimmed.toLowerCase().replace(/\\s+/g, \"-\"),\n      label: trimmed,\n    };\n\n    if (!created) return;\n    setCreatedOptions((current) =>\n      current.some((option) => option.value === created.value) ? current : [...current, created],\n    );\n\n    if (multiple) {\n      const current = Array.isArray(selectedValue) ? selectedValue : [];\n      if (!current.includes(created.value)) {\n        commitValue([...current, created.value]);\n      }\n    } else {\n      commitValue(created.value);\n      setOpen(false);\n    }\n    setInputValue(\"\");\n    onSearchChange?.(\"\");\n  }, [\n    commitValue,\n    creatable,\n    inputValue,\n    multiple,\n    onCreateOption,\n    onSearchChange,\n    selectedValue,\n    setOpen,\n  ]);\n\n  const handleValueChange = React.useCallback(\n    (next: string | string[] | null) => {\n      // Base UI reports `null` for single-select clear; normalize to \"\".\n      const normalized = multiple\n        ? Array.isArray(next)\n          ? next\n          : []\n        : ((next as string | null) ?? \"\");\n\n      if (multiple && Array.isArray(normalized) && normalized.includes(CREATE_SENTINEL)) {\n        // Strip the sentinel; performCreate will add the real option below.\n        performCreate();\n        return;\n      }\n      if (!multiple && normalized === CREATE_SENTINEL) {\n        performCreate();\n        return;\n      }\n\n      commitValue(normalized);\n\n      if (\n        multiple &&\n        Array.isArray(normalized) &&\n        closeWhenAllSelected &&\n        selectableCount > 0 &&\n        normalized.length >= selectableCount\n      ) {\n        setOpen(false);\n      } else if (!multiple) {\n        setOpen(false);\n      }\n    },\n    [\n      closeWhenAllSelected,\n      commitValue,\n      multiple,\n      performCreate,\n      selectableCount,\n      setOpen,\n    ],\n  );\n\n  const handleInputValueChange = React.useCallback(\n    (next: string) => {\n      setInputValue(next);\n      onSearchChange?.(next);\n    },\n    [onSearchChange],\n  );\n\n  const handleInputKeyDown = React.useCallback(\n    (event: React.KeyboardEvent<HTMLInputElement>) => {\n      if (\n        event.key === \"Backspace\" &&\n        multiple &&\n        !inputValue &&\n        selectedValues.length\n      ) {\n        commitValue(selectedValues.slice(0, -1));\n      }\n    },\n    [commitValue, inputValue, multiple, selectedValues],\n  );\n\n  const multipleFieldSummary =\n    multiple && !open\n      ? buildMultipleFieldSummary(\n          selectedOptions,\n          selectedValues.length,\n          selectableCount,\n        )\n      : null;\n\n  const inputPlaceholder =\n    open && multiple && hasSelection ? \"Search to add or remove…\" : placeholder;\n\n  const adaptedOnValueChange = React.useCallback(\n    (next: string | string[] | null) => {\n      handleValueChange(next);\n    },\n    [handleValueChange],\n  );\n\n  const rootValue = multiple ? selectedValues : ((selectedValues[0] ?? null) as string | null);\n\n  const renderOptionRow = (option: ComboboxOption) => {\n    const isSelected = selectedValues.includes(option.value);\n    return (\n      <BaseCombobox.Item\n        key={option.value}\n        value={option.value}\n        disabled={option.disabled}\n        className={cn(\n          \"group/combobox-item relative flex min-h-9 cursor-default select-none items-center gap-3\",\n          \"rounded-[var(--primitive-radius-item)] px-2.5 py-2 pr-9 text-sm outline-none\",\n          \"text-[var(--foreground)]\",\n          \"data-[disabled]:pointer-events-none data-[disabled]:opacity-40\",\n          \"data-[highlighted]:bg-[var(--primitive-surface-selected)]\",\n          isSelected && \"bg-[var(--primitive-surface-selected)]\",\n        )}\n      >\n        {option.leading ? (\n          <span className=\"grid size-7 shrink-0 place-items-center rounded-[var(--primitive-radius-control-sm)] border border-[var(--border)] bg-[var(--primitive-surface-hover)] text-[var(--muted-foreground)] [&_svg]:size-4\">\n            {option.leading}\n          </span>\n        ) : null}\n        <span className=\"flex min-w-0 flex-1 items-baseline gap-2\">\n          <span className=\"min-w-0 truncate font-medium tracking-[-0.01em]\">\n            {option.label}\n          </span>\n          {option.description ? (\n            <span className=\"min-w-0 flex-1 truncate text-[12px] leading-none text-[var(--primitive-text-secondary)]\">\n              {option.description}\n            </span>\n          ) : null}\n        </span>\n        <BaseCombobox.ItemIndicator className=\"absolute right-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]\">\n          <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" className=\"size-3.5\">\n            <path\n              d=\"M3.4 8.2 6.45 11.25 12.6 4.75\"\n              stroke=\"currentColor\"\n              strokeWidth=\"2\"\n              strokeLinecap=\"round\"\n              strokeLinejoin=\"round\"\n            />\n          </svg>\n        </BaseCombobox.ItemIndicator>\n      </BaseCombobox.Item>\n    );\n  };\n\n  return (\n    <div\n      className={cn(\n        \"flex flex-col gap-1.5\",\n        fullWidth ? \"w-full\" : \"w-fit\",\n        containerClassName,\n      )}\n    >\n      {label ? (\n        <label\n          id={labelId}\n          htmlFor={comboboxId}\n          className=\"text-[13px] font-medium leading-none tracking-[-0.01em] text-[var(--foreground)]\"\n        >\n          {label}\n        </label>\n      ) : null}\n\n      <BaseCombobox.Root data-wensity-primitive=\"\"\n        id={comboboxId}\n        name={name}\n        required={required}\n        disabled={disabled}\n        open={open}\n        onOpenChange={adaptOpenChange(setOpen)}\n        inputValue={inputValue}\n        onInputValueChange={(next) => handleInputValueChange(next)}\n        // Disable Base UI internal filtering — we filter/render ourselves so\n        // that grouped headings, creatable rows, and Backspace-clear-last\n        // (multi mode) stay Wensity-owned.\n        filter={null}\n        autoHighlight\n        multiple={multiple as false}\n        value={rootValue as string | null}\n        onValueChange={adaptedOnValueChange as (v: string | null) => void}\n      >\n        <BaseCombobox.InputGroup\n          data-status={resolvedStatus}\n          data-has-selection={hasSelection ? \"\" : undefined}\n          data-all-selected={allSelected ? \"\" : undefined}\n          className={cn(\n            \"group/combobox relative flex items-center gap-2\",\n            \"rounded-[var(--primitive-radius-control)] border border-[var(--border)] bg-[var(--background)]\",\n            \"transition-[background-color,border-color,box-shadow] duration-160 ease-[var(--primitive-ease)]\",\n            \"hover:border-[color-mix(in_srgb,var(--foreground)_16%,transparent)]\",\n            \"focus-within:border-[color-mix(in_srgb,var(--foreground)_24%,transparent)]\",\n            \"data-[popup-open]:border-[color-mix(in_srgb,var(--foreground)_24%,transparent)]\",\n            resolvedStatus === \"error\" &&\n              \"border-[var(--primitive-destructive-border)] data-[popup-open]:border-[var(--primitive-destructive)]\",\n            triggerHeights[comboboxSize],\n            disabled && \"cursor-not-allowed opacity-45\",\n            triggerClassName,\n          )}\n        >\n          <span className=\"inline-flex shrink-0 pl-3 text-[var(--muted-foreground)] [&_svg]:size-4\">\n            {leadingIcon ?? <IconSearch stroke={1.75} aria-hidden=\"true\" />}\n          </span>\n\n          <div className=\"relative flex min-h-0 min-w-0 flex-1 items-center self-stretch py-0.5\">\n            {multipleFieldSummary ? (\n              <span\n                aria-hidden=\"true\"\n                className={cn(\n                  \"pointer-events-none absolute inset-y-0 left-0 flex max-w-[calc(100%-0.25rem)] items-center truncate text-sm font-medium tracking-[-0.015em] text-[var(--foreground)]\",\n                  allSelected && \"text-[var(--primitive-success)]\",\n                )}\n              >\n                {multipleFieldSummary}\n              </span>\n            ) : null}\n\n            <BaseCombobox.Input\n              disabled={disabled}\n              aria-invalid={ariaInvalid ?? (error ? true : undefined)}\n              aria-describedby={describedBy}\n              aria-required={ariaRequired ?? required ?? undefined}\n              aria-busy={loading || undefined}\n              aria-labelledby={labelId}\n              placeholder={multipleFieldSummary ? undefined : inputPlaceholder}\n              onKeyDown={handleInputKeyDown}\n              className={cn(\n                \"w-full min-w-0 border-0 bg-transparent text-[var(--foreground)] outline-none\",\n                \"placeholder:text-[var(--primitive-text-placeholder)]\",\n                \"disabled:cursor-not-allowed\",\n                inputHeights[comboboxSize],\n                \"px-0\",\n                multipleFieldSummary && !open && \"text-transparent caret-[var(--foreground)]\",\n              )}\n            />\n          </div>\n\n          {multiple && hasSelection ? (\n            <span\n              aria-hidden=\"true\"\n              className={cn(\n                \"shrink-0 tabular-nums text-[11px] font-medium tracking-[-0.01em]\",\n                allSelected\n                  ? \"text-[var(--primitive-success)]\"\n                  : \"text-[var(--muted-foreground)]\",\n              )}\n            >\n              {selectedValues.length}/{selectableCount}\n            </span>\n          ) : null}\n\n          {resolvedStatus === \"success\" && !allSelected ? (\n            <span aria-hidden=\"true\" className=\"shrink-0\">\n              <ComboboxSuccessCheck />\n            </span>\n          ) : null}\n          {resolvedStatus === \"error\" ? (\n            <span aria-hidden=\"true\" className=\"shrink-0\">\n              <ComboboxErrorX />\n            </span>\n          ) : null}\n\n          {loading ? (\n            <span\n              aria-hidden=\"true\"\n              className=\"mr-3 inline-flex shrink-0 text-[var(--muted-foreground)]\"\n            >\n              <ButtonSpinner />\n            </span>\n          ) : (\n            <BaseCombobox.Trigger\n              disabled={disabled}\n              className={cn(\n                \"mr-2 inline-flex size-6 shrink-0 items-center justify-center rounded-[var(--primitive-radius-control-sm)] text-[var(--muted-foreground)]\",\n                \"transition-transform duration-[220ms] ease-[var(--primitive-ease)] motion-reduce:transition-none\",\n                \"data-[popup-open]:rotate-180\",\n                \"hover:text-[var(--foreground)]\",\n              )}\n              aria-label=\"Toggle options\"\n            >\n              <svg viewBox=\"0 0 16 16\" fill=\"none\" className=\"size-4\">\n                <path\n                  d=\"m4.25 6.25 3.75 3.5 3.75-3.5\"\n                  stroke=\"currentColor\"\n                  strokeWidth=\"1.7\"\n                  strokeLinecap=\"round\"\n                  strokeLinejoin=\"round\"\n                />\n              </svg>\n            </BaseCombobox.Trigger>\n          )}\n        </BaseCombobox.InputGroup>\n\n        <BaseCombobox.Portal>\n          <BaseCombobox.Positioner\n            align=\"start\"\n            sideOffset={8}\n            collisionPadding={12}\n            className=\"z-[var(--primitive-z-popover)] outline-none\"\n          >\n            <BaseCombobox.Popup data-wensity-primitive=\"\"\n              initialFocus={false}\n              className={cn(\n                overlaySurfaceClass,\n                \"relative max-h-[min(22rem,var(--available-height))] w-[var(--anchor-width)] overflow-x-hidden overflow-y-auto\",\n                \"rounded-[var(--primitive-radius-surface)] p-1.5 text-[var(--foreground)]\",\n                contentWidths[comboboxSize],\n                popupMotionClass,\n                contentClassName,\n              )}\n            >\n              {multiple && (filteredFlat.length > 0 || canCreate) ? (\n                <div className=\"mb-1 flex items-center justify-between gap-3 border-b border-[var(--border)] px-2.5 pb-2 pt-1\">\n                  <span className=\"text-[11px] font-medium tracking-[-0.01em] text-[var(--muted-foreground)]\">\n                    {selectedValues.length} of {selectableCount} selected\n                  </span>\n                  {allSelected ? (\n                    <span className=\"text-[11px] font-medium text-[var(--primitive-success)]\">\n                      Complete\n                    </span>\n                  ) : null}\n                </div>\n              ) : null}\n\n              <BaseCombobox.List className=\"space-y-0.5 outline-none\">\n                {loading && filteredFlat.length === 0 ? (\n                  <div\n                    role=\"status\"\n                    className=\"flex min-h-16 items-center justify-center gap-2 px-3 text-[12px] text-[var(--muted-foreground)]\"\n                  >\n                    <ButtonSpinner />\n                    Loading…\n                  </div>\n                ) : filteredFlat.length === 0 && !canCreate ? (\n                  <div\n                    role=\"status\"\n                    className=\"px-3 py-6 text-center text-[12px] text-[var(--muted-foreground)]\"\n                  >\n                    {emptyMessage}\n                  </div>\n                ) : (\n                  <>\n                    {isGroupedOptions(options)\n                      ? options.map((group, groupIndex) => {\n                          const visible = group.options.filter((option) =>\n                            filteredFlat.some((match) => match.value === option.value),\n                          );\n                          if (visible.length === 0) return null;\n                          return (\n                            <BaseCombobox.Group\n                              key={groupIndex}\n                              items={visible}\n                            >\n                              {group.label ? (\n                                <BaseCombobox.GroupLabel className=\"px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--muted-foreground)]\">\n                                  {group.label}\n                                </BaseCombobox.GroupLabel>\n                              ) : null}\n                              {visible.map((option) => renderOptionRow(option))}\n                            </BaseCombobox.Group>\n                          );\n                        })\n                      : filteredFlat.map((option) => renderOptionRow(option))}\n\n                    {isGroupedOptions(options) && localCreatedOptions.length > 0\n                      ? localCreatedOptions\n                          .filter((option) =>\n                            filteredFlat.some((match) => match.value === option.value),\n                          )\n                          .map((option) => renderOptionRow(option))\n                      : null}\n\n                    {canCreate ? (\n                      <BaseCombobox.Item\n                        value={CREATE_SENTINEL}\n                        className={cn(\n                          \"flex w-full min-h-9 cursor-default items-center gap-2.5\",\n                          \"rounded-[var(--primitive-radius-item)] px-2.5 py-2 text-left text-sm outline-none\",\n                          \"text-[var(--foreground)]\",\n                          \"data-[highlighted]:bg-[var(--primitive-surface-selected)]\",\n                        )}\n                      >\n                        <span className=\"grid size-7 shrink-0 place-items-center rounded-[var(--primitive-radius-control-sm)] border border-[var(--border)] bg-[var(--primitive-surface-hover)] text-[var(--muted-foreground)]\">\n                          <IconPlus stroke={1.75} className=\"size-4\" />\n                        </span>\n                        <span className=\"min-w-0 flex-1 truncate font-medium tracking-[-0.01em]\">\n                          {createLabel\n                            ? createLabel(inputValue.trim())\n                            : `Create \"${inputValue.trim()}\"`}\n                        </span>\n                      </BaseCombobox.Item>\n                    ) : null}\n                  </>\n                )}\n              </BaseCombobox.List>\n            </BaseCombobox.Popup>\n          </BaseCombobox.Positioner>\n        </BaseCombobox.Portal>\n      </BaseCombobox.Root>\n\n      {error ? (\n        <p\n          id={errorId}\n          className=\"text-[12px] leading-[1.45] font-medium text-[var(--primitive-destructive)]\"\n        >\n          {error}\n        </p>\n      ) : success ? (\n        <p\n          id={successId}\n          className=\"text-[12px] leading-[1.45] font-medium text-[var(--primitive-success)]\"\n        >\n          {success}\n        </p>\n      ) : hint ? (\n        <p id={hintId} className=\"text-[12px] leading-[1.45] text-[var(--primitive-text-secondary)]\">\n          {hint}\n        </p>\n      ) : null}\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/combobox.tsx. For Pro components and updates, use pnpm dlx wensity@latest add combobox.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "combobox",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/combobox",
+      "shadcnUrl": "https://ui.wensity.com/r/combobox",
+      "cliInstall": "pnpm dlx wensity@latest add combobox"
+    }
+  }
+}

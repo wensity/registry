@@ -1,0 +1,301 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "model-context-switcher",
+  "type": "registry:block",
+  "title": "Model Context Switcher",
+  "description": "Pick a model and the selection pill glides to meet your choice. Instant, tactile, satisfying.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@radix-ui/react-dropdown-menu",
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/model-context-switcher.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/model-context-switcher.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport * as DropdownMenu from \"@radix-ui/react-dropdown-menu\";\nimport { motion, AnimatePresence, LayoutGroup } from \"framer-motion\";\nimport {\n  IconCheck,\n  IconChevronDown,\n  IconBolt,\n  IconBrain,\n  IconSparkles,\n  IconAtom,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface ModelOption {\n  id: string;\n  label: string;\n  description?: string;\n  /** Tabler icon component (or any ReactNode renderer). */\n  icon?: React.ReactNode;\n  badge?: string;\n}\n\nexport interface ModelContextSwitcherProps {\n  options?: ModelOption[];\n  /** Controlled selected id. */\n  value?: string;\n  /** Default selected id (uncontrolled). */\n  defaultValue?: string;\n  onChange?: (id: string) => void;\n  /** Visual size of the trigger button. */\n  size?: \"sm\" | \"md\";\n  /** Optional label rendered before the model name in the trigger. */\n  triggerLabel?: string;\n  className?: string;\n}\n\nconst DEFAULT_OPTIONS: ModelOption[] = [\n  {\n    id: \"fast\",\n    label: \"Wensity Fast\",\n    description: \"Snappy responses for short prompts.\",\n    icon: <IconBolt size={16} stroke={2} />,\n  },\n  {\n    id: \"thinking\",\n    label: \"Wensity Thinking\",\n    description: \"Multi-step reasoning, slower.\",\n    icon: <IconBrain size={16} stroke={2} />,\n  },\n  {\n    id: \"creative\",\n    label: \"Wensity Creative\",\n    description: \"Higher temperature, more invention.\",\n    icon: <IconSparkles size={16} stroke={2} />,\n  },\n  {\n    id: \"research\",\n    label: \"Wensity Research\",\n    description: \"Long-context with web tools.\",\n    icon: <IconAtom size={16} stroke={2} />,\n  },\n];\n\nconst MODEL_MATTE_NOISE = `url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.65 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")`;\n\n/**\n * ModelContextSwitcher\n *\n * Radix-powered dropdown with a Framer Motion entry that scales out from the\n * trigger (top-right transform-origin), and a `layoutId` selection pill that\n * physically glides between items on hover / arrow-key focus.\n *\n * Animation rules:\n *  - Tight pop spring: stiffness 400, damping 25\n *  - filter: blur(8px) → blur(0px) on entrance for a glass feel\n *  - Only `transform`, `opacity`, and `filter` animate\n */\nexport function ModelContextSwitcher({\n  options = DEFAULT_OPTIONS,\n  value,\n  defaultValue,\n  onChange,\n  size = \"md\",\n  triggerLabel,\n  className,\n}: ModelContextSwitcherProps) {\n  const isControlled = value !== undefined;\n  const [internal, setInternal] = React.useState<string>(\n    defaultValue ?? options[0]?.id ?? \"\"\n  );\n  const [open, setOpen] = React.useState(false);\n  const [hoverId, setHoverId] = React.useState<string | null>(null);\n\n  const selectedId = isControlled ? value! : internal;\n  const selected =\n    options.find((o) => o.id === selectedId) ?? options[0];\n\n  function select(id: string) {\n    if (!isControlled) setInternal(id);\n    onChange?.(id);\n    setOpen(false);\n  }\n\n  return (\n    <DropdownMenu.Root open={open} onOpenChange={setOpen} modal={false}>\n      <DropdownMenu.Trigger asChild>\n        <button\n          type=\"button\"\n          className={cn(\n            \"group inline-flex items-center gap-2 rounded-full border border-black/[0.08]\",\n            \"bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#ffffff_0%,#f4f4f5_72%)]\",\n            \"text-[var(--foreground)] outline-none transition-colors\",\n            \"hover:border-black/[0.14] focus-visible:ring-2 focus-visible:ring-black/10\",\n            size === \"sm\" ? \"h-8 px-3 text-[12.5px]\" : \"h-10 px-4 text-[13.5px]\",\n            \"shadow-[0_1px_2px_rgba(0,0,0,.06),0_8px_24px_-12px_rgba(0,0,0,.08)]\",\n            \"dark:border-white/[0.06] dark:bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#15151b_0%,#0a0a0b_72%)]\",\n            \"dark:hover:border-white/[0.12] dark:focus-visible:ring-white/10 dark:shadow-[0_1px_2px_rgba(0,0,0,.4),0_8px_24px_-12px_rgba(0,0,0,.6)]\",\n            className\n          )}\n          aria-label=\"Select model\"\n        >\n          <span className=\"grid h-5 w-5 place-items-center text-[var(--muted-foreground)] transition-colors group-hover:text-[var(--foreground)]\">\n            {selected?.icon ?? <IconBolt size={16} />}\n          </span>\n          <span className=\"font-medium tracking-tight\">\n            {triggerLabel ? (\n              <span className=\"text-[var(--muted-foreground)] mr-1.5\">\n                {triggerLabel}\n              </span>\n            ) : null}\n            {selected?.label}\n          </span>\n          <motion.span\n            aria-hidden\n            animate={{ rotate: open ? 180 : 0 }}\n            transition={{ type: \"spring\", stiffness: 400, damping: 22 }}\n            className=\"text-[var(--muted-foreground)]\"\n            style={{ willChange: \"transform\" }}\n          >\n            <IconChevronDown size={14} stroke={2} />\n          </motion.span>\n        </button>\n      </DropdownMenu.Trigger>\n\n      <AnimatePresence>\n        {open && (\n          <DropdownMenu.Portal forceMount>\n            <DropdownMenu.Content\n              asChild\n              sideOffset={8}\n              align=\"end\"\n              forceMount\n              onCloseAutoFocus={(e) => e.preventDefault()}\n            >\n              <motion.div\n                initial={{\n                  opacity: 0,\n                  scale: 0.92,\n                  y: -6,\n                  filter: \"blur(8px)\",\n                }}\n                animate={{\n                  opacity: 1,\n                  scale: 1,\n                  y: 0,\n                  filter: \"blur(0px)\",\n                }}\n                exit={{\n                  opacity: 0,\n                  scale: 0.96,\n                  y: -4,\n                  filter: \"blur(6px)\",\n                }}\n                transition={{\n                  type: \"spring\",\n                  stiffness: 400,\n                  damping: 25,\n                }}\n                style={{\n                  transformOrigin: \"top right\",\n                  willChange: \"transform, opacity, filter\",\n                }}\n                className={cn(\n                  \"relative isolate z-50 w-[300px] origin-top-right overflow-hidden rounded-2xl border border-black/[0.08] p-1.5\",\n                  \"bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#ffffff_0%,#f4f4f5_72%)]\",\n                  \"shadow-[0_1px_2px_rgba(0,0,0,.06),0_24px_60px_-18px_rgba(0,0,0,.22)]\",\n                  \"dark:border-white/[0.06] dark:bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,#15151b_0%,#0a0a0b_72%)]\",\n                  \"dark:shadow-[0_1px_2px_rgba(0,0,0,.4),0_24px_60px_-16px_rgba(0,0,0,.72)]\"\n                )}\n              >\n                <div\n                  aria-hidden\n                  className=\"pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-overlay dark:opacity-[0.055]\"\n                  style={{ backgroundImage: MODEL_MATTE_NOISE, backgroundSize: \"240px 240px\" }}\n                />\n                <div\n                  aria-hidden\n                  className=\"pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.035)_0%,transparent_30%,transparent_72%,rgba(0,0,0,0.055)_100%)] dark:bg-[linear-gradient(to_bottom,rgba(0,0,0,0.12)_0%,transparent_28%,transparent_72%,rgba(0,0,0,0.22)_100%)]\"\n                />\n                <LayoutGroup id=\"model-switcher\">\n                  <div\n                    className=\"relative z-10 flex flex-col\"\n                    onMouseLeave={() => setHoverId(null)}\n                  >\n                    {options.map((opt) => {\n                      const isSelected = opt.id === selectedId;\n                      const isHover = hoverId === opt.id;\n                      return (\n                        <DropdownMenu.Item\n                          key={opt.id}\n                          asChild\n                          onSelect={(e) => {\n                            e.preventDefault();\n                            select(opt.id);\n                          }}\n                        >\n                          <button\n                            type=\"button\"\n                            onMouseEnter={() => setHoverId(opt.id)}\n                            onFocus={() => setHoverId(opt.id)}\n                            className={cn(\n                              \"relative flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left outline-none\",\n                              \"transition-colors\",\n                              isHover\n                                ? \"text-[var(--foreground)]\"\n                                : \"text-[var(--foreground)]/85\"\n                            )}\n                          >\n                            {isHover && (\n                              <motion.span\n                                layoutId=\"model-switcher-pill\"\n                                className={cn(\n                                  \"absolute inset-0 rounded-xl\",\n                                  \"bg-[var(--surface-muted)]\",\n                                  \"ring-1 ring-black/[0.04] dark:ring-white/[0.06]\"\n                                )}\n                                transition={{\n                                  type: \"spring\",\n                                  stiffness: 400,\n                                  damping: 32,\n                                  mass: 0.6,\n                                }}\n                                style={{ willChange: \"transform\" }}\n                                aria-hidden\n                              />\n                            )}\n\n                            <span\n                              className={cn(\n                                \"relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-lg\",\n                                // Default: neutral icon — every model SHOULDN'T\n                                // look \"active\" in the unselected state.\n                                isSelected\n                                  ? \"bg-white text-[var(--foreground)] dark:bg-white/[0.08]\"\n                                  : \"bg-[var(--surface-muted)] text-[var(--muted-foreground)]\",\n                                isHover &&\n                                  \"bg-white dark:bg-white/[0.08]\"\n                              )}\n                            >\n                              {opt.icon ?? <IconBolt size={16} />}\n                            </span>\n\n                            <span className=\"relative z-10 flex min-w-0 flex-1 flex-col\">\n                              <span className=\"flex items-center gap-1.5\">\n                                <span className=\"text-[13px] font-semibold tracking-tight\">\n                                  {opt.label}\n                                </span>\n                              </span>\n                              {opt.description && (\n                                <span className=\"mt-0.5 truncate text-[11.5px] text-[var(--muted-foreground)]\">\n                                  {opt.description}\n                                </span>\n                              )}\n                            </span>\n\n                            <span className=\"relative z-10 grid h-5 w-5 shrink-0 place-items-center\">\n                              <AnimatePresence>\n                                {isSelected && (\n                                  <motion.span\n                                    key=\"check\"\n                                    initial={{ scale: 0, opacity: 0 }}\n                                    animate={{ scale: 1, opacity: 1 }}\n                                    exit={{ scale: 0, opacity: 0 }}\n                                    transition={{\n                                      type: \"spring\",\n                                      stiffness: 500,\n                                      damping: 28,\n                                    }}\n                                    className=\"text-[var(--foreground)]\"\n                                    style={{ willChange: \"transform\" }}\n                                  >\n                                    <IconCheck size={14} stroke={3} />\n                                  </motion.span>\n                                )}\n                              </AnimatePresence>\n                            </span>\n                          </button>\n                        </DropdownMenu.Item>\n                      );\n                    })}\n                  </div>\n                </LayoutGroup>\n              </motion.div>\n            </DropdownMenu.Content>\n          </DropdownMenu.Portal>\n        )}\n      </AnimatePresence>\n    </DropdownMenu.Root>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/model-context-switcher.tsx. For Pro components and updates, use pnpm dlx wensity@latest add model-context-switcher.",
+  "categories": [
+    "Agentic AI Interfaces",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "model-context-switcher",
+      "access": "free",
+      "category": "Agentic AI Interfaces",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/model-context-switcher",
+      "shadcnUrl": "https://ui.wensity.com/r/model-context-switcher",
+      "cliInstall": "pnpm dlx wensity@latest add model-context-switcher"
+    }
+  }
+}

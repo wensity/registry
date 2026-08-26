@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "voice-aurora-wave",
+  "type": "registry:block",
+  "title": "Voice Aurora Wave",
+  "description": "Speak and the aurora swells. Every spike smoothed into something that feels alive.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/voice-aurora-wave.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/voice-aurora-wave.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { motion, useSpring, useTransform, type MotionValue } from \"framer-motion\";\nimport { IconMicrophone, IconPlayerStopFilled } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface VoiceAuroraWaveProps {\n  /** Outer size in px (square). */\n  size?: number;\n  /**\n   * Optional controlled audio level [0..1]. When provided the component\n   * does NOT touch the microphone — it just visualises the value.\n   */\n  level?: number;\n  /** Default visualizer state (uncontrolled). */\n  defaultListening?: boolean;\n  /** When true, requesting mic permission is disabled (demo mode). */\n  demo?: boolean;\n  /** Fired when the user toggles listening on / off. */\n  onListeningChange?: (listening: boolean) => void;\n  /** Optional caption text shown under the orb. */\n  label?: string;\n  className?: string;\n}\n\n/**\n * VoiceAuroraWave — ChatGPT / Gemini style liquid voice orb.\n *\n * Three SVG blobs morph in concentric layers using `feTurbulence` +\n * `feDisplacementMap` so the surface ripples like mercury. Microphone\n * amplitude is run through a `useSpring` low-pass filter that drives:\n *\n *   • the global orb scale (subtle 0.94 → 1.18 breath),\n *   • the displacement strength (20 → 90, so the blob \"dances\"),\n *   • the conic-gradient saturation (idle = soft, loud = vibrant chili).\n *\n * Performance:\n *   • All movement is `transform` / `opacity` / SVG filter primitives.\n *   • Mic stream is fully released when `listening` flips off.\n */\nexport function VoiceAuroraWave({\n  size = 240,\n  level,\n  defaultListening = false,\n  demo = false,\n  onListeningChange,\n  label,\n  className,\n}: VoiceAuroraWaveProps) {\n  const controlled = typeof level === \"number\";\n\n  const [listening, setListening] = React.useState(defaultListening);\n  const [error, setError] = React.useState<string | null>(null);\n  const filterId = React.useId().replace(/[:]/g, \"\");\n\n  // Spring acts as a physics-based low-pass filter for raw audio.\n  // Tighter than before so loud spikes punch through visually instead of\n  // getting smoothed flat — we still keep enough damping to avoid jitter.\n  const amp = useSpring(0, { stiffness: 160, damping: 16, mass: 0.55 });\n\n  // Derived motion values for the visual layers.\n  // Ranges keep the orb visibly CIRCULAR — displacement is intentionally\n  // small so the silhouette breathes rather than tearing into a blob.\n  const orbScale = useTransform(amp, [0, 1], [0.92, 1.32]);\n  const innerScale = useTransform(amp, [0, 1], [0.84, 1.18]);\n  const dispScale = useTransform(amp, [0, 1], [4, 28]);\n  const sheen = useTransform(amp, [0, 1], [0.45, 1]);\n  // Outer \"shouting\" halo only blooms when amp crosses ≈0.4 — gives a\n  // clear visual jump between \"talking\" and \"shouting\".\n  const shoutScale = useTransform(amp, [0.4, 1], [1, 1.55]);\n  const shoutOpacity = useTransform(amp, [0.4, 0.7, 1], [0, 0.5, 0.85]);\n\n  /* ── Drive amp from controlled level ─────────────────────────── */\n  React.useEffect(() => {\n    if (!controlled) return;\n    amp.set(Math.max(0, Math.min(1, level ?? 0)));\n  }, [amp, controlled, level]);\n\n  /* ── Drive amp from microphone (uncontrolled, non-demo) ──────── */\n  React.useEffect(() => {\n    if (controlled || !listening || demo) return;\n\n    let cancelled = false;\n    let raf = 0;\n    let stream: MediaStream | null = null;\n    let ctx: AudioContext | null = null;\n    let analyser: AnalyserNode | null = null;\n    const buffer = new Uint8Array(64);\n\n    async function start() {\n      try {\n        stream = await navigator.mediaDevices.getUserMedia({ audio: true });\n        if (cancelled) {\n          stream.getTracks().forEach((t) => t.stop());\n          return;\n        }\n        const AudioCtx =\n          window.AudioContext ||\n          (window as unknown as { webkitAudioContext: typeof AudioContext })\n            .webkitAudioContext;\n        ctx = new AudioCtx();\n        const src = ctx.createMediaStreamSource(stream);\n        analyser = ctx.createAnalyser();\n        analyser.fftSize = 128;\n        analyser.smoothingTimeConstant = 0.65;\n        src.connect(analyser);\n\n        const tick = () => {\n          if (!analyser) return;\n          analyser.getByteFrequencyData(buffer as unknown as Uint8Array<ArrayBuffer>);\n          let sum = 0;\n          for (let i = 0; i < buffer.length; i++) sum += buffer[i];\n          const avg = sum / buffer.length / 255;\n          amp.set(Math.min(1, avg * 1.6));\n          raf = requestAnimationFrame(tick);\n        };\n        raf = requestAnimationFrame(tick);\n      } catch (e) {\n        const msg = e instanceof Error ? e.message : \"Microphone unavailable\";\n        setError(msg);\n        setListening(false);\n        onListeningChange?.(false);\n      }\n    }\n\n    start();\n\n    return () => {\n      cancelled = true;\n      cancelAnimationFrame(raf);\n      analyser?.disconnect();\n      ctx?.close().catch(() => {});\n      stream?.getTracks().forEach((t) => t.stop());\n      amp.set(0);\n    };\n  }, [amp, controlled, listening, demo, onListeningChange]);\n\n  /* ── Demo-mode synthetic breathing wave ──────────────────────── */\n  // Synth designed to walk the orb through a clearly-readable arc:\n  //   whisper (≈0.15) → conversational (≈0.45) → shouting bursts (≈0.95).\n  // A periodic \"shout envelope\" injects ~1.2s spikes every ~5.5s so the\n  // viewer always sees the full visual range, not just gentle breathing.\n  React.useEffect(() => {\n    if (controlled || !listening || !demo) return;\n    let raf = 0;\n    const start = performance.now();\n    const tick = (t: number) => {\n      const dt = (t - start) / 1000;\n\n      // Base conversational waveform — multiple sines for organic feel.\n      const base =\n        0.32 +\n        0.22 * Math.sin(dt * 1.4) +\n        0.16 * Math.sin(dt * 3.1 + 1.2) +\n        0.08 * Math.sin(dt * 6.4 + 0.6);\n\n      // Shout envelope: a smooth bell every ~5.5s, peak ≈0.65 added on top.\n      const cycle = 5.5;\n      const phase = (dt % cycle) / cycle; // 0..1\n      // Bell centred at 0.55, width ~0.18 of the cycle.\n      const bell = Math.exp(-Math.pow((phase - 0.55) / 0.09, 2));\n      const shout = bell * 0.7;\n\n      // Tiny high-frequency jitter so the surface stays \"alive\" mid-shout.\n      const jitter = (Math.sin(dt * 22) + Math.sin(dt * 31.7)) * 0.02;\n\n      const v = base + shout + jitter;\n      amp.set(Math.max(0.05, Math.min(1, v)));\n      raf = requestAnimationFrame(tick);\n    };\n    raf = requestAnimationFrame(tick);\n    return () => {\n      cancelAnimationFrame(raf);\n      amp.set(0);\n    };\n  }, [amp, controlled, listening, demo]);\n\n  function toggle() {\n    setError(null);\n    const next = !listening;\n    setListening(next);\n    onListeningChange?.(next);\n  }\n\n  return (\n    <div\n      className={cn(\n        \"flex select-none flex-col items-center justify-center gap-4\",\n        className\n      )}\n    >\n      <div\n        className=\"relative grid place-items-center\"\n        style={{ width: size, height: size }}\n      >\n        {/* SVG defs: turbulence + displacement → liquid surface */}\n        <svg\n          aria-hidden\n          width=\"0\"\n          height=\"0\"\n          className=\"absolute\"\n          style={{ position: \"absolute\", width: 0, height: 0 }}\n        >\n          <defs>\n            <filter id={`liquid-${filterId}`} x=\"-15%\" y=\"-15%\" width=\"130%\" height=\"130%\">\n              <feTurbulence\n                type=\"fractalNoise\"\n                baseFrequency=\"0.022 0.028\"\n                numOctaves=\"2\"\n                seed=\"3\"\n                result=\"noise\"\n              >\n                <animate\n                  attributeName=\"baseFrequency\"\n                  dur=\"18s\"\n                  values=\"0.022 0.028;0.026 0.032;0.022 0.028\"\n                  repeatCount=\"indefinite\"\n                />\n              </feTurbulence>\n              <DisplacementMap dispScale={dispScale} />\n            </filter>\n\n            <radialGradient id={`g-core-${filterId}`} cx=\"50%\" cy=\"50%\" r=\"50%\">\n              {/* Iridescent voice-orb palette — premium AI aesthetic\n                  (Apple Siri, ChatGPT voice mode, Anthropic Claude).\n                  Voice UIs universally use cool/iridescent gradients;\n                  red orbs read as \"muted\" or \"system error\". */}\n              <stop offset=\"0%\" stopColor=\"#ffffff\" stopOpacity=\"0.95\" />\n              <stop offset=\"35%\" stopColor=\"#bae6fd\" stopOpacity=\"0.9\" />\n              <stop offset=\"70%\" stopColor=\"#0ea5e9\" stopOpacity=\"0.92\" />\n              <stop offset=\"100%\" stopColor=\"#0c4a6e\" stopOpacity=\"1\" />\n            </radialGradient>\n            <radialGradient id={`g-halo-${filterId}`} cx=\"50%\" cy=\"50%\" r=\"50%\">\n              <stop offset=\"0%\" stopColor=\"#7dd3fc\" stopOpacity=\"0.55\" />\n              <stop offset=\"60%\" stopColor=\"#0ea5e9\" stopOpacity=\"0.32\" />\n              <stop offset=\"100%\" stopColor=\"#0ea5e9\" stopOpacity=\"0\" />\n            </radialGradient>\n          </defs>\n        </svg>\n\n        {/* Outer halo — soft sky breath (premium voice-AI signature). */}\n        <motion.div\n          aria-hidden\n          className=\"absolute inset-[12%] rounded-full\"\n          style={{\n            scale: orbScale,\n            opacity: sheen,\n            background:\n              \"radial-gradient(circle at 50% 50%, rgba(255,255,255,0.45) 0%, rgba(14,165,233,0.32) 38%, rgba(14,165,233,0.10) 60%, transparent 75%)\",\n            filter: \"blur(18px)\",\n            willChange: \"transform, opacity\",\n          }}\n        />\n\n        {/* \"Shouting\" bloom — only visible when amp > 0.4. */}\n        <motion.div\n          aria-hidden\n          className=\"absolute inset-[8%] rounded-full\"\n          style={{\n            scale: shoutScale,\n            opacity: shoutOpacity,\n            background:\n              \"radial-gradient(circle at 50% 50%, rgba(255,255,255,0.42) 0%, rgba(56,189,248,0.34) 35%, rgba(14,165,233,0.10) 60%, transparent 78%)\",\n            filter: \"blur(28px)\",\n            willChange: \"transform, opacity\",\n          }}\n        />\n\n        {/* The liquid orb — SVG with displacement filter */}\n        <motion.svg\n          viewBox=\"0 0 200 200\"\n          width={size * 0.86}\n          height={size * 0.86}\n          className=\"absolute\"\n          style={{ scale: orbScale, willChange: \"transform\" }}\n        >\n          <g filter={`url(#liquid-${filterId})`}>\n            <circle cx=\"100\" cy=\"100\" r=\"78\" fill={`url(#g-core-${filterId})`} />\n            <circle cx=\"100\" cy=\"100\" r=\"92\" fill={`url(#g-halo-${filterId})`} opacity=\"0.7\" />\n          </g>\n        </motion.svg>\n\n        {/* Inner shimmering core — lit white with a hint of sky at the rim. */}\n        <motion.div\n          aria-hidden\n          className=\"absolute rounded-full\"\n          style={{\n            width: size * 0.42,\n            height: size * 0.42,\n            scale: innerScale,\n            background:\n              \"radial-gradient(circle at 35% 30%, rgba(255,255,255,0.95) 0%, rgba(186,230,253,0.5) 30%, rgba(14,165,233,0.0) 70%)\",\n            mixBlendMode: \"screen\",\n            willChange: \"transform\",\n          }}\n        />\n\n        {/* Tap-to-talk button — neutral glassy chip with sky-toned icon\n            (matches the orb's iridescent palette). Apple Siri / OpenAI\n            voice mode use neutral surfaces; the icon picks up the orb's\n            ambient hue rather than the company brand. */}\n        <motion.button\n          type=\"button\"\n          onClick={toggle}\n          aria-pressed={listening}\n          aria-label={listening ? \"Stop listening\" : \"Start listening\"}\n          style={{\n            width: size * 0.32,\n            height: size * 0.32,\n            willChange: \"transform\",\n          }}\n          whileTap={{ scale: 0.92 }}\n          transition={{ type: \"spring\", stiffness: 400, damping: 22 }}\n          className={cn(\n            \"relative z-10 grid place-items-center rounded-full\",\n            \"bg-white/95 text-sky-600 backdrop-blur-md\",\n            \"shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_8px_24px_-8px_rgba(0,0,0,0.45)]\",\n            \"dark:bg-white/[0.10] dark:text-sky-300\",\n            \"dark:shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_18px_50px_-12px_rgba(0,0,0,0.65)]\",\n            \"outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60\"\n          )}\n        >\n          {listening ? (\n            <IconPlayerStopFilled size={Math.round(size * 0.13)} />\n          ) : (\n            <IconMicrophone size={Math.round(size * 0.13)} stroke={1.8} />\n          )}\n        </motion.button>\n      </div>\n\n      {(label || error) && (\n        <div className=\"min-h-[20px] text-center text-[12.5px]\">\n          {error ? (\n            // Error gets a TRUE error-red (#ef4444) — distinct from the brand\n            // chili so users can tell broken-state vs brand-state at a glance.\n            <span className=\"text-[#ef4444]\">{error}</span>\n          ) : (\n            <span className=\"text-[var(--muted-foreground)]\">\n              {label ??\n                (listening ? \"Listening. Speak naturally\" : \"Tap to speak\")}\n            </span>\n          )}\n        </div>\n      )}\n    </div>\n  );\n}\n\n/* ─────── Live-binding for SVG `feDisplacementMap` `scale` attr ────── */\n\nfunction DisplacementMap({ dispScale }: { dispScale: MotionValue<number> }) {\n  const ref = React.useRef<SVGFEDisplacementMapElement>(null);\n  React.useEffect(() => {\n    return dispScale.on(\"change\", (v) => {\n      ref.current?.setAttribute(\"scale\", String(v));\n    });\n  }, [dispScale]);\n  return (\n    <feDisplacementMap\n      ref={ref}\n      in=\"SourceGraphic\"\n      in2=\"noise\"\n      scale=\"40\"\n      xChannelSelector=\"R\"\n      yChannelSelector=\"G\"\n    />\n  );\n}\n\n/* Helper export for consumers that want to pipe a MotionValue in. */\nexport type VoiceAuroraLevel = MotionValue<number>;\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/voice-aurora-wave.tsx. For Pro components and updates, use pnpm dlx wensity@latest add voice-aurora-wave.",
+  "categories": [
+    "Agentic AI Interfaces",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "voice-aurora-wave",
+      "access": "free",
+      "category": "Agentic AI Interfaces",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/voice-aurora-wave",
+      "shadcnUrl": "https://ui.wensity.com/r/voice-aurora-wave",
+      "cliInstall": "pnpm dlx wensity@latest add voice-aurora-wave"
+    }
+  }
+}

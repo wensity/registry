@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "slider",
+  "type": "registry:block",
+  "title": "Slider",
+  "description": "A keyboard- and pointer-accessible slider built on Base UI with a value bubble that reveals on drag or focus.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/slider.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/slider.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Slider as BaseSlider } from \"@base-ui/react/slider\";\nimport { cn } from \"@/lib/utils\";\n\nexport type SliderSize = \"sm\" | \"md\" | \"lg\";\nexport type SliderTone = \"neutral\" | \"brand\";\n\n/** Control height matches the thumb so Base UI `top: 50%` + `translate: -50%` lands on the rail. */\nconst CONTROL_SIZES: Record<SliderSize, string> = {\n  sm: \"h-5\",\n  md: \"h-6\",\n  lg: \"h-7\",\n};\n\nconst TRACK_SIZES: Record<SliderSize, string> = {\n  sm: \"h-2\",\n  md: \"h-2.5\",\n  lg: \"h-3\",\n};\n\nconst THUMB_SIZES: Record<SliderSize, string> = {\n  sm: \"size-5\",\n  md: \"size-6\",\n  lg: \"size-7\",\n};\n\nconst FILL_TONES: Record<SliderTone, string> = {\n  neutral:\n    \"bg-[linear-gradient(90deg,color-mix(in_srgb,var(--foreground)_72%,transparent),color-mix(in_srgb,var(--foreground)_92%,transparent))]\",\n  // Theme accent — follows `--primitive-control-solid` from create-preset / host theme.\n  brand: \"bg-[var(--primitive-control-solid)]\",\n};\n\nfunction computeMinSteps(minDistance: number, step: number) {\n  if (!minDistance || minDistance <= 0 || step <= 0) return 0;\n  return Math.max(0, Math.round(minDistance / step));\n}\n\nfunction bubbleClasses() {\n  return cn(\n    // Horizontal centering only — vertical lift lives in globals.css so it can\n    // animate on drag/focus without fighting Base UI’s thumb `translate`.\n    \"absolute left-1/2 top-0 -translate-x-1/2\",\n    \"rounded-[var(--primitive-radius-control-sm)]\",\n    \"border border-[var(--border)] bg-[var(--primitive-surface-overlay)]\",\n    \"px-2 py-0.5 text-[11px] font-medium tabular-nums\",\n    \"text-[var(--foreground)] shadow-[var(--primitive-shadow-overlay)]\",\n  );\n}\n\nfunction thumbClasses(size: SliderSize) {\n  return cn(\n    // Do not set top / translate here — Base UI owns cross-axis geometry via\n    // inline `top: 50%` + CSS `translate: -50% -50%` against Slider.Control.\n    // Grab scale/ring lives in globals.css ([data-dragging] / :active).\n    // Thumb stays neutral white/black via foreground — only the fill follows theme color.\n    \"box-border shrink-0 rounded-full\",\n    \"border-2 border-[var(--background)] bg-[var(--foreground)]\",\n    \"shadow-[0_1px_4px_rgba(0,0,0,0.35)]\",\n    \"outline-none\",\n    \"has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primitive-ring)] has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-[var(--background)]\",\n    \"cursor-grab data-[dragging]:cursor-grabbing\",\n    \"data-disabled:cursor-not-allowed\",\n    THUMB_SIZES[size],\n  );\n}\n\nfunction trackClasses(size: SliderSize) {\n  return cn(\n    \"relative w-full grow rounded-full\",\n    \"bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)]\",\n    \"data-disabled:cursor-not-allowed\",\n    TRACK_SIZES[size],\n  );\n}\n\nfunction controlClasses(size: SliderSize) {\n  return cn(\n    \"relative flex w-full touch-none items-center select-none\",\n    CONTROL_SIZES[size],\n  );\n}\n\nfunction rootClasses(disabled: boolean | undefined, className: string | undefined) {\n  return cn(\n    \"relative w-full select-none touch-none\",\n    \"focus-visible:outline-none\",\n    disabled && \"opacity-45 pointer-events-none\",\n    className,\n  );\n}\n\nfunction ThumbBubble({\n  showValue,\n  display,\n  index,\n}: {\n  showValue: boolean;\n  display: (v: number) => string;\n  index?: number;\n}) {\n  if (!showValue) return null;\n  return (\n    <span data-slot=\"wensity-slider-bubble\" className={bubbleClasses()}>\n      <BaseSlider.Value className=\"text-inherit\">\n        {(_formatted, values) => display(values[index ?? 0] ?? 0)}\n      </BaseSlider.Value>\n    </span>\n  );\n}\n\n/* ─── <Slider> — single thumb ───────────────────────────────── */\n\nexport interface SliderProps {\n  className?: string;\n  value?: number;\n  defaultValue?: number;\n  min?: number;\n  max?: number;\n  step?: number;\n  size?: SliderSize;\n  tone?: SliderTone;\n  disabled?: boolean;\n  showValue?: boolean;\n  formatValue?: (value: number) => string;\n  onValueChange?: (value: number) => void;\n  onValueCommit?: (value: number) => void;\n  /** Alias of `onValueCommit` matching Base UI's naming. */\n  onValueCommitted?: (value: number) => void;\n  label?: string;\n  name?: string;\n  id?: string;\n}\n\nexport const Slider = React.forwardRef<HTMLDivElement, SliderProps>(\n  (\n    {\n      className,\n      value,\n      defaultValue = 0,\n      min = 0,\n      max = 100,\n      step = 1,\n      size = \"md\",\n      // Match Progress / Switch / Button primary — theme color drives the fill.\n      tone = \"brand\",\n      disabled = false,\n      showValue = true,\n      formatValue,\n      onValueChange,\n      onValueCommit,\n      onValueCommitted,\n      label = \"Slider\",\n      name,\n      id,\n    },\n    ref,\n  ) => {\n    const display = (v: number) => (formatValue ? formatValue(v) : `${Math.round(v)}`);\n\n    return (\n      <BaseSlider.Root\n        data-wensity-primitive=\"\"\n        ref={ref}\n        value={value}\n        defaultValue={value === undefined ? defaultValue : undefined}\n        min={min}\n        max={max}\n        step={step}\n        disabled={disabled}\n        name={name}\n        id={id}\n        onValueChange={(next) => onValueChange?.(next as number)}\n        onValueCommitted={(next) => {\n          const numeric = next as number;\n          onValueCommit?.(numeric);\n          onValueCommitted?.(numeric);\n        }}\n        className={rootClasses(disabled, className)}\n      >\n        {/*\n          Control height === thumb size. Thumb is a sibling of Track so its\n          containing block is Control (not the thin rail). Base UI then centers\n          the thumb on the control midline, which coincides with the track.\n        */}\n        <BaseSlider.Control className={controlClasses(size)}>\n          <BaseSlider.Track className={trackClasses(size)}>\n            <BaseSlider.Indicator\n              className={cn(\"absolute inset-y-0 left-0 rounded-full\", FILL_TONES[tone])}\n            />\n          </BaseSlider.Track>\n          <BaseSlider.Thumb\n            data-slot=\"wensity-slider-thumb\"\n            getAriaLabel={() => label}\n            className={thumbClasses(size)}\n          >\n            <ThumbBubble showValue={showValue} display={display} />\n          </BaseSlider.Thumb>\n        </BaseSlider.Control>\n      </BaseSlider.Root>\n    );\n  },\n);\nSlider.displayName = \"Slider\";\n\n/* ─── <SliderRange> — dual thumb ────────────────────────────── */\n\nexport interface SliderRangeProps {\n  className?: string;\n  value?: [number, number];\n  defaultValue?: [number, number];\n  min?: number;\n  max?: number;\n  step?: number;\n  minDistance?: number;\n  size?: SliderSize;\n  tone?: SliderTone;\n  disabled?: boolean;\n  showValue?: boolean;\n  formatValue?: (value: number) => string;\n  onValueChange?: (value: [number, number]) => void;\n  onValueCommit?: (value: [number, number]) => void;\n  /** Alias of `onValueCommit` matching Base UI's naming. */\n  onValueCommitted?: (value: [number, number]) => void;\n  label?: string;\n  name?: string;\n  id?: string;\n}\n\nexport const SliderRange = React.forwardRef<HTMLDivElement, SliderRangeProps>(\n  (\n    {\n      className,\n      value,\n      defaultValue = [25, 75],\n      min = 0,\n      max = 100,\n      step = 1,\n      minDistance = 0,\n      size = \"md\",\n      tone = \"brand\",\n      disabled = false,\n      showValue = true,\n      formatValue,\n      onValueChange,\n      onValueCommit,\n      onValueCommitted,\n      label = \"Range slider\",\n      name,\n      id,\n    },\n    ref,\n  ) => {\n    const minStepsBetweenValues = computeMinSteps(minDistance, step);\n    const display = (v: number) => (formatValue ? formatValue(v) : `${Math.round(v)}`);\n\n    return (\n      <BaseSlider.Root\n        data-wensity-primitive=\"\"\n        ref={ref}\n        value={value}\n        defaultValue={value === undefined ? defaultValue : undefined}\n        min={min}\n        max={max}\n        step={step}\n        minStepsBetweenValues={minStepsBetweenValues}\n        disabled={disabled}\n        name={name}\n        id={id}\n        onValueChange={(next) => onValueChange?.(next as [number, number])}\n        onValueCommitted={(next) => {\n          const range = next as [number, number];\n          onValueCommit?.(range);\n          onValueCommitted?.(range);\n        }}\n        className={rootClasses(disabled, className)}\n      >\n        <BaseSlider.Control className={controlClasses(size)}>\n          <BaseSlider.Track className={trackClasses(size)}>\n            <BaseSlider.Indicator\n              className={cn(\"absolute inset-y-0 rounded-full\", FILL_TONES[tone])}\n            />\n          </BaseSlider.Track>\n          <BaseSlider.Thumb\n            index={0}\n            data-slot=\"wensity-slider-thumb\"\n            getAriaLabel={() => `${label} minimum`}\n            className={thumbClasses(size)}\n          >\n            <ThumbBubble showValue={showValue} display={display} index={0} />\n          </BaseSlider.Thumb>\n          <BaseSlider.Thumb\n            index={1}\n            data-slot=\"wensity-slider-thumb\"\n            getAriaLabel={() => `${label} maximum`}\n            className={thumbClasses(size)}\n          >\n            <ThumbBubble showValue={showValue} display={display} index={1} />\n          </BaseSlider.Thumb>\n        </BaseSlider.Control>\n      </BaseSlider.Root>\n    );\n  },\n);\nSliderRange.displayName = \"SliderRange\";\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/slider.tsx. For Pro components and updates, use pnpm dlx wensity@latest add slider.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "slider",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/slider",
+      "shadcnUrl": "https://ui.wensity.com/r/slider",
+      "cliInstall": "pnpm dlx wensity@latest add slider"
+    }
+  }
+}
