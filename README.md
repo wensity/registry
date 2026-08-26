@@ -210,6 +210,11 @@ delivered through the authenticated CLI and are not published here.
 Because the JSON is generated, please do not send pull requests that edit it
 directly. Open an issue instead and the change will be made upstream.
 
+A release is published from Wensity's private source repository with a single
+command, which updates this repository and the legacy compatibility mirror at
+`ksparth12/wensity-shadcn-registry` in the same run. The two are always
+generated together, so they cannot drift.
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).
