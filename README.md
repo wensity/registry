@@ -10,6 +10,30 @@ runtime dependency on Wensity and no theme provider to wire up.
 [Create a preset](https://ui.wensity.com/create-preset) ·
 [wensity.com](https://wensity.com)
 
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src=".github/media/gooey-navigation-menu.gif" alt="Gooey Navigation Menu: a floating action button whose child actions stretch out in an arc" width="100%">
+      <br><sub><code>gooey-navigation-menu</code></sub>
+    </td>
+    <td width="50%" align="center">
+      <img src=".github/media/text-shimmer.gif" alt="Text Shimmer: a highlight sweeping across a headline" width="100%">
+      <br><sub><code>text-shimmer</code></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src=".github/media/github-activity-grid.gif" alt="GitHub-style activity grid with a shared tooltip following the cursor" width="100%">
+      <br><sub><code>github-activity-grid</code></sub>
+    </td>
+    <td width="50%" align="center">
+      <img src=".github/media/shimmering-skeleton-wrapper.gif" alt="Skeleton cards with one angled shimmer sweeping across the whole layout" width="100%">
+      <br><sub><code>shimmering-skeleton-wrapper</code></sub>
+    </td>
+  </tr>
+</table>
+
 ## Install
 
 Every item in this registry is free and MIT licensed. Install one with the
