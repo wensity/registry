@@ -3,7 +3,7 @@
   "name": "button-group",
   "type": "registry:block",
   "title": "Button Group",
-  "description": "A grouped action primitive for related commands that should read as one control.",
+  "description": "Grouped actions for toolbars, split buttons, and menus.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "@base-ui/react",
@@ -30,7 +30,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

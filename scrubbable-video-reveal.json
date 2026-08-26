@@ -3,7 +3,7 @@
   "name": "scrubbable-video-reveal",
   "type": "registry:block",
   "title": "Scrubbable Video Reveal",
-  "description": "Scroll forward, scroll back. Every frame follows your hand like a product video on apple.com.",
+  "description": "Scroll either way. Every frame follows your hand like apple.com.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "clsx",
@@ -28,7 +28,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

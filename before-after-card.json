@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "before-after-card",
+  "type": "registry:block",
+  "title": "Before After Card",
+  "description": "A React before-and-after image comparison slider with a zero-lag drag wipe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/before-after-card.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/before-after-card.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport {\n  motion,\n  useMotionValue,\n  useMotionValueEvent,\n  useReducedMotion,\n  useTransform,\n  animate,\n  type AnimationPlaybackControls,\n} from \"framer-motion\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport interface BeforeAfterCardProps {\n  /** Fully revealed “after” image URL. */\n  afterSrc: string;\n  /** Optional dedicated “before” image. When omitted, `afterSrc` is shown desaturated. */\n  beforeSrc?: string;\n  afterAlt?: string;\n  beforeAlt?: string;\n  /**\n   * Corner label on the before side. Pass `\"\"` to hide.\n   * @default \"Before\"\n   */\n  beforeLabel?: string;\n  /**\n   * Corner label on the after side. Pass `\"\"` to hide.\n   * @default \"After\"\n   */\n  afterLabel?: string;\n  /** Optional line under the frame. */\n  caption?: string;\n  /**\n   * Wipe axis. Horizontal = left/right. Vertical = top/bottom.\n   * @default \"horizontal\"\n   */\n  orientation?: \"horizontal\" | \"vertical\";\n  /**\n   * Uncontrolled start position, 0–100.\n   * 0 = fully before, 100 = fully after.\n   * @default 50\n   */\n  defaultPosition?: number;\n  /** Controlled position, 0–100. */\n  position?: number;\n  onPositionChange?: (position: number) => void;\n  /** Show a live percent near the handle. @default true */\n  showPercent?: boolean;\n  /**\n   * One-shot idle demo that gently scrubs the handle on first mount.\n   * @default true\n   */\n  autoDemo?: boolean;\n  className?: string;\n}\n\n/* ─── Constants ─────────────────────────────────────────────── */\n\nconst KEY_STEP = 2;\nconst EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];\n\nfunction clamp01(n: number) {\n  return Math.min(1, Math.max(0, n));\n}\n\n/* ─── Component ─────────────────────────────────────────────── */\n\n/**\n * Before / After Card\n *\n * Photographic wipe driven by a motion value → clip-path so scrubbing stays\n * off the React render path. The percent badge updates via a DOM ref during drag.\n *\n * Reveal model: the after layer is clipped in from the left/top, so dragging\n * toward after paints color over the before grade.\n */\nexport function BeforeAfterCard({\n  afterSrc,\n  beforeSrc,\n  afterAlt = \"After\",\n  beforeAlt = \"Before\",\n  beforeLabel = \"Before\",\n  afterLabel = \"After\",\n  caption,\n  orientation = \"horizontal\",\n  defaultPosition = 50,\n  position,\n  onPositionChange,\n  showPercent = true,\n  autoDemo = true,\n  className,\n}: BeforeAfterCardProps) {\n  const reduceMotion = useReducedMotion();\n  const frameRef = React.useRef<HTMLDivElement>(null);\n  const percentRef = React.useRef<HTMLSpanElement>(null);\n  const dragging = React.useRef(false);\n  const demoRan = React.useRef(false);\n  const demoControls = React.useRef<AnimationPlaybackControls | null>(null);\n\n  const isVertical = orientation === \"vertical\";\n  const isControlled = position !== undefined;\n  const initial = clamp01((isControlled ? position : defaultPosition) / 100);\n  const showBeforeLabel = (beforeLabel ?? \"\").trim().length > 0;\n  const showAfterLabel = (afterLabel ?? \"\").trim().length > 0;\n\n  const wipe = useMotionValue(initial);\n  const [a11yValue, setA11yValue] = React.useState(() =>\n    Math.round(initial * 100),\n  );\n  const [pressed, setPressed] = React.useState(false);\n\n  // Keep the live percent on a ref during scrub — no React re-render per frame.\n  useMotionValueEvent(wipe, \"change\", (v) => {\n    const pct = Math.round(clamp01(v) * 100);\n    if (percentRef.current) percentRef.current.textContent = String(pct);\n    if (!dragging.current) setA11yValue(pct);\n  });\n\n  // Controlled: position prop is source of truth (including mid-drag echoes).\n  React.useEffect(() => {\n    if (!isControlled) return;\n    wipe.set(clamp01(position / 100));\n  }, [isControlled, position, wipe]);\n\n  // One-shot auto demo — teaches the gesture, then rests.\n  React.useEffect(() => {\n    if (!autoDemo || reduceMotion || isControlled || demoRan.current) return;\n    demoRan.current = true;\n    const from = clamp01(defaultPosition / 100);\n    demoControls.current = animate(wipe, [from, Math.min(1, from + 0.22), from], {\n      duration: 1.65,\n      times: [0, 0.55, 1],\n      ease: EASE_OUT,\n      delay: 0.45,\n    });\n    return () => {\n      demoControls.current?.stop();\n      demoControls.current = null;\n    };\n  }, [autoDemo, reduceMotion, isControlled, defaultPosition, wipe]);\n\n  // After sits on top and is revealed as position increases.\n  const clipPath = useTransform(wipe, (v) => {\n    const t = clamp01(v) * 100;\n    return isVertical\n      ? `inset(0 0 ${100 - t}% 0)`\n      : `inset(0 ${100 - t}% 0 0)`;\n  });\n\n  const handleLeft = useTransform(wipe, (v) =>\n    isVertical ? \"50%\" : `${clamp01(v) * 100}%`,\n  );\n  const handleTop = useTransform(wipe, (v) =>\n    isVertical ? `${clamp01(v) * 100}%` : \"50%\",\n  );\n\n  const stopDemo = () => {\n    if (!demoControls.current) return;\n    demoControls.current.stop();\n    demoControls.current = null;\n  };\n\n  const commit = (next01: number) => {\n    const clamped = clamp01(next01);\n    const pct = Math.round(clamped * 100);\n    if (isControlled) {\n      // Parent owns the value — only notify; the sync effect drives wipe.\n      onPositionChange?.(pct);\n      return;\n    }\n    wipe.set(clamped);\n    onPositionChange?.(pct);\n  };\n\n  const setFromPointer = (clientX: number, clientY: number) => {\n    const el = frameRef.current;\n    if (!el) return;\n    const rect = el.getBoundingClientRect();\n    if (rect.width <= 0 || rect.height <= 0) return;\n    commit(\n      isVertical\n        ? (clientY - rect.top) / rect.height\n        : (clientX - rect.left) / rect.width,\n    );\n  };\n\n  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {\n    if (e.button !== 0) return;\n    stopDemo();\n    dragging.current = true;\n    setPressed(true);\n    e.currentTarget.setPointerCapture(e.pointerId);\n    setFromPointer(e.clientX, e.clientY);\n  };\n\n  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {\n    if (!dragging.current) return;\n    setFromPointer(e.clientX, e.clientY);\n  };\n\n  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {\n    if (!dragging.current) return;\n    dragging.current = false;\n    setPressed(false);\n    setA11yValue(Math.round(clamp01(wipe.get()) * 100));\n    if (e.currentTarget.hasPointerCapture(e.pointerId)) {\n      e.currentTarget.releasePointerCapture(e.pointerId);\n    }\n  };\n\n  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {\n    const current = wipe.get();\n    let next: number | null = null;\n    const backward =\n      e.key === \"ArrowLeft\" || e.key === \"ArrowUp\";\n    const forward =\n      e.key === \"ArrowRight\" || e.key === \"ArrowDown\";\n\n    if (backward) next = current - KEY_STEP / 100;\n    else if (forward) next = current + KEY_STEP / 100;\n    else if (e.key === \"Home\") next = 0;\n    else if (e.key === \"End\") next = 1;\n    else if (e.key === \"PageDown\") next = current - 0.1;\n    else if (e.key === \"PageUp\") next = current + 0.1;\n\n    if (next === null) return;\n    e.preventDefault();\n    stopDemo();\n    commit(next);\n  };\n\n  const beforeImageSrc = beforeSrc ?? afterSrc;\n\n  return (\n    <figure className={cn(\"w-full\", className)}>\n      <div\n        ref={frameRef}\n        role=\"slider\"\n        tabIndex={0}\n        aria-orientation={orientation}\n        aria-valuemin={0}\n        aria-valuemax={100}\n        aria-valuenow={a11yValue}\n        aria-valuetext={`${a11yValue}% after`}\n        aria-label=\"Compare before and after\"\n        onPointerDown={onPointerDown}\n        onPointerMove={onPointerMove}\n        onPointerUp={endDrag}\n        onPointerCancel={endDrag}\n        onKeyDown={onKeyDown}\n        className={cn(\n          \"relative isolate aspect-[3/2] w-full overflow-hidden rounded-lg\",\n          \"bg-[#0a0a0b] outline-none\",\n          \"ring-1 ring-black/10 dark:ring-white/10\",\n          \"[box-shadow:0_1px_2px_rgba(0,0,0,.12),0_24px_48px_-28px_rgba(0,0,0,.55)]\",\n          \"dark:[box-shadow:0_1px_2px_rgba(0,0,0,.5),0_28px_56px_-28px_rgba(0,0,0,.85)]\",\n          \"focus-visible:ring-2 focus-visible:ring-[#DC2F2F]/75 focus-visible:ring-offset-2\",\n          \"focus-visible:ring-offset-[#fafafa] dark:focus-visible:ring-offset-[#0a0a0b]\",\n          isVertical ? \"cursor-ns-resize\" : \"cursor-ew-resize\",\n          \"touch-none select-none\",\n        )}\n      >\n        {/* Before (base) */}\n        <div className=\"absolute inset-0\">\n          {/* eslint-disable-next-line @next/next/no-img-element */}\n          <img\n            src={beforeImageSrc}\n            alt={beforeAlt}\n            draggable={false}\n            decoding=\"async\"\n            className={cn(\n              \"h-full w-full object-cover\",\n              !beforeSrc && \"grayscale contrast-[0.92] brightness-[0.88]\",\n            )}\n          />\n          {!beforeSrc ? (\n            <div\n              aria-hidden\n              className=\"absolute inset-0 bg-[#1a1c20]/25 mix-blend-multiply\"\n            />\n          ) : null}\n        </div>\n\n        {/* After (clipped reveal) */}\n        <motion.div className=\"absolute inset-0\" style={{ clipPath }}>\n          {/* eslint-disable-next-line @next/next/no-img-element */}\n          <img\n            src={afterSrc}\n            alt={afterAlt}\n            draggable={false}\n            decoding=\"async\"\n            className=\"h-full w-full object-cover\"\n          />\n        </motion.div>\n\n        {/* Soft vignette */}\n        <div\n          aria-hidden\n          className=\"pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,.28)_0%,transparent_30%,transparent_72%,rgba(0,0,0,.16)_100%)]\"\n        />\n\n        {/* Corner labels — fixed opacity so mid-position never blanks both */}\n        {showBeforeLabel ? (\n          <span\n            className={cn(\n              \"pointer-events-none absolute z-10 text-[11px] font-medium uppercase tracking-[0.18em] text-white/90\",\n              isVertical ? \"left-3.5 top-3.5\" : \"bottom-3.5 left-3.5\",\n            )}\n          >\n            {beforeLabel}\n          </span>\n        ) : null}\n        {showAfterLabel ? (\n          <span\n            className={cn(\n              \"pointer-events-none absolute z-10 text-[11px] font-medium uppercase tracking-[0.18em] text-white/90\",\n              isVertical ? \"bottom-3.5 left-3.5\" : \"bottom-3.5 right-3.5\",\n            )}\n          >\n            {afterLabel}\n          </span>\n        ) : null}\n\n        {/* Divider line */}\n        {isVertical ? (\n          <motion.div\n            aria-hidden\n            className=\"pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-white [box-shadow:0_0_12px_rgba(0,0,0,.35)]\"\n            style={{ top: handleTop, y: \"-50%\" }}\n          />\n        ) : (\n          <motion.div\n            aria-hidden\n            className=\"pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-white [box-shadow:0_0_12px_rgba(0,0,0,.35)]\"\n            style={{ left: handleLeft, x: \"-50%\" }}\n          />\n        )}\n\n        {/* Drag knob */}\n        <motion.div\n          className=\"pointer-events-none absolute z-30\"\n          style={{\n            left: handleLeft,\n            top: handleTop,\n            x: \"-50%\",\n            y: \"-50%\",\n          }}\n        >\n          <motion.div\n            animate={{ scale: pressed ? 0.92 : 1 }}\n            transition={{ duration: 0.12, ease: EASE_OUT }}\n            className={cn(\n              \"relative flex size-10 items-center justify-center rounded-full\",\n              \"bg-white text-neutral-800\",\n              \"[box-shadow:0_1px_2px_rgba(0,0,0,.22),0_8px_22px_-6px_rgba(0,0,0,.55)]\",\n              \"ring-1 ring-black/5\",\n            )}\n          >\n            <HandleChevrons vertical={isVertical} />\n            {showPercent ? (\n              <span\n                ref={percentRef}\n                className={cn(\n                  \"absolute rounded-md bg-black/60 px-1.5 py-0.5\",\n                  \"text-[10px] font-medium tabular-nums tracking-wide text-white\",\n                  isVertical\n                    ? \"left-1/2 top-[calc(100%+8px)] -translate-x-1/2\"\n                    : \"left-[calc(100%+8px)] top-1/2 -translate-y-1/2\",\n                )}\n              >\n                {a11yValue}\n              </span>\n            ) : null}\n          </motion.div>\n        </motion.div>\n      </div>\n\n      {caption ? (\n        <figcaption className=\"mt-3 px-1 text-center text-[13px] leading-relaxed text-neutral-500 dark:text-white/45\">\n          {caption}\n        </figcaption>\n      ) : null}\n    </figure>\n  );\n}\n\nfunction HandleChevrons({ vertical }: { vertical: boolean }) {\n  return (\n    <svg\n      width={vertical ? 12 : 16}\n      height={vertical ? 16 : 12}\n      viewBox={vertical ? \"0 0 12 16\" : \"0 0 16 12\"}\n      fill=\"none\"\n      aria-hidden\n    >\n      {vertical ? (\n        <>\n          <path d=\"M6 1.25L10.25 5.75H1.75L6 1.25Z\" fill=\"currentColor\" />\n          <path d=\"M6 14.75L1.75 10.25H10.25L6 14.75Z\" fill=\"currentColor\" />\n        </>\n      ) : (\n        <>\n          <path d=\"M1.25 6L5.75 1.75V10.25L1.25 6Z\" fill=\"currentColor\" />\n          <path d=\"M14.75 6L10.25 1.75V10.25L14.75 6Z\" fill=\"currentColor\" />\n        </>\n      )}\n    </svg>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/before-after-card.tsx. For Pro components and updates, use pnpm dlx wensity@latest add before-after-card.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "before-after-card",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/before-after-card",
+      "shadcnUrl": "https://ui.wensity.com/r/before-after-card",
+      "cliInstall": "pnpm dlx wensity@latest add before-after-card"
+    }
+  }
+}

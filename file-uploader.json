@@ -1,0 +1,301 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "file-uploader",
+  "type": "registry:block",
+  "title": "File Uploader",
+  "description": "High-contrast red drop zone with a choose-files CTA, then image tiles and document cards with circular progress.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/file-uploader.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/file-uploader.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport {\n  AnimatePresence,\n  motion,\n  useReducedMotion,\n  type Variants,\n} from \"framer-motion\";\nimport {\n  IconCheck,\n  IconFile,\n  IconFilePlus,\n  IconFileText,\n  IconFileZip,\n  IconPhoto,\n  IconPlus,\n  IconVideo,\n  IconX,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type UploadFileStatus = \"pending\" | \"uploading\" | \"success\" | \"error\";\n\nexport type UploadFile = {\n  id: string;\n  file: File;\n  /** Object URL for image previews — revoked on remove. */\n  previewUrl?: string;\n  progress: number;\n  status: UploadFileStatus;\n  error?: string;\n};\n\nexport interface FileUploaderProps {\n  /** Controlled file list. */\n  value?: UploadFile[];\n  /** Seed files for uncontrolled demos. */\n  defaultValue?: UploadFile[];\n  /** Fired whenever the file list changes. */\n  onChange?: (files: UploadFile[]) => void;\n  /**\n   * Optional upload handler. Receives each new file and a progress callback.\n   * When omitted, progress is simulated locally so demos feel alive.\n   */\n  onUpload?: (\n    file: File,\n    onProgress: (percent: number) => void,\n  ) => Promise<void>;\n  /** Fired when a file is removed. */\n  onRemove?: (file: UploadFile) => void;\n  /** HTML accept string, e.g. \"image/*,.pdf\". */\n  accept?: string;\n  /** Maximum number of files. Extra picks are ignored. */\n  maxFiles?: number;\n  /** Maximum bytes per file. Oversized files land as errors. */\n  maxSize?: number;\n  /** Label inside the solid choose button. */\n  buttonLabel?: string;\n  /** Supporting line under the button. */\n  description?: string;\n  /** Dropzone accent color. Hover/drag uses a darker mix. @default \"#DC2F2F\" */\n  color?: string;\n  /** Disable interaction. */\n  disabled?: boolean;\n  /** Allow selecting multiple files. @default true */\n  multiple?: boolean;\n  className?: string;\n}\n\n/* ─── Motion ────────────────────────────────────────────────── */\n\nconst EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];\n/** Exit must feel faster than enter — never ease-in on remove. */\nconst EXIT_MS = 160;\n\nconst listVariants: Variants = {\n  show: {\n    transition: { staggerChildren: 0.04, delayChildren: 0.02 },\n  },\n};\n\nconst tileVariants: Variants = {\n  hidden: { opacity: 0, scale: 0.96, y: 8 },\n  show: {\n    opacity: 1,\n    scale: 1,\n    y: 0,\n    transition: { type: \"spring\", stiffness: 420, damping: 32 },\n  },\n  exit: {\n    opacity: 0,\n    scale: 0.97,\n    transition: { duration: EXIT_MS / 1000, ease: EASE_OUT },\n  },\n};\n\n/* ─── Helpers ───────────────────────────────────────────────── */\n\nfunction formatBytes(bytes: number): string {\n  if (bytes < 1024) return `${bytes} B`;\n  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;\n  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;\n}\n\nfunction createId(): string {\n  return `fu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;\n}\n\nfunction isImageFile(file: File): boolean {\n  return file.type.startsWith(\"image/\");\n}\n\nfunction FileTypeIcon({ file, className }: { file: File; className?: string }) {\n  const type = file.type;\n  if (type.startsWith(\"image/\")) {\n    return <IconPhoto className={className} stroke={1.75} />;\n  }\n  if (type.startsWith(\"video/\")) {\n    return <IconVideo className={className} stroke={1.75} />;\n  }\n  if (\n    type.includes(\"zip\") ||\n    type.includes(\"gzip\") ||\n    type.includes(\"compressed\") ||\n    /\\.(zip|rar|7z|tar|gz)$/i.test(file.name)\n  ) {\n    return <IconFileZip className={className} stroke={1.75} />;\n  }\n  if (\n    type.includes(\"pdf\") ||\n    type.includes(\"text\") ||\n    type.includes(\"document\") ||\n    /\\.(pdf|doc|docx|txt|md)$/i.test(file.name)\n  ) {\n    return <IconFileText className={className} stroke={1.75} />;\n  }\n  return <IconFile className={className} stroke={1.75} />;\n}\n\nfunction matchesAccept(file: File, accept?: string): boolean {\n  if (!accept || accept.trim() === \"*\" || accept.trim() === \"*/*\") return true;\n  const tokens = accept\n    .split(\",\")\n    .map((t) => t.trim().toLowerCase())\n    .filter(Boolean);\n  if (!tokens.length) return true;\n  const name = file.name.toLowerCase();\n  const type = file.type.toLowerCase();\n  return tokens.some((token) => {\n    if (token.startsWith(\".\")) return name.endsWith(token);\n    if (token.endsWith(\"/*\")) {\n      const prefix = token.slice(0, -1);\n      return type.startsWith(prefix);\n    }\n    return type === token;\n  });\n}\n\nasync function simulateUpload(\n  file: File,\n  onProgress: (percent: number) => void,\n): Promise<void> {\n  const totalMs = Math.min(2200, Math.max(700, file.size / 8000));\n  const steps = 18;\n  for (let i = 1; i <= steps; i++) {\n    await new Promise((r) => setTimeout(r, totalMs / steps));\n    onProgress(Math.round((i / steps) * 100));\n  }\n}\n\n/* ─── Progress ring ─────────────────────────────────────────── */\n\nfunction ProgressRing({\n  progress,\n  size = 36,\n  stroke = 2.5,\n  done,\n  tone = \"on-media\",\n}: {\n  progress: number;\n  size?: number;\n  stroke?: number;\n  done?: boolean;\n  /** on-media = white ring for photo overlays; surface = theme-aware for doc cards */\n  tone?: \"on-media\" | \"surface\";\n}) {\n  const r = (size - stroke) / 2;\n  const c = 2 * Math.PI * r;\n  const offset = c - (Math.max(0, Math.min(100, progress)) / 100) * c;\n  const track =\n    tone === \"on-media\"\n      ? \"text-white/20\"\n      : \"text-black/10 dark:text-white/15\";\n  const active = done\n    ? \"text-emerald-500\"\n    : tone === \"on-media\"\n      ? \"text-white\"\n      : \"text-neutral-950 dark:text-white\";\n\n  return (\n    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className=\"-rotate-90\">\n      <circle\n        cx={size / 2}\n        cy={size / 2}\n        r={r}\n        fill=\"none\"\n        stroke=\"currentColor\"\n        strokeWidth={stroke}\n        className={track}\n      />\n      <motion.circle\n        cx={size / 2}\n        cy={size / 2}\n        r={r}\n        fill=\"none\"\n        stroke=\"currentColor\"\n        strokeWidth={stroke}\n        strokeLinecap=\"round\"\n        strokeDasharray={c}\n        animate={{ strokeDashoffset: done ? 0 : offset }}\n        transition={{ duration: 0.28, ease: EASE_OUT }}\n        className={active}\n      />\n    </svg>\n  );\n}\n\n/* ─── File type mark (provided path) ────────────────────────── */\n\nconst FILE_STACK_PATH =\n  \"m56.936.888 30.189 1.054 7.998 8.577-1.473 42.182a2.5 2.5 0 0 1-2.421 2.411h-.165L69 54.341V58a2 2 0 0 1-2 2H31a2 2 0 0 1-2-2v-3.731l-24.064.84a2.5 2.5 0 0 1-2.575-2.247l-.011-.164L.675 4.728a2.5 2.5 0 0 1 2.247-2.575l.164-.011 30.189-1.054 7.242 6.753-.149.159h13.817l.165-4.7A2.5 2.5 0 0 1 56.771.887zM59.999 9H31a1 1 0 0 0-.993.883L30 10v29h20a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H30v6a1 1 0 0 0 .883.993L31 59h36a1 1 0 0 0 .993-.883L68 58V17h-8zm-3.098-7.113a1.5 1.5 0 0 0-1.54 1.303l-.012.144L55.186 8H61l8 8v9.629a10.46 10.46 0 0 1 5.122-1.13c5.796.202 10.33 5.064 10.127 10.86s-5.064 10.329-10.86 10.126a10.5 10.5 0 0 1-4.39-1.13v8.986l22.1.772a1.5 1.5 0 0 0 1.54-1.303l.012-.144 1.428-40.975-7.493-.262-1-.035.297-8.496zm-24.799.24L3.121 3.142a1.5 1.5 0 0 0-1.445 1.407l-.002.145 1.675 47.97a1.5 1.5 0 0 0 1.407 1.445l.145.002 24.098-.841V52H28a1 1 0 0 1-1-1v-6.165l-7.405.258v.001l-1 .035-4.996.174-1 .036-.733-20.988L29 23.753V10a2 2 0 0 1 2-2h1.307zM59 50v1h-6v-1zm-26.685-8H30v7h1.303v-2.569h1.057c1.584 0 2.797-.717 2.797-2.269 0-1.627-1.213-2.162-2.842-2.162m6.19 0H36.54v7h2.034c2.18 0 3.506-1.21 3.506-3.532 0-2.312-1.326-3.468-3.573-3.468M48 42h-4.438v7h1.303v-2.922h2.674v-1.049h-2.674v-1.98H48zm-9.584 1.006c1.483 0 2.326.75 2.326 2.462 0 1.654-.777 2.46-2.151 2.522l-.175.004h-.573v-4.988zM59 45v1h-6v-1zm-26.787-2.005c1.09 0 1.663.29 1.663 1.167 0 .806-.467 1.223-1.431 1.27l-.187.004h-.955v-2.44zm36.814-16.244-.028.016v16.45a9.46 9.46 0 0 0 4.425 1.27c4.905.17 9.07-3.408 9.739-8.162l-9.442-.33.366-10.497a9.45 9.45 0 0 0-5.06 1.253M18.42 40.132l-4.997.175.14 3.996 4.997-.174zm8.593-.3-7.593.265.14 3.997 7.438-.26L27 40q0-.086.014-.168M59 40v1h-6v-1zm-40.753-4.865-4.997.175.14 3.997 4.996-.174zm10.752-.376-9.753.341.14 3.998 9.613-.336zM59 35v1H39v-1zm-40.928-4.862-4.997.175.14 3.997 4.997-.174zM29 29.756l-9.927.347.14 3.998L29 33.759zM59 30v1H39v-1zm-41.102-4.859-4.997.175.14 3.997 4.996-.174zm11.101-.387-10.102.353.14 3.997 9.962-.348zm32-15.34V16h6.585zm25.875-6.273-.254 7.289 7.29.254zM33.11 2.3l.2 5.7h5.911z\";\n\nfunction FileTypeCluster({\n  dragging,\n  reduce,\n}: {\n  dragging: boolean;\n  reduce: boolean;\n}) {\n  return (\n    <motion.div\n      aria-hidden\n      className=\"flex items-center justify-center text-white\"\n      animate={\n        reduce\n          ? undefined\n          : dragging\n            ? { y: -3, scale: 1.04 }\n            : { y: 0, scale: 1 }\n      }\n      transition={{ type: \"spring\", stiffness: 380, damping: 26 }}\n    >\n      <svg\n        viewBox=\"0 0 96 62\"\n        fill=\"currentColor\"\n        xmlns=\"http://www.w3.org/2000/svg\"\n        className=\"h-14 w-[88px]\"\n      >\n        <path d={FILE_STACK_PATH} />\n      </svg>\n    </motion.div>\n  );\n}\n\n/* ─── Component ─────────────────────────────────────────────── */\n\n/**\n * FileUploader\n *\n * Media-first dropzone: bold empty state, then a living gallery of image\n * tiles + document cards with circular progress and spring layout.\n */\nexport function FileUploader({\n  value: controlled,\n  defaultValue = [],\n  onChange,\n  onUpload,\n  onRemove,\n  accept,\n  maxFiles = 8,\n  maxSize = 10 * 1024 * 1024,\n  buttonLabel = \"Choose files\",\n  description = \"or drop files here\",\n  color = \"#DC2F2F\",\n  disabled = false,\n  multiple = true,\n  className,\n}: FileUploaderProps) {\n  const isControlled = controlled !== undefined;\n  const [internal, setInternal] = React.useState<UploadFile[]>(defaultValue);\n  const files = isControlled ? (controlled as UploadFile[]) : internal;\n  const filesRef = React.useRef(files);\n  filesRef.current = files;\n  const reduce = useReducedMotion();\n  const inputRef = React.useRef<HTMLInputElement>(null);\n  const [dragging, setDragging] = React.useState(false);\n  const dragDepth = React.useRef(0);\n  const pendingRevokes = React.useRef(new Set<string>());\n\n  const setFiles = React.useCallback(\n    (next: UploadFile[] | ((prev: UploadFile[]) => UploadFile[])) => {\n      const resolved =\n        typeof next === \"function\" ? next(filesRef.current) : next;\n      filesRef.current = resolved;\n      if (!isControlled) setInternal(resolved);\n      onChange?.(resolved);\n    },\n    [isControlled, onChange],\n  );\n\n  const patchFile = React.useCallback(\n    (id: string, patch: Partial<UploadFile>) => {\n      setFiles((prev) =>\n        prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),\n      );\n    },\n    [setFiles],\n  );\n\n  const runUpload = React.useCallback(\n    async (entry: UploadFile) => {\n      patchFile(entry.id, { status: \"uploading\", progress: 0, error: undefined });\n      try {\n        const handler = onUpload ?? simulateUpload;\n        await handler(entry.file, (percent) => {\n          patchFile(entry.id, {\n            progress: Math.max(0, Math.min(100, percent)),\n            status: \"uploading\",\n          });\n        });\n        patchFile(entry.id, { status: \"success\", progress: 100 });\n      } catch (err) {\n        patchFile(entry.id, {\n          status: \"error\",\n          error: err instanceof Error ? err.message : \"Upload failed\",\n        });\n      }\n    },\n    [onUpload, patchFile],\n  );\n\n  const addFiles = React.useCallback(\n    (incoming: FileList | File[]) => {\n      if (disabled) return;\n      const list = Array.from(incoming);\n      if (!list.length) return;\n\n      const current = filesRef.current;\n      const fileLimit = multiple ? maxFiles : 1;\n      const room = Math.max(0, fileLimit - current.length);\n      if (room === 0) return;\n\n      const additions: UploadFile[] = [];\n      for (const file of list.slice(0, room)) {\n        if (!matchesAccept(file, accept)) {\n          additions.push({\n            id: createId(),\n            file,\n            progress: 0,\n            status: \"error\",\n            error: \"File type not allowed\",\n          });\n          continue;\n        }\n        if (file.size > maxSize) {\n          additions.push({\n            id: createId(),\n            file,\n            progress: 0,\n            status: \"error\",\n            error: `Too large · max ${formatBytes(maxSize)}`,\n          });\n          continue;\n        }\n        additions.push({\n          id: createId(),\n          file,\n          previewUrl: isImageFile(file) ? URL.createObjectURL(file) : undefined,\n          progress: 0,\n          status: \"pending\",\n        });\n      }\n\n      if (!additions.length) return;\n      setFiles([...current, ...additions]);\n      for (const entry of additions) {\n        if (entry.status === \"pending\") {\n          void runUpload(entry);\n        }\n      }\n    },\n    [accept, disabled, maxFiles, maxSize, multiple, runUpload, setFiles],\n  );\n\n  const removeFile = React.useCallback(\n    (id: string) => {\n      const target = filesRef.current.find((f) => f.id === id);\n      if (!target) return;\n      onRemove?.(target);\n      setFiles(filesRef.current.filter((f) => f.id !== id));\n      // Keep the object URL alive through the exit animation — revoking\n      // immediately blanks the <img> mid-fade and reads as a glitch.\n      if (target.previewUrl) {\n        const url = target.previewUrl;\n        pendingRevokes.current.add(url);\n        window.setTimeout(() => {\n          URL.revokeObjectURL(url);\n          pendingRevokes.current.delete(url);\n        }, EXIT_MS + 40);\n      }\n    },\n    [onRemove, setFiles],\n  );\n\n  React.useEffect(() => {\n    return () => {\n      for (const url of pendingRevokes.current) {\n        URL.revokeObjectURL(url);\n      }\n      pendingRevokes.current.clear();\n      for (const f of filesRef.current) {\n        if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);\n      }\n    };\n  }, []);\n\n  function onDragEnter(e: React.DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n    if (disabled) return;\n    dragDepth.current += 1;\n    setDragging(true);\n  }\n\n  function onDragLeave(e: React.DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n    dragDepth.current = Math.max(0, dragDepth.current - 1);\n    if (dragDepth.current === 0) setDragging(false);\n  }\n\n  function onDragOver(e: React.DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n  }\n\n  function onDrop(e: React.DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n    dragDepth.current = 0;\n    setDragging(false);\n    if (disabled) return;\n    if (e.dataTransfer.files?.length) {\n      addFiles(e.dataTransfer.files);\n    }\n  }\n\n  const hasFiles = files.length > 0;\n  const successCount = files.filter((f) => f.status === \"success\").length;\n  const uploadingCount = files.filter(\n    (f) => f.status === \"uploading\" || f.status === \"pending\",\n  ).length;\n  const fileLimit = multiple ? maxFiles : 1;\n  const atLimit = files.length >= fileLimit;\n\n  const openPicker = () => {\n    if (!disabled && !atLimit) inputRef.current?.click();\n  };\n\n  // Resting uses the accent as-is; hover/drag deepens it gently.\n  const colorVars = {\n    [\"--fu-color\" as string]: color,\n    [\"--fu-color-active\" as string]: `color-mix(in srgb, ${color} 88%, black)`,\n    [\"--fu-color-ring\" as string]: `color-mix(in srgb, ${color} 35%, transparent)`,\n  } as React.CSSProperties;\n\n  return (\n    <div className={cn(\"w-full max-w-2xl\", className)} style={colorVars}>\n      <input\n        ref={inputRef}\n        type=\"file\"\n        className=\"sr-only\"\n        accept={accept}\n        multiple={multiple}\n        disabled={disabled || atLimit}\n        onChange={(e) => {\n          if (e.target.files?.length) addFiles(e.target.files);\n          e.target.value = \"\";\n        }}\n      />\n\n      {/* ── Dropzone ── */}\n      <motion.div\n        layout={!reduce}\n        transition={{ layout: { duration: 0.32, ease: EASE_OUT } }}\n        onDragEnter={onDragEnter}\n        onDragLeave={onDragLeave}\n        onDragOver={onDragOver}\n        onDrop={onDrop}\n        className={cn(\n          \"group relative overflow-hidden rounded-lg transition-[box-shadow] duration-200\",\n          hasFiles ? \"p-0\" : \"bg-[var(--fu-color)] px-6 py-12 sm:py-14\",\n          !hasFiles && dragging && \"shadow-[0_0_0_4px_var(--fu-color-ring)]\",\n          disabled && \"pointer-events-none opacity-50\",\n        )}\n      >\n        {!hasFiles ? (\n          <>\n            {/* Fill + dashed frame — hover darken stays inside the lines */}\n            <div\n              aria-hidden\n              className={cn(\n                \"pointer-events-none absolute inset-3 rounded-md border border-dashed transition-[background-color,border-color] duration-200 sm:inset-4\",\n                dragging\n                  ? \"border-white bg-[var(--fu-color-active)]\"\n                  : \"border-white/85 bg-transparent group-hover:border-white group-hover:bg-[var(--fu-color-active)]\",\n              )}\n            />\n\n            <div\n              role=\"button\"\n              tabIndex={disabled ? -1 : 0}\n              aria-label={buttonLabel}\n              onClick={openPicker}\n              onKeyDown={(e) => {\n                if (e.key === \"Enter\" || e.key === \" \") {\n                  e.preventDefault();\n                  openPicker();\n                }\n              }}\n              className=\"relative flex cursor-pointer flex-col items-center text-center outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--fu-color)]\"\n            >\n              <FileTypeCluster dragging={dragging} reduce={Boolean(reduce)} />\n\n              <motion.span\n                layout={false}\n                animate={\n                  reduce\n                    ? undefined\n                    : dragging\n                      ? { y: -2 }\n                      : { y: 0 }\n                }\n                transition={{ type: \"spring\", stiffness: 420, damping: 28 }}\n                className={cn(\n                  \"mt-7 inline-flex h-12 items-center gap-2.5 rounded-md bg-white px-5 text-[14px] font-bold uppercase tracking-[0.04em] text-neutral-950\",\n                  \"shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_20px_-10px_rgba(0,0,0,.25)]\",\n                  \"pointer-events-none\",\n                )}\n              >\n                <IconFilePlus className=\"size-[18px]\" stroke={2.25} />\n                {dragging ? \"Drop files\" : buttonLabel}\n              </motion.span>\n\n              <p className=\"mt-4 text-[15px] font-medium text-white\">\n                {dragging ? \"Release to upload\" : description}\n              </p>\n            </div>\n          </>\n        ) : (\n          <button\n            type=\"button\"\n            disabled={disabled || atLimit}\n            onClick={openPicker}\n            aria-label={atLimit ? \"Upload limit reached\" : \"Add more files\"}\n            className={cn(\n              \"group/add relative flex w-full items-center justify-between gap-4 overflow-hidden rounded-lg bg-[var(--fu-color)] px-4 py-3.5 text-left transition-[box-shadow] duration-200\",\n              !disabled && !atLimit && \"cursor-pointer\",\n              (disabled || atLimit) && \"cursor-not-allowed opacity-55\",\n              dragging && \"shadow-[0_0_0_4px_var(--fu-color-ring)]\",\n              \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fu-color-ring)]\",\n            )}\n          >\n            <div\n              aria-hidden\n              className={cn(\n                \"pointer-events-none absolute inset-2 rounded-md border border-dashed transition-[background-color,border-color] duration-200\",\n                dragging\n                  ? \"border-white bg-[var(--fu-color-active)]\"\n                  : \"border-white/80 bg-transparent\",\n                !dragging &&\n                  !disabled &&\n                  !atLimit &&\n                  \"group-hover/add:border-white group-hover/add:bg-[var(--fu-color-active)]\",\n              )}\n            />\n            <div className=\"relative flex min-w-0 items-center gap-3\">\n              <span className=\"flex size-10 shrink-0 items-center justify-center rounded-md bg-white text-neutral-950\">\n                <IconPlus className=\"size-5\" stroke={2.25} />\n              </span>\n              <div className=\"min-w-0\">\n                <p className=\"truncate text-[15px] font-bold uppercase tracking-[0.03em] text-white\">\n                  {dragging\n                    ? \"Drop to add\"\n                    : atLimit\n                      ? \"Limit reached\"\n                      : \"Add more\"}\n                </p>\n                <p className=\"truncate text-[13px] font-medium text-white/85\">\n                  {uploadingCount > 0\n                    ? `Uploading ${uploadingCount}…`\n                    : `${successCount} ready · ${files.length}/${fileLimit}`}\n                </p>\n              </div>\n            </div>\n            {!atLimit ? (\n              <span className=\"relative hidden shrink-0 rounded-lg bg-white px-3 py-1.5 text-[12px] font-bold uppercase tracking-[0.03em] text-neutral-950 sm:inline-flex\">\n                Browse\n              </span>\n            ) : null}\n          </button>\n        )}\n      </motion.div>\n\n      {/* ── Gallery ── */}\n      <AnimatePresence initial={false}>\n        {hasFiles ? (\n          <motion.div\n            key=\"gallery\"\n            initial={reduce ? false : { opacity: 0, y: 10 }}\n            animate={{ opacity: 1, y: 0 }}\n            exit={reduce ? undefined : { opacity: 0, y: 6 }}\n            transition={{ duration: 0.3, ease: EASE_OUT }}\n            className=\"mt-4\"\n          >\n            <motion.ul\n              layout={!reduce}\n              variants={reduce ? undefined : listVariants}\n              initial=\"hidden\"\n              animate=\"show\"\n              transition={{ layout: { duration: 0.22, ease: EASE_OUT } }}\n              className=\"grid grid-cols-2 gap-3 sm:grid-cols-3\"\n            >\n              <AnimatePresence initial={false} mode=\"popLayout\">\n                {files.map((item) => (\n                  <motion.li\n                    key={item.id}\n                    layout={!reduce ? \"position\" : false}\n                    variants={reduce ? undefined : tileVariants}\n                    initial=\"hidden\"\n                    animate=\"show\"\n                    exit=\"exit\"\n                    transition={{ layout: { duration: 0.22, ease: EASE_OUT } }}\n                    className={cn(\n                      item.previewUrl || isImageFile(item.file)\n                        ? \"col-span-1\"\n                        : \"col-span-2 sm:col-span-3\",\n                    )}\n                  >\n                    {item.previewUrl || isImageFile(item.file) ? (\n                      <ImageTile\n                        item={item}\n                        disabled={disabled}\n                        onRemove={() => removeFile(item.id)}\n                        reduce={Boolean(reduce)}\n                      />\n                    ) : (\n                      <DocTile\n                        item={item}\n                        disabled={disabled}\n                        onRemove={() => removeFile(item.id)}\n                        reduce={Boolean(reduce)}\n                      />\n                    )}\n                  </motion.li>\n                ))}\n              </AnimatePresence>\n            </motion.ul>\n          </motion.div>\n        ) : null}\n      </AnimatePresence>\n    </div>\n  );\n}\n\n/* ─── Image media tile ──────────────────────────────────────── */\n\nfunction ImageTile({\n  item,\n  disabled,\n  onRemove,\n  reduce,\n}: {\n  item: UploadFile;\n  disabled: boolean;\n  onRemove: () => void;\n  reduce: boolean;\n}) {\n  const isError = item.status === \"error\";\n  const isSuccess = item.status === \"success\";\n  const isBusy = item.status === \"uploading\" || item.status === \"pending\";\n\n  return (\n    <div\n      className={cn(\n        \"group relative aspect-[4/5] overflow-hidden rounded-2xl border\",\n        \"border-black/[0.08] bg-neutral-100 dark:border-white/[0.08] dark:bg-[#101014]\",\n        isError && \"border-red-500/35 ring-1 ring-red-500/20\",\n      )}\n    >\n      {item.previewUrl ? (\n        <img\n          src={item.previewUrl}\n          alt=\"\"\n          className={cn(\n            \"absolute inset-0 size-full object-cover transition-[filter] duration-300\",\n            isBusy && \"blur-[1px] brightness-75\",\n            isError && \"grayscale-[0.4] brightness-75\",\n          )}\n        />\n      ) : (\n        <div className=\"absolute inset-0 flex items-center justify-center text-neutral-400 dark:text-white/30\">\n          <IconPhoto className=\"size-8\" stroke={1.5} />\n        </div>\n      )}\n\n      {/* Bottom readable band */}\n      <div className=\"pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent px-3 pb-3 pt-10\">\n        <p className=\"truncate text-[13px] font-semibold tracking-[-0.01em] text-white\">\n          {item.file.name}\n        </p>\n        <p\n          className={cn(\n            \"mt-0.5 text-[12px] font-medium\",\n            isError ? \"text-red-300\" : \"text-white/65\",\n          )}\n        >\n          {isError\n            ? item.error ?? \"Failed\"\n            : isBusy\n              ? `${Math.round(item.progress)}%`\n              : formatBytes(item.file.size)}\n        </p>\n      </div>\n\n      {/* Upload overlay */}\n      <AnimatePresence>\n        {isBusy ? (\n          <motion.div\n            key=\"busy\"\n            initial={reduce ? false : { opacity: 0 }}\n            animate={{ opacity: 1 }}\n            exit={{ opacity: 0 }}\n            className=\"absolute inset-0 flex items-center justify-center bg-black/25\"\n          >\n            <div className=\"relative flex size-11 items-center justify-center\">\n              <ProgressRing progress={item.progress} size={44} stroke={2.75} />\n              <span className=\"absolute text-[11px] font-semibold tabular-nums text-white\">\n                {Math.round(item.progress)}\n              </span>\n            </div>\n          </motion.div>\n        ) : null}\n      </AnimatePresence>\n\n      {/* Success badge */}\n      <AnimatePresence>\n        {isSuccess ? (\n          <motion.span\n            key=\"ok\"\n            initial={reduce ? false : { opacity: 0, scale: 0.95 }}\n            animate={{ opacity: 1, scale: 1 }}\n            exit={{ opacity: 0, scale: 0.96 }}\n            transition={{ type: \"spring\", stiffness: 460, damping: 28 }}\n            className=\"absolute left-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_4px_14px_-4px_rgba(16,185,129,.7)]\"\n            aria-label=\"Uploaded\"\n          >\n            <IconCheck className=\"size-3.5\" stroke={2.5} />\n          </motion.span>\n        ) : null}\n      </AnimatePresence>\n\n      <button\n        type=\"button\"\n        disabled={disabled}\n        onClick={onRemove}\n        aria-label={`Remove ${item.file.name}`}\n        className={cn(\n          \"absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full\",\n          \"bg-black/55 text-white backdrop-blur-sm transition-colors duration-150\",\n          \"hover:bg-black/75\",\n          \"opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100\",\n          \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40\",\n          \"disabled:pointer-events-none disabled:opacity-40\",\n          \"active:scale-[0.97] motion-reduce:active:scale-100\",\n        )}\n      >\n        <IconX className=\"size-3.5\" stroke={2.25} />\n      </button>\n    </div>\n  );\n}\n\n/* ─── Document / non-image tile ─────────────────────────────── */\n\nfunction DocTile({\n  item,\n  disabled,\n  onRemove,\n  reduce,\n}: {\n  item: UploadFile;\n  disabled: boolean;\n  onRemove: () => void;\n  reduce: boolean;\n}) {\n  const isError = item.status === \"error\";\n  const isSuccess = item.status === \"success\";\n  const isBusy = item.status === \"uploading\" || item.status === \"pending\";\n\n  return (\n    <div\n      className={cn(\n        \"rounded-[14px] border p-1\",\n        isError\n          ? \"border-red-500/25 bg-red-500/[0.08]\"\n          : isSuccess\n            ? \"border-emerald-500/25 bg-emerald-500/[0.08]\"\n            : \"border-black/[0.08] bg-neutral-100/80 dark:border-white/[0.08] dark:bg-white/[0.04]\",\n      )}\n    >\n      <div\n        className={cn(\n          \"relative flex items-center gap-3 rounded-[10px] border px-3 py-2.5\",\n          isError\n            ? \"border-red-500/15 bg-white/90 dark:bg-black/40\"\n            : isSuccess\n              ? \"border-emerald-500/15 bg-white/90 dark:bg-black/40\"\n              : \"border-black/[0.06] bg-white dark:border-white/[0.08] dark:bg-white/[0.03]\",\n        )}\n      >\n        <div\n          className={cn(\n            \"relative flex size-10 shrink-0 items-center justify-center rounded-lg\",\n            isError\n              ? \"bg-red-500 text-white\"\n              : isSuccess\n                ? \"bg-emerald-500 text-white\"\n                : isBusy\n                  ? \"bg-neutral-200 text-neutral-700 dark:bg-white/10 dark:text-white\"\n                  : \"bg-neutral-900 text-white dark:bg-white/10 dark:text-white\",\n          )}\n        >\n          {isBusy ? (\n            <ProgressRing\n              progress={item.progress}\n              size={24}\n              stroke={2.25}\n              done={false}\n              tone=\"surface\"\n            />\n          ) : isSuccess ? (\n            <motion.span\n              initial={reduce ? false : { scale: 0.95, opacity: 0 }}\n              animate={{ scale: 1, opacity: 1 }}\n              transition={{ type: \"spring\", stiffness: 480, damping: 28 }}\n            >\n              <IconCheck className=\"size-4\" stroke={2.5} />\n            </motion.span>\n          ) : isError ? (\n            <IconX className=\"size-4\" stroke={2.5} />\n          ) : (\n            <FileTypeIcon file={item.file} className=\"size-4\" />\n          )}\n        </div>\n\n        <div className=\"min-w-0 flex-1\">\n          <p className=\"truncate text-[14px] font-semibold tracking-[-0.015em] text-neutral-950 dark:text-white\">\n            {item.file.name}\n          </p>\n          <p\n            className={cn(\n              \"mt-0.5 text-[12.5px] font-medium\",\n              isError\n                ? \"text-red-600 dark:text-red-400\"\n                : \"text-neutral-500 dark:text-white/45\",\n            )}\n          >\n            {isError\n              ? item.error ?? \"Upload failed\"\n              : isBusy\n                ? `Uploading · ${Math.round(item.progress)}%`\n                : isSuccess\n                  ? `Ready · ${formatBytes(item.file.size)}`\n                  : formatBytes(item.file.size)}\n          </p>\n\n          {isBusy ? (\n            <div className=\"mt-2 h-1 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.1]\">\n              <motion.div\n                className=\"h-full rounded-full bg-neutral-950 dark:bg-white\"\n                initial={false}\n                animate={{ width: `${item.progress}%` }}\n                transition={\n                  reduce ? { duration: 0 } : { duration: 0.28, ease: EASE_OUT }\n                }\n              />\n            </div>\n          ) : null}\n        </div>\n\n        <button\n          type=\"button\"\n          disabled={disabled}\n          onClick={onRemove}\n          aria-label={`Remove ${item.file.name}`}\n          className={cn(\n            \"flex size-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition-colors duration-150\",\n            \"hover:bg-black/[0.06] hover:text-neutral-900\",\n            \"dark:text-white/45 dark:hover:bg-white/[0.08] dark:hover:text-white\",\n            \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/40\",\n            \"disabled:pointer-events-none disabled:opacity-40\",\n            \"active:scale-[0.97] motion-reduce:active:scale-100\",\n          )}\n        >\n          <IconX className=\"size-4\" stroke={2} />\n        </button>\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/file-uploader.tsx. For Pro components and updates, use pnpm dlx wensity@latest add file-uploader.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "file-uploader",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/file-uploader",
+      "shadcnUrl": "https://ui.wensity.com/r/file-uploader",
+      "cliInstall": "pnpm dlx wensity@latest add file-uploader"
+    }
+  }
+}

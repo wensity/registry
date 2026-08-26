@@ -1,7 +1,7 @@
 # Wensity shadcn Registry
 
 The public shadcn/ui registry for [Wensity](https://ui.wensity.com). Install React
-components, UI primitives, fonts, and design tokens straight into your project
+components, text animations, UI primitives, fonts, and design tokens straight into your project
 with the shadcn CLI. The code lands in your repo as source you own, with no
 runtime dependency on Wensity and no theme provider to wire up.
 
@@ -53,7 +53,7 @@ those for you at add time.
 
 ## What is in here
 
-70 registry items across five groups.
+91 registry items across six groups.
 
 ### Agentic AI Interfaces
 
@@ -66,15 +66,40 @@ Chat, voice, and model-selection surfaces for AI products.
 | [`voice-aurora-wave`](https://ui.wensity.com/components/voice-aurora-wave) | Voice Aurora Wave | A breathing voice orb. Never jittery, always organic. | `npx shadcn@latest add @wensity/voice-aurora-wave` |
 | [`model-context-switcher`](https://ui.wensity.com/components/model-context-switcher) | Model Context Switcher | A Radix dropdown that scales out from the trigger and glides between options. | `npx shadcn@latest add @wensity/model-context-switcher` |
 
+### Text Animations
+
+Headline and word-level motion, from shimmer and glitch to scribble and morph.
+
+| Item | Name | Description | Install |
+| --- | --- | --- | --- |
+| [`text-shimmer`](https://ui.wensity.com/components/text-shimmer) | Text Shimmer | A CSS shimmer sweep for headlines, one single element and entirely GPU-friendly. | `npx shadcn@latest add @wensity/text-shimmer` |
+| [`text-flip`](https://ui.wensity.com/components/text-flip) | Text Flip | A 3D character flip on hover, staggered and springy across every single letter. | `npx shadcn@latest add @wensity/text-flip` |
+| [`text-morphing`](https://ui.wensity.com/components/text-morphing) | Text Morphing | Blur-morphing headlines that cycle phrases with a gooey, seamless crossfade. | `npx shadcn@latest add @wensity/text-morphing` |
+| [`text-char-slide`](https://ui.wensity.com/components/text-char-slide) | Text Char Slide | A per-character slide-left cascade with a cleanly staggered entrance timing. | `npx shadcn@latest add @wensity/text-char-slide` |
+| [`text-motion`](https://ui.wensity.com/components/text-motion) | Text Motion | Headline entrances driven entirely by your own custom Framer Motion variants. | `npx shadcn@latest add @wensity/text-motion` |
+| [`text-cycle`](https://ui.wensity.com/components/text-cycle) | Text Cycle | Cycles through your headline words with a soft per-character blur stagger. | `npx shadcn@latest add @wensity/text-cycle` |
+| [`text-word-flip`](https://ui.wensity.com/components/text-word-flip) | Text Word Flip | Spring-loaded word flips paired with a soft letter-by-letter blur stagger. | `npx shadcn@latest add @wensity/text-word-flip` |
+| [`text-blur-reveal`](https://ui.wensity.com/components/text-blur-reveal) | Text Blur Reveal | A blur-in stagger by word or by letter, triggered the moment you scroll. | `npx shadcn@latest add @wensity/text-blur-reveal` |
+| [`canvas-text`](https://ui.wensity.com/components/canvas-text) | Canvas Text | Loading-ring canvas particles that slowly resolve into solid letterforms. | `npx shadcn@latest add @wensity/canvas-text` |
+| [`line-fill-text`](https://ui.wensity.com/components/line-fill-text) | Line Fill Text | Alpha-cascade ribbons clipped neatly inside the letterforms themselves. | `npx shadcn@latest add @wensity/line-fill-text` |
+| [`text-glitch`](https://ui.wensity.com/components/text-glitch) | Text Glitch | A chromatic clip-path glitch for headlines, CSS-only and entirely GPU-friendly. | `npx shadcn@latest add @wensity/text-glitch` |
+| [`text-path`](https://ui.wensity.com/components/text-path) | Text Path | SVG text riding a curved wave, arc, or circle path on a seamless, light loop. | `npx shadcn@latest add @wensity/text-path` |
+| [`text-highlight`](https://ui.wensity.com/components/text-highlight) | Text Highlight | A hand-placed highlighter band that sweeps in behind your text and tracks wrapping. | `npx shadcn@latest add @wensity/text-highlight` |
+| [`text-scribble`](https://ui.wensity.com/components/text-scribble) | Text Scribble | Hand-drawn scribble, underline, and strike marks that draw themselves onto text. | `npx shadcn@latest add @wensity/text-scribble` |
+| [`text-chroma-reveal`](https://ui.wensity.com/components/text-chroma-reveal) | Text Chroma Reveal | A chromatic ribbon sweep that paints each of your headlines cleanly into view. | `npx shadcn@latest add @wensity/text-chroma-reveal` |
+| [`text-spectrum`](https://ui.wensity.com/components/text-spectrum) | Text Spectrum | An animated multi-stop color wash that drifts endlessly through headlines. | `npx shadcn@latest add @wensity/text-spectrum` |
+| [`text-ripple`](https://ui.wensity.com/components/text-ripple) | Text Ripple | A 3D character ripple with a traveling color crest, CSS-only and GPU-light. | `npx shadcn@latest add @wensity/text-ripple` |
+
 ### Cinematic Interactions
 
 Scroll and motion pieces for landing pages and hero sections.
 
 | Item | Name | Description | Install |
 | --- | --- | --- | --- |
-| [`infinite-marquee`](https://ui.wensity.com/components/infinite-marquee) | Infinite Marquee | Seamless, GPU-only logo strip that never stutters. | `npx shadcn@latest add @wensity/infinite-marquee` |
-| [`morphing-shape-background`](https://ui.wensity.com/components/morphing-shape-background) | Morphing Shape Background | Lava-lamp blobs that drift behind your hero at 120fps with no SVG morph. | `npx shadcn@latest add @wensity/morphing-shape-background` |
-| [`scrubbable-video-reveal`](https://ui.wensity.com/components/scrubbable-video-reveal) | Scrubbable Video Reveal | Apple-style scroll-scrubbed image sequence on a canvas. | `npx shadcn@latest add @wensity/scrubbable-video-reveal` |
+| [`infinite-marquee`](https://ui.wensity.com/components/infinite-marquee) | Infinite Marquee | A seamless, GPU-only logo strip that never stutters or snaps at the loop point. | `npx shadcn@latest add @wensity/infinite-marquee` |
+| [`morphing-shape-background`](https://ui.wensity.com/components/morphing-shape-background) | Morphing Shape Background | Lava-lamp blobs that drift behind your hero at 120fps with no SVG morphing. | `npx shadcn@latest add @wensity/morphing-shape-background` |
+| [`scrubbable-video-reveal`](https://ui.wensity.com/components/scrubbable-video-reveal) | Scrubbable Video Reveal | An Apple-style image sequence scrubbed frame by frame on canvas, following your hand as you scroll in either direction. | `npx shadcn@latest add @wensity/scrubbable-video-reveal` |
+| [`animated-tabs`](https://ui.wensity.com/components/animated-tabs) | Animated Tabs | A physical stack of photo cards shuffled to the front by clipped tabs, with a tight image inset and copy in the footer. | `npx shadcn@latest add @wensity/animated-tabs` |
 
 ### Elite Micro-Interactions
 
@@ -82,9 +107,12 @@ Small, high-polish interaction details.
 
 | Item | Name | Description | Install |
 | --- | --- | --- | --- |
-| [`gooey-navigation-menu`](https://ui.wensity.com/components/gooey-navigation-menu) | Gooey Navigation Menu | A liquid FAB whose children stretch out of it like metal. | `npx shadcn@latest add @wensity/gooey-navigation-menu` |
-| [`multi-select-token-pills`](https://ui.wensity.com/components/multi-select-token-pills) | Multi-Select Token Pills | Tag input that pops in, slides out, and never snaps the layout. | `npx shadcn@latest add @wensity/multi-select-token-pills` |
-| [`shimmering-skeleton-wrapper`](https://ui.wensity.com/components/shimmering-skeleton-wrapper) | Shimmering Skeleton Wrapper | One angled GPU sweep across any placeholder geometry. Never one shimmer per row. | `npx shadcn@latest add @wensity/shimmering-skeleton-wrapper` |
+| [`gooey-navigation-menu`](https://ui.wensity.com/components/gooey-navigation-menu) | Gooey Navigation Menu | A liquid FAB whose child actions stretch out of the trigger like molten metal. | `npx shadcn@latest add @wensity/gooey-navigation-menu` |
+| [`multi-select-token-pills`](https://ui.wensity.com/components/multi-select-token-pills) | Multi-Select Token Pills | A tag input where pills pop in as you add them and slide out on remove, closing the gap without snapping the layout. | `npx shadcn@latest add @wensity/multi-select-token-pills` |
+| [`shimmering-skeleton-wrapper`](https://ui.wensity.com/components/shimmering-skeleton-wrapper) | Shimmering Skeleton Wrapper | One angled GPU sweep that travels across any placeholder geometry you wrap, never a separate shimmer stuttering per row. | `npx shadcn@latest add @wensity/shimmering-skeleton-wrapper` |
+| [`cool-button`](https://ui.wensity.com/components/cool-button) | Cool Button | A dual-layer orbit glow that soft-spins around the edge of any button or link you wrap it around, at zero layout cost. | `npx shadcn@latest add @wensity/cool-button` |
+| [`file-uploader`](https://ui.wensity.com/components/file-uploader) | File Uploader | A bold red dropzone for any file, with gallery tiles and progress after upload. | `npx shadcn@latest add @wensity/file-uploader` |
+| [`before-after-card`](https://ui.wensity.com/components/before-after-card) | Before After Card | Drag the handle to wipe between before and after images with absolutely zero lag. | `npx shadcn@latest add @wensity/before-after-card` |
 
 ### Heavy SaaS Blocks
 

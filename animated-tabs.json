@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "animated-tabs",
+  "type": "registry:block",
+  "title": "Animated Tabs",
+  "description": "A physical stack of photo cards, tight image inset up top and copy in the footer, shuffled to the front by Emil-style clipped tabs.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/animated-tabs.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/animated-tabs.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { motion, useReducedMotion } from \"framer-motion\";\nimport { cn } from \"@/lib/utils\";\n\n/** How many cards peek behind the front card. */\nconst MAX_VISIBLE_DEPTH = 3;\n\n/**\n * Aceternity-style upward stack at rest; hover fans side cards left/right.\n */\nconst STACK = {\n  scaleStep: 0.03,\n  yStep: -11,\n  opacityStep: 0.08,\n} as const;\n\nconst FAN = {\n  x: 84,\n  y: 8,\n  rotate: 5.5,\n  scale: 0.92,\n} as const;\n\n/** Smooth deck motion — low bounce, interruptible spring. */\nconst DECK_SPRING = {\n  type: \"spring\" as const,\n  stiffness: 260,\n  damping: 28,\n  mass: 0.85,\n};\n\n/** Opacity settles a touch faster than position so crossfades stay clean. */\nconst OPACITY_SPRING = {\n  type: \"spring\" as const,\n  stiffness: 320,\n  damping: 34,\n  mass: 0.7,\n};\n\nfunction canFineHover() {\n  if (typeof window === \"undefined\" || typeof window.matchMedia !== \"function\") {\n    return false;\n  }\n  return window.matchMedia(\"(hover: hover) and (pointer: fine)\").matches;\n}\n\nfunction stackPose(depth: number, selected: boolean, visible: boolean) {\n  const scale = selected ? 1 : 1 - depth * STACK.scaleStep;\n  const y = selected ? 0 : depth * STACK.yStep;\n  const opacity = !visible\n    ? 0\n    : selected\n      ? 1\n      : Math.max(0.82, 1 - depth * STACK.opacityStep);\n\n  return {\n    x: 0,\n    y,\n    scale,\n    rotate: 0,\n    opacity,\n  };\n}\n\n/** depth 1 → left, depth 2 → right (inspired by fan-out stacks). */\nfunction fanPose(depth: number, selected: boolean, visible: boolean) {\n  if (!visible) {\n    return { x: 0, y: 0, scale: 0.92, rotate: 0, opacity: 0 };\n  }\n  if (selected) {\n    return { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 };\n  }\n\n  const side = depth % 2 === 1 ? -1 : 1;\n  const rank = Math.ceil(depth / 2);\n\n  return {\n    x: side * (FAN.x + (rank - 1) * 36),\n    y: FAN.y + (rank - 1) * 6,\n    scale: FAN.scale - (rank - 1) * 0.03,\n    rotate: side * (FAN.rotate + (rank - 1) * 2),\n    opacity: Math.max(0.88, 1 - (rank - 1) * 0.06),\n  };\n}\n\nexport interface AnimatedTabItem {\n  readonly id: string;\n  readonly label: string;\n  readonly title: string;\n  readonly description: string;\n  readonly image: string;\n  readonly imageAlt?: string;\n}\n\nexport interface AnimatedTabsProps {\n  /** Tab definitions. Each item drives both the trigger and its panel. */\n  readonly tabs: readonly AnimatedTabItem[];\n  /** Controlled active tab id. */\n  readonly value?: string;\n  /** Uncontrolled initial tab id. Defaults to the first tab. */\n  readonly defaultValue?: string;\n  /** Fires whenever the active tab changes. */\n  readonly onValueChange?: (value: string) => void;\n  readonly className?: string;\n}\n\ntype ClipRect = {\n  left: number;\n  width: number;\n  listWidth: number;\n};\n\nfunction stackDepth(index: number, activeIndex: number, total: number) {\n  return (index - activeIndex + total) % total;\n}\n\nfunction TabCard({\n  tab,\n  depth,\n  selected,\n}: {\n  tab: AnimatedTabItem;\n  depth: number;\n  selected: boolean;\n}) {\n  return (\n    <div\n      className={cn(\n        \"overflow-hidden rounded-[1.35rem]\",\n        \"border border-[var(--border)] bg-[var(--background)]\",\n        \"[box-shadow:0_1px_2px_rgba(0,0,0,.06),0_16px_36px_-18px_rgba(0,0,0,.14)]\",\n        \"dark:[box-shadow:0_1px_2px_rgba(0,0,0,.45),0_20px_48px_-20px_rgba(0,0,0,.75)]\",\n      )}\n    >\n      {/* Photo — tiny inset from the top/sides of the card */}\n      <div className=\"px-1.5 pt-1.5\">\n        <div className=\"relative aspect-[16/10] overflow-hidden rounded-[1.05rem]\">\n          <img\n            src={tab.image}\n            alt={tab.imageAlt ?? tab.title}\n            draggable={false}\n            className=\"absolute inset-0 h-full w-full object-cover\"\n          />\n          {!selected ? (\n            <div\n              aria-hidden\n              className=\"absolute inset-0 bg-[var(--foreground)]\"\n              style={{ opacity: Math.min(0.35, 0.08 + depth * 0.1) }}\n            />\n          ) : null}\n        </div>\n      </div>\n\n      {/* Copy sits in the card footer, not over the photo */}\n      <div className=\"flex flex-col gap-1.5 px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-3.5\">\n        <h3 className=\"text-lg font-semibold tracking-[-0.03em] text-[var(--foreground)] sm:text-xl\">\n          <span>{tab.label}</span>\n          <span className=\"mx-1.5 font-normal text-[var(--muted-foreground)]\">\n            ·\n          </span>\n          <span className=\"font-medium text-[var(--muted-foreground)]\">\n            {tab.title}\n          </span>\n        </h3>\n        {tab.description ? (\n          <p className=\"max-w-xl text-sm leading-relaxed text-[var(--muted-foreground)] sm:text-[15px]\">\n            {tab.description}\n          </p>\n        ) : null}\n      </div>\n    </div>\n  );\n}\n\n/**\n * AnimatedTabs\n *\n * Clip-path tab chrome (Emil) + upward card stack. Hovering the deck (fine\n * pointers only) fans side cards left/right. Photo stays tight under the top\n * edge; copy is `Label · Title` in the footer.\n */\nexport function AnimatedTabs({\n  tabs,\n  value,\n  defaultValue,\n  onValueChange,\n  className,\n}: AnimatedTabsProps) {\n  const reduceMotion = useReducedMotion();\n  const isControlled = value !== undefined;\n  const [uncontrolled, setUncontrolled] = React.useState(\n    () => defaultValue ?? tabs[0]?.id ?? \"\",\n  );\n  const activeId = isControlled ? value : uncontrolled;\n\n  const listRef = React.useRef<HTMLDivElement>(null);\n  const triggerRefs = React.useRef(new Map<string, HTMLButtonElement>());\n  const [clip, setClip] = React.useState<ClipRect>({\n    left: 0,\n    width: 0,\n    listWidth: 0,\n  });\n  const activeIndex = Math.max(\n    0,\n    tabs.findIndex((tab) => tab.id === activeId),\n  );\n  const activeTab = tabs[activeIndex] ?? tabs[0];\n  const [fanned, setFanned] = React.useState(false);\n\n  const setActive = React.useCallback(\n    (nextId: string) => {\n      if (nextId === activeId) return;\n      if (!tabs.some((tab) => tab.id === nextId)) return;\n      if (!isControlled) setUncontrolled(nextId);\n      onValueChange?.(nextId);\n    },\n    [activeId, isControlled, onValueChange, tabs],\n  );\n\n  const measureClip = React.useCallback(() => {\n    const list = listRef.current;\n    const trigger = triggerRefs.current.get(activeId);\n    if (!list || !trigger) return;\n\n    const listRect = list.getBoundingClientRect();\n    const triggerRect = trigger.getBoundingClientRect();\n    setClip({\n      left: triggerRect.left - listRect.left,\n      width: triggerRect.width,\n      listWidth: listRect.width,\n    });\n  }, [activeId]);\n\n  React.useLayoutEffect(() => {\n    measureClip();\n  }, [measureClip, tabs]);\n\n  React.useEffect(() => {\n    const list = listRef.current;\n    if (!list || typeof ResizeObserver === \"undefined\") return;\n\n    const observer = new ResizeObserver(() => measureClip());\n    observer.observe(list);\n    for (const node of triggerRefs.current.values()) {\n      observer.observe(node);\n    }\n    return () => observer.disconnect();\n  }, [measureClip, tabs]);\n\n  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {\n    if (tabs.length === 0) return;\n\n    let nextIndex = activeIndex;\n    if (event.key === \"ArrowRight\" || event.key === \"ArrowDown\") {\n      event.preventDefault();\n      nextIndex = (activeIndex + 1) % tabs.length;\n    } else if (event.key === \"ArrowLeft\" || event.key === \"ArrowUp\") {\n      event.preventDefault();\n      nextIndex = (activeIndex - 1 + tabs.length) % tabs.length;\n    } else if (event.key === \"Home\") {\n      event.preventDefault();\n      nextIndex = 0;\n    } else if (event.key === \"End\") {\n      event.preventDefault();\n      nextIndex = tabs.length - 1;\n    } else {\n      return;\n    }\n\n    const next = tabs[nextIndex];\n    if (!next) return;\n    setActive(next.id);\n    triggerRefs.current.get(next.id)?.focus();\n  };\n\n  if (!activeTab) return null;\n\n  const clipPath =\n    clip.width > 0 && clip.listWidth > 0\n      ? `inset(0 ${Math.max(0, clip.listWidth - clip.left - clip.width)}px 0 ${clip.left}px round 999px)`\n      : \"inset(0 100% 0 0 round 999px)\";\n\n  const deckTransition = reduceMotion\n    ? { duration: 0.01 }\n    : DECK_SPRING;\n\n  const opacityTransition = reduceMotion\n    ? { duration: 0.01 }\n    : OPACITY_SPRING;\n\n  const fanActive = fanned && !reduceMotion;\n\n  const triggerClass = cn(\n    \"relative shrink-0 rounded-full px-3.5 py-1.5\",\n    \"text-[13px] font-medium tracking-[-0.01em] outline-none select-none\",\n  );\n\n  return (\n    <div className={cn(\"flex w-full flex-col gap-3\", className)}>\n      <div\n        role=\"tablist\"\n        aria-label=\"Destinations\"\n        onKeyDown={onKeyDown}\n        className={cn(\n          \"relative z-20 mx-auto max-w-full self-center\",\n          \"rounded-full border border-[var(--border)] p-1\",\n          \"bg-[var(--primitive-surface-hover)]\",\n          \"[box-shadow:0_1px_2px_rgba(0,0,0,.06)] dark:[box-shadow:0_1px_2px_rgba(0,0,0,.35)]\",\n        )}\n      >\n        <div ref={listRef} className=\"relative grid\">\n          <div className=\"col-start-1 row-start-1 z-[1] flex min-w-0 gap-0.5\">\n            {tabs.map((tab) => {\n              const selected = tab.id === activeId;\n              return (\n                <button\n                  key={tab.id}\n                  ref={(node) => {\n                    if (node) triggerRefs.current.set(tab.id, node);\n                    else triggerRefs.current.delete(tab.id);\n                  }}\n                  type=\"button\"\n                  role=\"tab\"\n                  id={`animated-tab-${tab.id}`}\n                  aria-selected={selected}\n                  aria-controls={`animated-tab-panel-${tab.id}`}\n                  tabIndex={selected ? 0 : -1}\n                  onClick={() => setActive(tab.id)}\n                  className={cn(\n                    triggerClass,\n                    \"text-[var(--muted-foreground)]\",\n                    \"transition-[transform,color] duration-100\",\n                    \"ease-[cubic-bezier(0.23,1,0.32,1)]\",\n                    \"active:scale-[0.97]\",\n                    \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n                    \"motion-reduce:transition-none motion-reduce:active:scale-100\",\n                    \"[@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--foreground)]\",\n                  )}\n                >\n                  {tab.label}\n                </button>\n              );\n            })}\n          </div>\n\n          <div\n            aria-hidden\n            className=\"pointer-events-none col-start-1 row-start-1 z-[2] overflow-hidden rounded-full\"\n          >\n            <div\n              className=\"will-change-[clip-path]\"\n              style={{\n                clipPath,\n                transition: reduceMotion\n                  ? undefined\n                  : \"clip-path 200ms cubic-bezier(0.23, 1, 0.32, 1)\",\n              }}\n            >\n              <div className=\"flex gap-0.5\">\n                {tabs.map((tab) => (\n                  <div\n                    key={`active-${tab.id}`}\n                    className={cn(\n                      triggerClass,\n                      \"bg-[var(--foreground)] text-[var(--background)]\",\n                    )}\n                  >\n                    {tab.label}\n                  </div>\n                ))}\n              </div>\n            </div>\n          </div>\n        </div>\n      </div>\n\n      {/* Deck — original upward stack at rest; hover fans left/right */}\n      <div\n        className=\"relative w-full pt-9\"\n        onMouseEnter={() => {\n          if (canFineHover()) setFanned(true);\n        }}\n        onMouseLeave={() => setFanned(false)}\n      >\n        <div className=\"relative\">\n          <div className=\"pointer-events-none invisible\" aria-hidden>\n            <TabCard tab={activeTab} depth={0} selected />\n          </div>\n\n          {tabs.map((tab, index) => {\n            const depth = stackDepth(index, activeIndex, tabs.length);\n            const selected = depth === 0;\n            const visible = depth < MAX_VISIBLE_DEPTH;\n            const pose = fanActive\n              ? fanPose(depth, selected, visible)\n              : stackPose(depth, selected, visible);\n            const interactive = selected || (fanActive && visible);\n            // Tiny stagger on side cards when fanning out / collapsing.\n            const fanDelay =\n              fanActive && !selected && visible ? depth * 0.035 : 0;\n\n            return (\n              <motion.div\n                key={tab.id}\n                role=\"tabpanel\"\n                id={`animated-tab-panel-${tab.id}`}\n                aria-labelledby={`animated-tab-${tab.id}`}\n                aria-hidden={!selected}\n                inert={!interactive ? true : undefined}\n                initial={false}\n                animate={{\n                  opacity: reduceMotion ? (selected ? 1 : 0) : pose.opacity,\n                  // Always the same transform channels so stack ↔ fan\n                  // retargets smoothly instead of swapping property sets.\n                  transform: reduceMotion\n                    ? \"translate(0px, 0px) rotate(0deg) scale(1)\"\n                    : `translate(${pose.x}px, ${pose.y}px) rotate(${pose.rotate}deg) scale(${pose.scale})`,\n                }}\n                transition={{\n                  transform: {\n                    ...deckTransition,\n                    delay: reduceMotion ? 0 : fanDelay,\n                  },\n                  opacity: {\n                    ...opacityTransition,\n                    delay: reduceMotion ? 0 : fanDelay,\n                  },\n                }}\n                className={cn(\n                  \"absolute inset-x-0 top-0 origin-top will-change-transform\",\n                  interactive && !selected && \"cursor-pointer\",\n                )}\n                style={{\n                  zIndex: tabs.length - depth,\n                  pointerEvents: interactive ? \"auto\" : \"none\",\n                }}\n                onClick={() => {\n                  if (!selected && fanActive) setActive(tab.id);\n                }}\n              >\n                <TabCard tab={tab} depth={depth} selected={selected} />\n              </motion.div>\n            );\n          })}\n        </div>\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/animated-tabs.tsx. For Pro components and updates, use pnpm dlx wensity@latest add animated-tabs.",
+  "categories": [
+    "Cinematic Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "animated-tabs",
+      "access": "free",
+      "category": "Cinematic Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/animated-tabs",
+      "shadcnUrl": "https://ui.wensity.com/r/animated-tabs",
+      "cliInstall": "pnpm dlx wensity@latest add animated-tabs"
+    }
+  }
+}

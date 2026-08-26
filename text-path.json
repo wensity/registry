@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-path",
+  "type": "registry:block",
+  "title": "Text Path",
+  "description": "Curved SVG text for React headlines. Wave, arc, or circle paths with a seamless loop.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-path.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-path.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type TextPathCurve = \"wave\" | \"arc\" | \"circle\";\nexport type TextPathDirection = \"forward\" | \"reverse\";\n\nexport interface TextPathProps {\n  /** The string to tile along the path. */\n  text: string;\n  /** Built-in curve. Ignored when `path` is set. Default: `\"arc\"`. */\n  curve?: TextPathCurve;\n  /** Custom SVG path `d`. Wins over `curve`. Open paths only (wave/arc style). */\n  path?: string;\n  /** Custom viewBox when using a custom `path`. */\n  viewBox?: string;\n  /** Seconds for one seamless loop. Lower = faster. Default: 14 */\n  duration?: number;\n  /** Travel direction. Default: `\"forward\"`. */\n  direction?: TextPathDirection;\n  /** Separator between tiled copies. Default: `\"  ·  \"`. */\n  separator?: string;\n  /**\n   * How many text tiles to place. Default: 3.\n   * Wave/arc: tiles along the open path for the marquee.\n   * Circle: copies of the phrase; the ring radius grows so they fit\n   * exactly once around (no overlap, no equal-angle letter hacks).\n   */\n  repeats?: number;\n  /** Font size in CSS pixels. Default: 28 */\n  fontSize?: number;\n  /** Font weight. Default: 500 */\n  fontWeight?: number | string;\n  /** Letter spacing in em. Default: 0.05 */\n  letterSpacing?: number;\n  /** Text fill. Omit to inherit `currentColor`. */\n  fill?: string;\n  /** Draw the underlying path stroke. Default: false */\n  showPath?: boolean;\n  /** Path stroke color. Defaults to a soft theme line. */\n  pathColor?: string;\n  /** Path stroke width in CSS pixels. Default: 1 */\n  pathWidth?: number;\n  /**\n   * Force the loop paused. When omitted, auto-pauses off-screen or when\n   * the tab is hidden.\n   */\n  paused?: boolean;\n  /** Optional Tailwind class for size / color on the host. */\n  className?: string;\n  /** Accessible name. Defaults to `text`. */\n  \"aria-label\"?: string;\n}\n\ntype CurveDef = {\n  d: string;\n  viewBox: string;\n};\n\nconst CURVES: Record<\"wave\" | \"arc\", CurveDef> = {\n  wave: {\n    d: \"M 0 72 C 50 12, 90 132, 140 72 S 230 12, 280 72 S 370 132, 420 72 S 510 12, 560 72\",\n    viewBox: \"0 0 560 144\",\n  },\n  arc: {\n    d: \"M 24 118 Q 280 -8 536 118\",\n    viewBox: \"0 0 560 140\",\n  },\n};\n\nfunction useAutoPause(paused: boolean | undefined) {\n  const pausedPropRef = React.useRef(paused);\n  const inViewRef = React.useRef(true);\n  const reduceMotionRef = React.useRef(false);\n  const [host, setHost] = React.useState<Element | null>(null);\n  const [playing, setPlaying] = React.useState(true);\n  pausedPropRef.current = paused;\n\n  const setHostRef = React.useCallback((node: SVGSVGElement | null) => {\n    setHost(node);\n  }, []);\n\n  React.useEffect(() => {\n    if (!host) return;\n\n    let pageVisible = document.visibilityState !== \"hidden\";\n\n    const mq =\n      typeof window.matchMedia === \"function\"\n        ? window.matchMedia(\"(prefers-reduced-motion: reduce)\")\n        : null;\n\n    const syncReduceMotion = () => {\n      reduceMotionRef.current = mq?.matches ?? false;\n    };\n    syncReduceMotion();\n\n    const sync = () => {\n      if (reduceMotionRef.current) {\n        setPlaying(false);\n        return;\n      }\n      const forced = pausedPropRef.current;\n      if (forced === true) {\n        setPlaying(false);\n        return;\n      }\n      if (forced === false) {\n        setPlaying(true);\n        return;\n      }\n      setPlaying(inViewRef.current && pageVisible);\n    };\n\n    const io = new IntersectionObserver(\n      (entries) => {\n        inViewRef.current = entries.some((entry) => entry.isIntersecting);\n        sync();\n      },\n      { threshold: 0.01 },\n    );\n\n    const onVisibility = () => {\n      pageVisible = document.visibilityState !== \"hidden\";\n      sync();\n    };\n\n    const onReduceMotionChange = () => {\n      syncReduceMotion();\n      sync();\n    };\n\n    if (paused !== false) {\n      io.observe(host);\n      document.addEventListener(\"visibilitychange\", onVisibility);\n    }\n    mq?.addEventListener(\"change\", onReduceMotionChange);\n\n    sync();\n\n    return () => {\n      io.disconnect();\n      document.removeEventListener(\"visibilitychange\", onVisibility);\n      mq?.removeEventListener(\"change\", onReduceMotionChange);\n    };\n  }, [paused, host]);\n\n  return { setHostRef, playing };\n}\n\n/**\n * Circle mode — real SVG textPath on a ring sized to the text.\n *\n * Why not per-letter rotate (CircularText)? Equal angle-per-grapheme fights\n * proportional fonts and looks stepped/uneven. Why not a fixed-radius circle\n * + repeats? Extra copies stack on a closed path and look glitched.\n *\n * Instead: measure the tiled string, set circumference = text length, spin\n * the whole group. Spacing stays native; repeats just make a larger ring.\n */\nfunction TextPathCircle({\n  text,\n  duration,\n  direction,\n  separator,\n  repeats,\n  fontSize,\n  fontWeight,\n  letterSpacing,\n  fill,\n  showPath,\n  pathColor,\n  pathWidth,\n  paused,\n  className,\n  \"aria-label\": ariaLabel,\n}: {\n  text: string;\n  duration: number;\n  direction: TextPathDirection;\n  separator: string;\n  repeats: number;\n  fontSize: number;\n  fontWeight: number | string;\n  letterSpacing: number;\n  fill?: string;\n  showPath: boolean;\n  pathColor?: string;\n  pathWidth: number;\n  paused?: boolean;\n  className?: string;\n  \"aria-label\"?: string;\n}) {\n  const reactId = React.useId().replace(/:/g, \"\");\n  const pathId = `wensity-text-path-circle-${reactId}`;\n\n  const measureRef = React.useRef<SVGTextElement | null>(null);\n  const spinRef = React.useRef<SVGGElement | null>(null);\n  const angleRef = React.useRef(0);\n  const { setHostRef, playing } = useAutoPause(paused);\n\n  const trimmed = text.trim() || \"Text Path\";\n  // Keep the trailing separator so the wrap seam matches tile seams.\n  const displayText = `${trimmed}${separator}`.repeat(Math.max(1, repeats));\n\n  const [radius, setRadius] = React.useState(0);\n\n  const textStyle: React.CSSProperties = {\n    fontSize,\n    fontWeight,\n    letterSpacing: `${letterSpacing}em`,\n    fill: fill ?? \"var(--wensity-text-path-fill)\",\n  };\n\n  React.useLayoutEffect(() => {\n    const measure = measureRef.current;\n    if (!measure) return;\n    const len = measure.getComputedTextLength();\n    if (len > 1) {\n      setRadius(len / (2 * Math.PI));\n    }\n  }, [displayText, fontSize, fontWeight, letterSpacing]);\n\n  const pad = fontSize * 1.35;\n  const size = radius > 0 ? 2 * radius + 2 * pad : fontSize * 10;\n  const cx = size / 2;\n  const cy = size / 2;\n  const r = radius > 0 ? radius : Math.max(1, size / 2 - pad);\n  // Start at 12 o'clock, sweep clockwise (readable L→R across the top).\n  const pathD = `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx} ${cy + r} A ${r} ${r} 0 1 1 ${cx} ${cy - r}`;\n\n  React.useEffect(() => {\n    const spin = spinRef.current;\n    if (!spin) return;\n\n    let raf = 0;\n    let last = performance.now();\n    const sign = direction === \"forward\" ? 1 : -1;\n    const degPerMs = (sign * 360) / (duration * 1000);\n\n    const paint = (angle: number) => {\n      spin.setAttribute(\"transform\", `rotate(${angle} ${cx} ${cy})`);\n    };\n\n    paint(angleRef.current);\n\n    if (!playing || radius <= 0) {\n      return () => {\n        if (raf) cancelAnimationFrame(raf);\n      };\n    }\n\n    const tick = (now: number) => {\n      angleRef.current += degPerMs * (now - last);\n      last = now;\n      paint(angleRef.current);\n      raf = requestAnimationFrame(tick);\n    };\n\n    raf = requestAnimationFrame(tick);\n    return () => {\n      if (raf) cancelAnimationFrame(raf);\n    };\n  }, [playing, duration, direction, cx, cy, radius]);\n\n  return (\n    <svg\n      ref={setHostRef}\n      width={size}\n      height={size}\n      viewBox={`0 0 ${size} ${size}`}\n      role=\"img\"\n      aria-label={ariaLabel ?? trimmed}\n      className={cn(\n        \"wensity-text-path mx-auto block overflow-visible\",\n        \"[--wensity-text-path-fill:currentColor]\",\n        \"[--wensity-text-path-stroke:#a1a1aa]\",\n        \"dark:[--wensity-text-path-stroke:#52525b]\",\n        className,\n      )}\n    >\n      {/* Off-canvas measure — same font metrics as the visible textPath. */}\n      <text\n        ref={measureRef}\n        x={-9999}\n        y={-9999}\n        aria-hidden=\"true\"\n        style={textStyle}\n        className=\"font-[inherit]\"\n      >\n        {displayText}\n      </text>\n\n      <path\n        id={pathId}\n        d={pathD}\n        fill=\"none\"\n        stroke={showPath ? (pathColor ?? \"var(--wensity-text-path-stroke)\") : \"none\"}\n        strokeWidth={showPath ? pathWidth : 0}\n        strokeLinecap=\"round\"\n        vectorEffect=\"non-scaling-stroke\"\n        aria-hidden=\"true\"\n      />\n\n      <g ref={spinRef}>\n        {radius > 0 ? (\n          <text style={textStyle} className=\"font-[inherit] [dominant-baseline:central]\">\n            <textPath href={`#${pathId}`} startOffset=\"0\" method=\"align\" spacing=\"exact\">\n              {displayText}\n            </textPath>\n          </text>\n        ) : null}\n      </g>\n    </svg>\n  );\n}\n\n/**\n * Open path mode — SVG textPath marquee (wave / arc / custom path).\n */\nfunction TextPathOpen({\n  text,\n  curve,\n  path: pathOverride,\n  viewBox: viewBoxOverride,\n  duration,\n  direction,\n  separator,\n  repeats,\n  fontSize,\n  fontWeight,\n  letterSpacing,\n  fill,\n  showPath,\n  pathColor,\n  pathWidth,\n  paused,\n  className,\n  \"aria-label\": ariaLabel,\n}: {\n  text: string;\n  curve: \"wave\" | \"arc\";\n  path?: string;\n  viewBox?: string;\n  duration: number;\n  direction: TextPathDirection;\n  separator: string;\n  repeats: number;\n  fontSize: number;\n  fontWeight: number | string;\n  letterSpacing: number;\n  fill?: string;\n  showPath: boolean;\n  pathColor?: string;\n  pathWidth: number;\n  paused?: boolean;\n  className?: string;\n  \"aria-label\"?: string;\n}) {\n  const reactId = React.useId().replace(/:/g, \"\");\n  const pathId = `wensity-text-path-${reactId}`;\n\n  const textPathRef = React.useRef<SVGTextPathElement | null>(null);\n  const offsetRef = React.useRef(0);\n  const { setHostRef, playing } = useAutoPause(paused);\n\n  const curveDef = CURVES[curve];\n  const pathD = pathOverride?.trim() || curveDef.d;\n  const viewBox =\n    viewBoxOverride?.trim() || (pathOverride ? \"0 0 560 144\" : curveDef.viewBox);\n\n  const trimmed = text.trim() || \"Text Path\";\n  const tile = `${trimmed}${separator}`;\n  const displayText = tile.repeat(Math.max(1, repeats));\n\n  // Reset marquee seam when content/metrics change — not on pause alone.\n  React.useEffect(() => {\n    offsetRef.current = 0;\n    textPathRef.current?.setAttribute(\"startOffset\", \"0\");\n  }, [pathD, displayText, repeats, direction, duration, fontSize, fontWeight, letterSpacing]);\n\n  React.useEffect(() => {\n    const textPath = textPathRef.current;\n    if (!textPath) return;\n\n    let raf = 0;\n    let start = performance.now();\n    let loopDistance = 0;\n    let running = false;\n\n    const measure = () => {\n      const total = textPath.getComputedTextLength();\n      loopDistance = total > 0 ? total / Math.max(1, repeats) : 0;\n    };\n\n    const paint = (offset: number) => {\n      offsetRef.current = offset;\n      textPath.setAttribute(\"startOffset\", String(offset));\n    };\n\n    const resumeFromOffset = () => {\n      if (loopDistance <= 0) {\n        start = performance.now();\n        return;\n      }\n      const raw =\n        direction === \"forward\"\n          ? -offsetRef.current / loopDistance\n          : offsetRef.current / loopDistance;\n      const progress = ((raw % 1) + 1) % 1;\n      start = performance.now() - progress * duration * 1000;\n    };\n\n    const tick = (now: number) => {\n      if (!running) return;\n      if (!playing) {\n        running = false;\n        raf = 0;\n        return;\n      }\n\n      if (loopDistance <= 0) measure();\n      if (loopDistance > 0) {\n        const elapsed = (now - start) / 1000;\n        const progress = (elapsed / duration) % 1;\n        const offset =\n          direction === \"forward\"\n            ? -progress * loopDistance\n            : progress * loopDistance;\n        paint(offset);\n      }\n\n      raf = requestAnimationFrame(tick);\n    };\n\n    const startLoop = () => {\n      if (running || !playing) return;\n      measure();\n      if (loopDistance <= 0) {\n        paint(0);\n        return;\n      }\n      resumeFromOffset();\n      running = true;\n      raf = requestAnimationFrame(tick);\n    };\n\n    const stopLoop = () => {\n      running = false;\n      if (raf) {\n        cancelAnimationFrame(raf);\n        raf = 0;\n      }\n    };\n\n    if (playing) startLoop();\n    else stopLoop();\n\n    return () => stopLoop();\n  }, [playing, pathD, displayText, duration, repeats, direction, fontSize, fontWeight, letterSpacing]);\n\n  return (\n    <svg\n      ref={setHostRef}\n      viewBox={viewBox}\n      role=\"img\"\n      aria-label={ariaLabel ?? trimmed}\n      className={cn(\n        \"wensity-text-path block h-auto w-full overflow-visible\",\n        \"[--wensity-text-path-fill:currentColor]\",\n        \"[--wensity-text-path-stroke:#a1a1aa]\",\n        \"dark:[--wensity-text-path-stroke:#52525b]\",\n        className,\n      )}\n    >\n      <path\n        id={pathId}\n        d={pathD}\n        fill=\"none\"\n        stroke={showPath ? (pathColor ?? \"var(--wensity-text-path-stroke)\") : \"none\"}\n        strokeWidth={showPath ? pathWidth : 0}\n        strokeLinecap=\"round\"\n        vectorEffect=\"non-scaling-stroke\"\n        aria-hidden=\"true\"\n      />\n      <text\n        style={{\n          fontSize,\n          fontWeight,\n          letterSpacing: `${letterSpacing}em`,\n          fill: fill ?? \"var(--wensity-text-path-fill)\",\n        }}\n        className=\"font-[inherit] [dominant-baseline:central]\"\n      >\n        <textPath\n          ref={textPathRef}\n          href={`#${pathId}`}\n          startOffset=\"0\"\n          method=\"align\"\n          spacing=\"exact\"\n        >\n          {displayText}\n        </textPath>\n      </text>\n    </svg>\n  );\n}\n\n/**\n * TextPath\n *\n * Curved headline text via SVG textPath for every curve.\n *\n * Motion contract:\n * - Wave/arc: seamless tile loop via startOffset (rAF, no re-renders).\n * - Circle: ring radius = textLength / 2π, then spin the group (no stacking).\n * - `repeats` tiles the string; on circle the ring grows to fit.\n * - Auto-pauses off-screen / hidden tabs; honours reduced motion.\n */\nexport function TextPath({\n  text,\n  curve = \"arc\",\n  path: pathOverride,\n  viewBox,\n  duration = 14,\n  direction = \"forward\",\n  separator = \"  ·  \",\n  repeats = 3,\n  fontSize = 28,\n  fontWeight = 500,\n  letterSpacing = 0.05,\n  fill,\n  showPath = false,\n  pathColor,\n  pathWidth = 1,\n  paused,\n  className,\n  \"aria-label\": ariaLabel,\n}: TextPathProps) {\n  const safeDuration = Math.max(2, duration);\n  const safeRepeats = Math.max(1, Math.min(8, Math.round(repeats)));\n  const safeFontSize = Math.max(10, fontSize);\n  const safePathWidth = Math.max(0.5, pathWidth);\n\n  if (curve === \"circle\" && !pathOverride?.trim()) {\n    return (\n      <TextPathCircle\n        text={text}\n        duration={safeDuration}\n        direction={direction}\n        separator={separator}\n        repeats={safeRepeats}\n        fontSize={safeFontSize}\n        fontWeight={fontWeight}\n        letterSpacing={letterSpacing}\n        fill={fill}\n        showPath={showPath}\n        pathColor={pathColor}\n        pathWidth={safePathWidth}\n        paused={paused}\n        className={className}\n        aria-label={ariaLabel}\n      />\n    );\n  }\n\n  const openCurve: \"wave\" | \"arc\" = curve === \"wave\" ? \"wave\" : \"arc\";\n\n  return (\n    <TextPathOpen\n      text={text}\n      curve={openCurve}\n      path={pathOverride}\n      viewBox={viewBox}\n      duration={safeDuration}\n      direction={direction}\n      separator={separator}\n      repeats={safeRepeats}\n      fontSize={safeFontSize}\n      fontWeight={fontWeight}\n      letterSpacing={letterSpacing}\n      fill={fill}\n      showPath={showPath}\n      pathColor={pathColor}\n      pathWidth={safePathWidth}\n      paused={paused}\n      className={className}\n      aria-label={ariaLabel}\n    />\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-path.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-path.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-path",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-path",
+      "shadcnUrl": "https://ui.wensity.com/r/text-path",
+      "cliInstall": "pnpm dlx wensity@latest add text-path"
+    }
+  }
+}

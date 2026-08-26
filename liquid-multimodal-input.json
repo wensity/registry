@@ -3,7 +3,7 @@
   "name": "liquid-multimodal-input",
   "type": "registry:block",
   "title": "Liquid Multimodal Input",
-  "description": "Drop a file, type a thought. The input breathes open and glows to meet you.",
+  "description": "Drop a file, type a thought. The input breathes open to meet you.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "@tabler/icons-react",
@@ -29,7 +29,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

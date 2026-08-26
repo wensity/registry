@@ -3,7 +3,7 @@
   "name": "scroll-area",
   "type": "registry:block",
   "title": "Scroll Area",
-  "description": "Provides styled scrolling for constrained content regions. Supports vertical, horizontal, and both-axis scrolling with auto-hide or always-visible scrollbar strategies.",
+  "description": "Styled scrolling for constrained panels, lists, and overflow regions.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "@base-ui/react",
@@ -28,7 +28,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-morphing",
+  "type": "registry:block",
+  "title": "Text Morphing",
+  "description": "Morphing text for React headlines. Blur crossfade between phrases, reduced-motion safe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-morphing.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-morphing.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface TextMorphingProps {\n  /** Phrases to cycle through. Needs at least two for a morph. */\n  texts: string[];\n  /** Outer layout class (size, weight, tracking, color). */\n  className?: string;\n  /** Length of each morph crossfade, in seconds. */\n  morphDuration?: number;\n  /** Hold time on the settled phrase before the next morph, in seconds. */\n  cooldownDuration?: number;\n  /** Pause the loop. */\n  paused?: boolean;\n}\n\nconst DEFAULT_MORPH = 1.5;\nconst DEFAULT_COOLDOWN = 0.5;\n\n/**\n * TextMorphing\n *\n * Blur + opacity crossfade between phrases, with an SVG threshold filter for\n * the gooey dissolve. Same animation model as the classic morphing-text demo,\n * cleaned up for production use.\n */\nexport function TextMorphing({\n  texts,\n  className,\n  morphDuration = DEFAULT_MORPH,\n  cooldownDuration = DEFAULT_COOLDOWN,\n  paused = false,\n}: TextMorphingProps) {\n  const reactId = React.useId().replace(/:/g, \"\");\n  const filterId = `wensity-text-morph-${reactId}`;\n\n  const text1Ref = React.useRef<HTMLSpanElement | null>(null);\n  const text2Ref = React.useRef<HTMLSpanElement | null>(null);\n  const rootRef = React.useRef<HTMLDivElement | null>(null);\n\n  const textIndexRef = React.useRef(0);\n  const morphRef = React.useRef(0);\n  const cooldownRef = React.useRef(0);\n  const timeRef = React.useRef(0);\n  const inViewRef = React.useRef(true);\n  const pausedPropRef = React.useRef(paused);\n  pausedPropRef.current = paused;\n\n  const phrases = React.useMemo(() => {\n    const cleaned = texts.map((t) => t.trim()).filter(Boolean);\n    return cleaned.length >= 2 ? cleaned : [\"Wensity\", \"presents\", \"text\", \"morphing\", \"animation\"];\n  }, [texts]);\n\n  const morphTime = Math.max(0.2, morphDuration);\n  const cooldownTime = Math.max(0, cooldownDuration);\n\n  const [reduceMotion, setReduceMotion] = React.useState(false);\n\n  React.useEffect(() => {\n    if (typeof window === \"undefined\" || typeof window.matchMedia !== \"function\") {\n      return;\n    }\n    const mq = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n    const sync = () => setReduceMotion(mq.matches);\n    sync();\n    mq.addEventListener(\"change\", sync);\n    return () => mq.removeEventListener(\"change\", sync);\n  }, []);\n\n  React.useEffect(() => {\n    const node = rootRef.current;\n    if (!node || typeof IntersectionObserver === \"undefined\") return;\n    const io = new IntersectionObserver(\n      ([entry]) => {\n        inViewRef.current = entry?.isIntersecting ?? true;\n      },\n      { threshold: 0 },\n    );\n    io.observe(node);\n    return () => io.disconnect();\n  }, []);\n\n  React.useEffect(() => {\n    textIndexRef.current = 0;\n    morphRef.current = 0;\n    cooldownRef.current = 0;\n  }, [phrases]);\n\n  React.useEffect(() => {\n    if (reduceMotion) return;\n\n    const setStyles = (fraction: number) => {\n      const el1 = text1Ref.current;\n      const el2 = text2Ref.current;\n      if (!el1 || !el2) return;\n\n      // Match reference curves exactly (including the 8/f singularity clamp).\n      const f = Math.max(fraction, 0.0001);\n      const inv = Math.max(1 - fraction, 0.0001);\n\n      el2.style.filter = `blur(${Math.min(8 / f - 8, 100)}px)`;\n      el2.style.opacity = `${Math.pow(fraction, 0.4) * 100}%`;\n\n      el1.style.filter = `blur(${Math.min(8 / inv - 8, 100)}px)`;\n      el1.style.opacity = `${Math.pow(1 - fraction, 0.4) * 100}%`;\n\n      el1.textContent = phrases[textIndexRef.current % phrases.length] ?? \"\";\n      el2.textContent =\n        phrases[(textIndexRef.current + 1) % phrases.length] ?? \"\";\n    };\n\n    const doCooldown = () => {\n      morphRef.current = 0;\n      const el1 = text1Ref.current;\n      const el2 = text2Ref.current;\n      if (!el1 || !el2) return;\n      el2.style.filter = \"none\";\n      el2.style.opacity = \"100%\";\n      el1.style.filter = \"none\";\n      el1.style.opacity = \"0%\";\n    };\n\n    /**\n     * Reference timing trick: while morphing, `cooldown` stays ≤ 0 and drifts\n     * negative by `dt` each frame. `morph -= cooldown` therefore advances morph\n     * by `dt`. When morph completes, cooldown is set positive for the hold.\n     */\n    const doMorph = () => {\n      morphRef.current -= cooldownRef.current;\n      cooldownRef.current = 0;\n\n      let fraction = morphRef.current / morphTime;\n\n      if (fraction > 1) {\n        cooldownRef.current = cooldownTime;\n        fraction = 1;\n      }\n\n      setStyles(fraction);\n\n      if (fraction === 1) {\n        textIndexRef.current += 1;\n      }\n    };\n\n    let raf = 0;\n    timeRef.current = performance.now();\n    setStyles(0);\n\n    const animate = (now: number) => {\n      raf = requestAnimationFrame(animate);\n\n      if (\n        pausedPropRef.current ||\n        !inViewRef.current ||\n        (typeof document !== \"undefined\" && document.visibilityState === \"hidden\")\n      ) {\n        timeRef.current = now;\n        return;\n      }\n\n      const dt = (now - timeRef.current) / 1000;\n      timeRef.current = now;\n\n      cooldownRef.current -= dt;\n\n      if (cooldownRef.current <= 0) doMorph();\n      else doCooldown();\n    };\n\n    raf = requestAnimationFrame(animate);\n    return () => cancelAnimationFrame(raf);\n  }, [cooldownTime, morphTime, phrases, reduceMotion]);\n\n  if (reduceMotion) {\n    return (\n      <div\n        className={cn(\n          \"relative mx-auto flex h-16 w-full max-w-3xl items-center justify-center text-center text-[40pt] font-bold leading-none md:h-24 lg:text-[6rem]\",\n          \"text-zinc-900 dark:text-white\",\n          className,\n        )}\n      >\n        {phrases[0]}\n      </div>\n    );\n  }\n\n  return (\n    <div\n      ref={rootRef}\n      className={cn(\n        \"relative mx-auto h-16 w-full max-w-3xl text-center text-[40pt] font-bold leading-none md:h-24 lg:text-[6rem]\",\n        \"text-zinc-900 dark:text-white\",\n        className,\n      )}\n      style={{ filter: `url(#${filterId}) blur(0.6px)` }}\n    >\n      <span\n        ref={text1Ref}\n        className=\"absolute inset-x-0 top-0 m-auto inline-block w-full\"\n      />\n      <span\n        ref={text2Ref}\n        className=\"absolute inset-x-0 top-0 m-auto inline-block w-full\"\n      />\n\n      {/* Inline SVG — required for the threshold dissolve (do not hoist off-DOM). */}\n      <svg\n        className=\"fixed h-0 w-0\"\n        aria-hidden\n        preserveAspectRatio=\"xMidYMid slice\"\n      >\n        <defs>\n          <filter id={filterId}>\n            <feColorMatrix\n              in=\"SourceGraphic\"\n              type=\"matrix\"\n              values=\"1 0 0 0 0\n                      0 1 0 0 0\n                      0 0 1 0 0\n                      0 0 0 255 -140\"\n            />\n          </filter>\n        </defs>\n      </svg>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-morphing.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-morphing.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-morphing",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-morphing",
+      "shadcnUrl": "https://ui.wensity.com/r/text-morphing",
+      "cliInstall": "pnpm dlx wensity@latest add text-morphing"
+    }
+  }
+}

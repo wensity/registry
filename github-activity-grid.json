@@ -3,7 +3,7 @@
   "name": "github-activity-grid",
   "type": "registry:block",
   "title": "GitHub-Style Activity Grid",
-  "description": "A year of work rendered in one glance. The tooltip flies between days like it's on rails.",
+  "description": "A year of work at a glance. The tooltip flies between days on rails.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "clsx",
@@ -28,7 +28,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

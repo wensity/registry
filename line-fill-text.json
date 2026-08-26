@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "line-fill-text",
+  "type": "registry:block",
+  "title": "Line Fill Text",
+  "description": "Alpha-cascade ribbons clipped inside the letterforms.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/line-fill-text.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/line-fill-text.tsx",
+      "content": "\"use client\";\n\n/**\n * LineFillText\n * ────────────\n * Inline text filled with curved ribbons clipped to the letterforms.\n *\n * Paint order:\n *   1. Glyph silhouette\n *   2. `source-in` body color (`fillColor` or resolved `backgroundClassName`)\n *   3. `source-atop` horizontal beziers\n *\n * Coloring: pass a single-hue **alpha cascade** (1 → ~0.1) so dense rows read\n * as glowing stripes on a solid body — use `buildAlphaCascade()` to make one.\n *\n * Motion: shared-phase bows by default (classic single-arch look). Optional\n * `stagger` adds a light per-row lag. Auto-pauses off-screen / hidden;\n * reduced-motion freezes.\n */\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface LineFillTextProps {\n  /** The string to clip the ribbons into. */\n  text: string;\n  /** Typography / layout classes (inherited by the measure node). */\n  className?: string;\n  /**\n   * Tailwind background utilities resolved into the glyph body\n   * (e.g. `\"bg-[#b91c1c] dark:bg-[#7f1d1d]\"`). Ignored when `fillColor` is set.\n   */\n  backgroundClassName?: string;\n  /** Explicit glyph body fill. Wins over `backgroundClassName`. */\n  fillColor?: string;\n  /**\n   * Ribbon palette. Best as a stepped-alpha cascade of one hue\n   * (see `buildAlphaCascade`). Cycles by row.\n   */\n  colors?: string[];\n  /** Seconds per full wave cycle. Default: 20. */\n  duration?: number;\n  /** Stroke width in CSS pixels. Default: 1.5. */\n  lineWidth?: number;\n  /** Vertical gap between ribbons in CSS pixels. Default: 4. */\n  spacing?: number;\n  /** Bezier bow depth in CSS pixels. Default: 60. */\n  amplitude?: number;\n  /**\n   * Per-row phase lag (0–1). 0 = every row shares one arch (Aceternity look).\n   * Default: 0.\n   */\n  stagger?: number;\n  /** Absolutely fill the parent. Default: false. */\n  overlay?: boolean;\n  /** Force paused. When omitted, auto-pauses off-screen / hidden. */\n  paused?: boolean;\n}\n\ntype Engine = {\n  width: number;\n  height: number;\n  dpr: number;\n  baselineY: number;\n  font: string;\n  fillColor: string;\n  colors: string[];\n  spacing: number;\n  amplitude: number;\n  duration: number;\n  lineWidth: number;\n  stagger: number;\n  reducedMotion: boolean;\n  startTime: number;\n  ctx: CanvasRenderingContext2D;\n};\n\n/**\n * Build a single-hue ribbon palette: full opacity → faint.\n * This is the coloring style that makes dense fills read as glowing stripes.\n */\nexport function buildAlphaCascade(\n  rgb: readonly [number, number, number],\n  steps = 10,\n): string[] {\n  const n = Math.max(2, Math.round(steps));\n  const [r, g, b] = rgb;\n  const out: string[] = [];\n  for (let i = 0; i < n; i++) {\n    const alpha = Number((1 - i / n).toFixed(3));\n    // Keep a floor so the faintest stop still reads on dark bodies.\n    out.push(`rgba(${r}, ${g}, ${b}, ${Math.max(0.08, alpha)})`);\n  }\n  return out;\n}\n\nfunction rgbToHsl(\n  r: number,\n  g: number,\n  b: number,\n): [number, number, number] {\n  const rn = r / 255;\n  const gn = g / 255;\n  const bn = b / 255;\n  const max = Math.max(rn, gn, bn);\n  const min = Math.min(rn, gn, bn);\n  const l = (max + min) / 2;\n  if (max === min) return [0, 0, l];\n  const d = max - min;\n  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);\n  let h = 0;\n  if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;\n  else if (max === gn) h = ((bn - rn) / d + 2) / 6;\n  else h = ((rn - gn) / d + 4) / 6;\n  return [h, s, l];\n}\n\nfunction hslToRgb(h: number, s: number, l: number): [number, number, number] {\n  if (s === 0) {\n    const v = Math.round(l * 255);\n    return [v, v, v];\n  }\n  const hue2rgb = (p: number, q: number, t: number) => {\n    let tt = t;\n    if (tt < 0) tt += 1;\n    if (tt > 1) tt -= 1;\n    if (tt < 1 / 6) return p + (q - p) * 6 * tt;\n    if (tt < 1 / 2) return q;\n    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;\n    return p;\n  };\n  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;\n  const p = 2 * l - q;\n  return [\n    Math.round(hue2rgb(p, q, h + 1 / 3) * 255),\n    Math.round(hue2rgb(p, q, h) * 255),\n    Math.round(hue2rgb(p, q, h - 1 / 3) * 255),\n  ];\n}\n\n/**\n * Solid body under the cascade. Must be clearly darker than the ribbon hue\n * or the alpha strips disappear. Light mode stays at ~600-level saturation;\n * dark mode drops deeper so stripes still read on dark canvases.\n * Near-white ribbons get a zinc body.\n */\nexport function bodyFillFromRibbon(\n  rgb: readonly [number, number, number],\n  mode: \"light\" | \"dark\" = \"dark\",\n): string {\n  // Signal pairing matches Aceternity: blue-600 light / blue-700 dark.\n  if (rgb[0] === 0 && rgb[1] === 153 && rgb[2] === 255) {\n    return mode === \"light\" ? \"#2563eb\" : \"#1d4ed8\";\n  }\n\n  const [h, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);\n  if (l > 0.82 || s < 0.08) {\n    return mode === \"light\" ? \"#3f3f46\" : \"#27272a\";\n  }\n\n  const bodyL =\n    mode === \"light\"\n      ? Math.min(0.42, Math.max(0.32, l * 0.7))\n      : Math.min(0.3, Math.max(0.2, l * 0.48));\n  const bodyS = Math.min(0.95, Math.max(0.55, s * 0.92));\n  const [br, bg, bb] = hslToRgb(h, bodyS, bodyL);\n  return `rgb(${br}, ${bg}, ${bb})`;\n}\n\n/** Ribbon hue → darker body + alpha cascade (playground / presets). */\nexport function styleFromRibbonHue(\n  rgb: readonly [number, number, number],\n  steps = 10,\n  mode: \"light\" | \"dark\" = \"dark\",\n): { fillColor: string; colors: string[] } {\n  return {\n    fillColor: bodyFillFromRibbon(rgb, mode),\n    colors: buildAlphaCascade(rgb, steps),\n  };\n}\n\nconst DEFAULT_COLORS = buildAlphaCascade([255, 0, 0], 10);\n/** Theme-aware chili body — light stays vivid, dark goes deep. */\nconst DEFAULT_BG_CLASS = \"bg-[#b91c1c] dark:bg-[#7f1d1d]\";\nconst RESIZE_DEBOUNCE_MS = 50;\n\n/**\n * Ribbon-filled inline text. Alpha-cascade strokes clipped inside the glyphs.\n */\nexport function LineFillText({\n  text,\n  className = \"\",\n  backgroundClassName = DEFAULT_BG_CLASS,\n  fillColor,\n  colors = DEFAULT_COLORS,\n  duration = 20,\n  lineWidth = 1.5,\n  spacing = 4,\n  amplitude = 60,\n  stagger = 0,\n  overlay = false,\n  paused,\n}: LineFillTextProps) {\n  const wrapRef = React.useRef<HTMLSpanElement | null>(null);\n  const measureRef = React.useRef<HTMLSpanElement | null>(null);\n  const bgRef = React.useRef<HTMLSpanElement | null>(null);\n  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);\n  const engineRef = React.useRef<Engine | null>(null);\n  const rafRef = React.useRef<number>(0);\n  const resizeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(\n    null,\n  );\n  const inViewRef = React.useRef(true);\n  const pageVisibleRef = React.useRef(true);\n  const pausedPropRef = React.useRef(paused);\n  const fillPropRef = React.useRef(fillColor);\n  const colorsPropRef = React.useRef(colors);\n  const textRef = React.useRef(text);\n  const kickLoopRef = React.useRef<(() => void) | null>(null);\n\n  pausedPropRef.current = paused;\n  fillPropRef.current = fillColor;\n  colorsPropRef.current = colors;\n  textRef.current = text;\n\n  const safeDuration = Math.max(0.5, duration);\n  const safeSpacing = Math.max(2, spacing);\n  const safeAmplitude = Math.max(0, amplitude);\n  const safeLineWidth = Math.max(0.4, lineWidth);\n  const safeStagger = Math.min(1, Math.max(0, stagger));\n\n  const liveRef = React.useRef({\n    duration: safeDuration,\n    spacing: safeSpacing,\n    amplitude: safeAmplitude,\n    lineWidth: safeLineWidth,\n    stagger: safeStagger,\n  });\n  liveRef.current = {\n    duration: safeDuration,\n    spacing: safeSpacing,\n    amplitude: safeAmplitude,\n    lineWidth: safeLineWidth,\n    stagger: safeStagger,\n  };\n\n  const resolveBodyColor = React.useCallback((): string => {\n    if (fillPropRef.current && fillPropRef.current.trim()) {\n      return fillPropRef.current.trim();\n    }\n    const bg = bgRef.current;\n    if (bg) {\n      const computed = getComputedStyle(bg).backgroundColor;\n      if (\n        computed &&\n        computed !== \"rgba(0, 0, 0, 0)\" &&\n        computed !== \"transparent\"\n      ) {\n        return computed;\n      }\n    }\n    return document.documentElement.classList.contains(\"dark\")\n      ? \"#7f1d1d\"\n      : \"#b91c1c\";\n  }, []);\n\n  const resolveLineColors = React.useCallback((): string[] => {\n    const list = colorsPropRef.current;\n    if (!list || list.length === 0) {\n      return DEFAULT_COLORS.map(resolveCssColor);\n    }\n    return list.map(resolveCssColor);\n  }, []);\n\n  const rebuild = React.useCallback(() => {\n    const measure = measureRef.current;\n    const canvas = canvasRef.current;\n    if (!measure || !canvas) return;\n\n    const label = textRef.current || \" \";\n    const computed = getComputedStyle(measure);\n    const font = [\n      computed.fontStyle,\n      computed.fontWeight,\n      computed.fontSize,\n      computed.fontFamily,\n    ]\n      .filter(Boolean)\n      .join(\" \");\n    const dpr = Math.min(window.devicePixelRatio || 1, 2);\n    const rect = measure.getBoundingClientRect();\n\n    const prev = engineRef.current;\n    const ctx = prev?.ctx ?? canvas.getContext(\"2d\", { alpha: true });\n    if (!ctx) return;\n\n    ctx.setTransform(1, 0, 0, 1, 0, 0);\n    ctx.font = font;\n    ctx.textAlign = \"left\";\n    ctx.textBaseline = \"alphabetic\";\n    const metrics = ctx.measureText(label);\n    const ascent =\n      metrics.fontBoundingBoxAscent ||\n      metrics.actualBoundingBoxAscent ||\n      parseFloat(computed.fontSize) * 0.8;\n    const descent =\n      metrics.fontBoundingBoxDescent ||\n      metrics.actualBoundingBoxDescent ||\n      parseFloat(computed.fontSize) * 0.2;\n    const padTop = parseFloat(computed.paddingTop) || 0;\n    const padBottom = parseFloat(computed.paddingBottom) || 0;\n    // Prefer the padded measure box; never go shorter than full font ink.\n    const cssW = Math.max(\n      1,\n      Math.ceil(Math.max(rect.width, metrics.width)),\n    );\n    const cssH = Math.max(\n      1,\n      Math.ceil(Math.max(rect.height, ascent + descent + padTop + padBottom)),\n    );\n    // Match CSS: padding-top, then alphabetic baseline of the em box.\n    const baselineY = padTop + ascent;\n    const pixelW = Math.max(1, Math.round(cssW * dpr));\n    const pixelH = Math.max(1, Math.round(cssH * dpr));\n\n    if (canvas.width !== pixelW) canvas.width = pixelW;\n    if (canvas.height !== pixelH) canvas.height = pixelH;\n    canvas.style.width = `${cssW}px`;\n    canvas.style.height = `${cssH}px`;\n\n    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);\n    ctx.font = font;\n    ctx.textAlign = \"left\";\n    ctx.textBaseline = \"alphabetic\";\n    ctx.lineCap = \"round\";\n    ctx.lineJoin = \"round\";\n\n    const reducedMotion = window.matchMedia(\n      \"(prefers-reduced-motion: reduce)\",\n    ).matches;\n\n    const live = liveRef.current;\n    const now = performance.now();\n    engineRef.current = {\n      width: cssW,\n      height: cssH,\n      dpr,\n      baselineY,\n      font,\n      fillColor: resolveBodyColor(),\n      colors: resolveLineColors(),\n      spacing: live.spacing,\n      amplitude: live.amplitude,\n      duration: live.duration,\n      lineWidth: live.lineWidth,\n      stagger: live.stagger,\n      reducedMotion,\n      startTime: prev?.startTime ?? now,\n      ctx,\n    };\n\n    paintFrame(engineRef.current, label, now);\n    kickLoopRef.current?.();\n  }, [resolveBodyColor, resolveLineColors]);\n\n  const syncColors = React.useCallback(() => {\n    const engine = engineRef.current;\n    if (!engine) return;\n    engine.fillColor = resolveBodyColor();\n    engine.colors = resolveLineColors();\n    paintFrame(engine, textRef.current, performance.now());\n  }, [resolveBodyColor, resolveLineColors]);\n\n  React.useEffect(() => {\n    const engine = engineRef.current;\n    if (!engine) return;\n    const live = liveRef.current;\n    engine.spacing = live.spacing;\n    engine.amplitude = live.amplitude;\n    engine.duration = live.duration;\n    engine.lineWidth = live.lineWidth;\n    engine.stagger = live.stagger;\n    paintFrame(engine, textRef.current, performance.now());\n    kickLoopRef.current?.();\n  }, [\n    safeSpacing,\n    safeAmplitude,\n    safeDuration,\n    safeLineWidth,\n    safeStagger,\n  ]);\n\n  React.useEffect(() => {\n    rebuild();\n  }, [text, rebuild]);\n\n  React.useEffect(() => {\n    const measure = measureRef.current;\n    if (!measure) return;\n\n    const scheduleRebuild = () => {\n      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);\n      resizeTimerRef.current = setTimeout(() => {\n        resizeTimerRef.current = null;\n        rebuild();\n      }, RESIZE_DEBOUNCE_MS);\n    };\n\n    const ro = new ResizeObserver(scheduleRebuild);\n    ro.observe(measure);\n\n    const mo = new MutationObserver(() => {\n      // Theme toggles swap `dark:` body fills — debounce with resize.\n      scheduleRebuild();\n    });\n    mo.observe(document.documentElement, {\n      attributes: true,\n      attributeFilter: [\"class\", \"data-theme\"],\n    });\n\n    return () => {\n      ro.disconnect();\n      mo.disconnect();\n      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);\n    };\n  }, [rebuild, backgroundClassName]);\n\n  React.useEffect(() => {\n    syncColors();\n  }, [fillColor, colors, syncColors]);\n\n  React.useEffect(() => {\n    const wrap = wrapRef.current;\n    if (!wrap) return;\n\n    let running = false;\n\n    const shouldRun = () => {\n      const engine = engineRef.current;\n      if (!engine || engine.reducedMotion) return false;\n      if (pausedPropRef.current === true) return false;\n      if (pausedPropRef.current === false) return true;\n      return inViewRef.current && pageVisibleRef.current;\n    };\n\n    const tick = (now: number) => {\n      const engine = engineRef.current;\n      if (!engine || !shouldRun()) {\n        running = false;\n        if (engine) paintFrame(engine, textRef.current, now);\n        return;\n      }\n      paintFrame(engine, textRef.current, now);\n      rafRef.current = requestAnimationFrame(tick);\n    };\n\n    const ensureLoop = () => {\n      const engine = engineRef.current;\n      if (!engine || engine.reducedMotion) return;\n      if (pausedPropRef.current === true) return;\n      if (\n        pausedPropRef.current !== false &&\n        !(inViewRef.current && pageVisibleRef.current)\n      ) {\n        return;\n      }\n      if (running) return;\n      engine.startTime = performance.now();\n      running = true;\n      rafRef.current = requestAnimationFrame(tick);\n    };\n    kickLoopRef.current = ensureLoop;\n\n    const io = new IntersectionObserver(\n      (entries) => {\n        inViewRef.current = entries.some((e) => e.isIntersecting);\n        if (inViewRef.current) ensureLoop();\n      },\n      { threshold: 0.01 },\n    );\n    io.observe(wrap);\n\n    const onVisibility = () => {\n      pageVisibleRef.current = document.visibilityState !== \"hidden\";\n      if (pageVisibleRef.current) ensureLoop();\n    };\n    document.addEventListener(\"visibilitychange\", onVisibility);\n    pageVisibleRef.current = document.visibilityState !== \"hidden\";\n\n    ensureLoop();\n\n    return () => {\n      running = false;\n      kickLoopRef.current = null;\n      cancelAnimationFrame(rafRef.current);\n      io.disconnect();\n      document.removeEventListener(\"visibilitychange\", onVisibility);\n    };\n  }, [paused]);\n\n  return (\n    <span\n      ref={wrapRef}\n      className={cn(\n        \"relative inline-block align-baseline leading-none overflow-visible\",\n        overlay && \"absolute inset-0\",\n        className,\n      )}\n    >\n      <span\n        ref={bgRef}\n        className={cn(\n          \"pointer-events-none absolute h-0 w-0 opacity-0\",\n          backgroundClassName,\n        )}\n        aria-hidden\n      />\n      {/*\n        Measure drives width + CSS baseline. Extra bottom padding so bold glyph\n        ink isn’t clipped by leading-none; canvas height matches in rebuild().\n      */}\n      <span\n        ref={measureRef}\n        className=\"invisible inline-block leading-none pt-[0.06em] pb-[0.22em]\"\n        aria-hidden\n      >\n        {text || \" \"}\n      </span>\n      <canvas\n        ref={canvasRef}\n        className=\"pointer-events-none absolute top-0 left-0 [transform:translateZ(0)]\"\n        aria-label={text}\n        role=\"img\"\n      />\n    </span>\n  );\n}\n\nfunction resolveCssColor(color: string): string {\n  const trimmed = color.trim();\n  if (!trimmed.startsWith(\"var(\")) return trimmed;\n  const varName = trimmed.slice(4, -1).trim();\n  const resolved = getComputedStyle(document.documentElement)\n    .getPropertyValue(varName)\n    .trim();\n  return resolved || trimmed;\n}\n\nfunction paintFrame(engine: Engine, text: string, now: number) {\n  const {\n    ctx,\n    dpr,\n    width,\n    height,\n    baselineY,\n    font,\n    fillColor,\n    colors,\n    spacing,\n    amplitude,\n    duration,\n    lineWidth,\n    stagger,\n    reducedMotion,\n    startTime,\n  } = engine;\n\n  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);\n  ctx.clearRect(0, 0, width, height);\n\n  ctx.globalCompositeOperation = \"source-over\";\n  ctx.font = font;\n  ctx.textBaseline = \"alphabetic\";\n  ctx.textAlign = \"left\";\n  ctx.fillStyle = \"#000\";\n  ctx.fillText(text || \" \", 0, baselineY);\n\n  ctx.globalCompositeOperation = \"source-in\";\n  ctx.fillStyle = fillColor;\n  ctx.fillRect(0, 0, width, height);\n\n  ctx.globalCompositeOperation = \"source-atop\";\n  ctx.lineWidth = lineWidth;\n  ctx.lineCap = \"round\";\n  ctx.lineJoin = \"round\";\n\n  const elapsed = reducedMotion ? 0 : Math.max(0, (now - startTime) / 1000);\n  const phase = (elapsed / Math.max(0.001, duration)) * Math.PI * 2;\n  // Spare rows cover amplitude overshoot (matches Aceternity +10 density).\n  const spare = Math.max(10, Math.ceil((amplitude * 1.2) / spacing) + 2);\n  const numLines = Math.floor(height / spacing) + spare;\n  const paletteLen = Math.max(1, colors.length);\n  const lagStep = stagger * 0.35;\n  const c1 = width * 0.33;\n  const c2 = width * 0.66;\n  const shared = lagStep === 0;\n  const sharedCurve1 = shared ? Math.sin(phase) * amplitude : 0;\n  const sharedCurve2 = shared ? Math.sin(phase + 0.5) * amplitude * 0.6 : 0;\n\n  for (let i = 0; i < numLines; i++) {\n    const y = i * spacing;\n    let curve1: number;\n    let curve2: number;\n    if (shared) {\n      curve1 = sharedCurve1;\n      curve2 = sharedCurve2;\n    } else {\n      const rowPhase = phase - i * lagStep;\n      curve1 = Math.sin(rowPhase) * amplitude;\n      curve2 = Math.sin(rowPhase + 0.5) * amplitude * 0.6;\n    }\n\n    ctx.strokeStyle = colors[i % paletteLen]!;\n    ctx.beginPath();\n    ctx.moveTo(0, y);\n    ctx.bezierCurveTo(c1, y + curve1, c2, y + curve2, width, y);\n    ctx.stroke();\n  }\n\n  ctx.globalCompositeOperation = \"source-over\";\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/line-fill-text.tsx. For Pro components and updates, use pnpm dlx wensity@latest add line-fill-text.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "line-fill-text",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/line-fill-text",
+      "shadcnUrl": "https://ui.wensity.com/r/line-fill-text",
+      "cliInstall": "pnpm dlx wensity@latest add line-fill-text"
+    }
+  }
+}

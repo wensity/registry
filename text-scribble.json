@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-scribble",
+  "type": "registry:block",
+  "title": "Text Scribble",
+  "description": "Annotate React text with a hand-drawn scribble, underline, or strike-through that draws itself on.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-scribble.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-scribble.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type TextScribbleType = \"scribble\" | \"underline\" | \"strike-through\";\nexport type TextScribbleTrigger = \"view\" | \"hover\" | \"mount\";\n\nexport interface TextScribbleProps {\n  /** The inline content to annotate. */\n  children: React.ReactNode;\n  /** Annotation style. Default: `\"scribble\"`. */\n  type?: TextScribbleType;\n  /** Stroke color. Defaults to the Wensity brand (chili). */\n  color?: string;\n  /** Stroke width in CSS pixels. Default: 2. */\n  strokeWidth?: number;\n  /** Seconds for the draw-on. Default: 0.9. */\n  duration?: number;\n  /** Seconds to wait before drawing. Default: 0. */\n  delay?: number;\n  /** When to draw. Default: `\"view\"`. */\n  trigger?: TextScribbleTrigger;\n  /**\n   * Sketch passes for the hand-drawn look. More = scratchier. Clamped 1–4.\n   * Default: 2 for `scribble`, 1 otherwise.\n   */\n  iterations?: number;\n  /** Extra px around the text before the mark is drawn. Default: 2. */\n  padding?: number;\n  /**\n   * Force the draw state. `true` keeps it drawn, `false` retracted; when\n   * omitted the `trigger` drives it. Reduced-motion always draws instantly.\n   */\n  drawn?: boolean;\n  /** Outer element tag. Default: `\"span\"`. */\n  as?: keyof React.JSX.IntrinsicElements;\n  /** Tailwind class for the host (size / weight / color of the text). */\n  className?: string;\n  /** Optional accessible name override for the host. */\n  \"aria-label\"?: string;\n}\n\ntype Mark = { d: string; delay: number };\n\n/** Wensity brand (chili). Falls back to the literal for copied-out source. */\nconst DEFAULT_COLOR = \"var(--color-chili-500, #cd1c18)\";\n\n/** Tiny deterministic PRNG so passes look sketchy but stay stable per size. */\nfunction mulberry32(seed: number) {\n  return () => {\n    seed |= 0;\n    seed = (seed + 0x6d2b79f5) | 0;\n    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);\n    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;\n    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;\n  };\n}\n\n/** A near-horizontal line with light vertical jitter — a felt-tip stroke. */\nfunction jitterLine(x1: number, x2: number, y: number, amp: number, rng: () => number) {\n  const span = x2 - x1;\n  const steps = Math.max(2, Math.round(span / 34));\n  let d = `M ${x1.toFixed(1)} ${(y + (rng() - 0.5) * amp).toFixed(1)}`;\n  for (let i = 1; i <= steps; i++) {\n    const x = x1 + (span * i) / steps;\n    const yy = y + (rng() - 0.5) * amp;\n    d += ` L ${x.toFixed(1)} ${yy.toFixed(1)}`;\n  }\n  return d;\n}\n\n/** A denser back-and-forth squiggle for the scribble underline. */\nfunction scribblePath(x1: number, x2: number, y: number, amp: number, rng: () => number) {\n  const span = x2 - x1;\n  const steps = Math.max(6, Math.round(span / 12));\n  let d = `M ${x1.toFixed(1)} ${y.toFixed(1)}`;\n  for (let i = 1; i <= steps; i++) {\n    const x = x1 + (span * i) / steps;\n    const dir = i % 2 === 0 ? -1 : 1;\n    const yy = y + dir * amp * (0.6 + rng() * 0.4);\n    const cx = x - span / steps / 2 + (rng() - 0.5) * 4;\n    const cy = y + dir * -amp * (0.4 + rng() * 0.5);\n    d += ` Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${x.toFixed(1)} ${yy.toFixed(1)}`;\n  }\n  return d;\n}\n\nfunction marksEqual(a: Mark[], b: Mark[]) {\n  if (a.length !== b.length) return false;\n  for (let i = 0; i < a.length; i++) {\n    if (a[i].d !== b[i].d || a[i].delay !== b[i].delay) return false;\n  }\n  return true;\n}\n\n/**\n * TextScribble\n *\n * Hand-drawn line annotations for React text — scribble, underline, or\n * strike-through — that draw themselves on. Tracks wrapping lines and re-fits\n * on resize / font load.\n *\n * Motion contract:\n * - Measures the live text via Range client rects (ResizeObserver, no polling).\n * - Marks paint client-side only (no SSR path → no hydration diff).\n * - Each stroke reveals via a single `stroke-dashoffset` transition\n *   (pathLength normalised to 100).\n * - `trigger=\"view\"` draws once on-screen; `\"hover\"` draws and retracts.\n * - Honours `prefers-reduced-motion` by drawing instantly, no transition.\n */\nexport function TextScribble({\n  children,\n  type = \"scribble\",\n  color,\n  strokeWidth = 2,\n  duration = 0.9,\n  delay = 0,\n  trigger = \"view\",\n  iterations,\n  padding = 2,\n  drawn,\n  as = \"span\",\n  className,\n  \"aria-label\": ariaLabel,\n}: TextScribbleProps) {\n  const hostRef = React.useRef<HTMLElement | null>(null);\n  const textRef = React.useRef<HTMLSpanElement | null>(null);\n\n  const [size, setSize] = React.useState({ w: 0, h: 0 });\n  const [marks, setMarks] = React.useState<Mark[]>([]);\n  const [active, setActive] = React.useState(trigger === \"mount\");\n  const [reduceMotion, setReduceMotion] = React.useState(false);\n\n  const stroke = color ?? DEFAULT_COLOR;\n  const passes = Math.max(1, Math.min(4, iterations ?? (type === \"scribble\" ? 2 : 1)));\n\n  // --- Measure text geometry into annotation paths -------------------------\n  const measure = React.useCallback(() => {\n    const host = hostRef.current;\n    const text = textRef.current;\n    if (!host || !text || !text.firstChild) return;\n\n    const hostBox = host.getBoundingClientRect();\n    if (hostBox.width < 1) return;\n\n    const range = document.createRange();\n    range.selectNodeContents(text);\n    const lineRects = Array.from(range.getClientRects()).filter((r) => r.width > 1);\n    if (lineRects.length === 0) return;\n\n    const next: Mark[] = [];\n    const stagger = lineRects.length > 1 ? duration * 0.3 : duration * 0.12;\n\n    lineRects.forEach((r, lineIdx) => {\n      const x = r.left - hostBox.left;\n      const y = r.top - hostBox.top;\n      const baseY = type === \"strike-through\" ? y + r.height * 0.55 : y + r.height - strokeWidth;\n\n      for (let p = 0; p < passes; p++) {\n        const rng = mulberry32(7919 + lineIdx * 131 + p * 53 + Math.round(r.width));\n        const d =\n          type === \"scribble\"\n            ? scribblePath(x - padding, x + r.width + padding, baseY, Math.min(r.height * 0.16, 5) + strokeWidth, rng)\n            : jitterLine(x - padding, x + r.width + padding, baseY, 1.6, rng);\n        next.push({ d, delay: delay + (lineIdx * passes + p) * (stagger / passes) });\n      }\n    });\n\n    setSize((prev) =>\n      prev.w === hostBox.width && prev.h === hostBox.height\n        ? prev\n        : { w: hostBox.width, h: hostBox.height },\n    );\n    setMarks((prev) => (marksEqual(prev, next) ? prev : next));\n  }, [type, strokeWidth, passes, padding, delay, duration]);\n\n  React.useLayoutEffect(() => {\n    let cancelled = false;\n    const run = () => {\n      if (!cancelled) measure();\n    };\n\n    run();\n    const host = hostRef.current;\n    if (!host) return;\n\n    const ro = new ResizeObserver(run);\n    ro.observe(host);\n\n    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;\n    fonts?.ready?.then(run).catch(() => {});\n\n    return () => {\n      cancelled = true;\n      ro.disconnect();\n    };\n  }, [measure, children]);\n\n  // --- Reduced motion ------------------------------------------------------\n  React.useEffect(() => {\n    if (typeof window.matchMedia !== \"function\") return;\n    const mq = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n    const sync = () => setReduceMotion(mq.matches);\n    sync();\n    mq.addEventListener(\"change\", sync);\n    return () => mq.removeEventListener(\"change\", sync);\n  }, []);\n\n  // --- Trigger -------------------------------------------------------------\n  React.useEffect(() => {\n    if (drawn !== undefined) {\n      setActive(drawn);\n      return;\n    }\n    if (trigger === \"mount\") {\n      setActive(true);\n      return;\n    }\n    if (trigger === \"view\") {\n      const host = hostRef.current;\n      if (!host) return;\n      const io = new IntersectionObserver(\n        (entries) => {\n          if (entries.some((e) => e.isIntersecting)) {\n            setActive(true);\n            io.disconnect();\n          }\n        },\n        { threshold: 0.35 },\n      );\n      io.observe(host);\n      return () => io.disconnect();\n    }\n  }, [trigger, drawn]);\n\n  const isHover = trigger === \"hover\" && drawn === undefined;\n  const hoverProps = isHover\n    ? {\n        tabIndex: 0 as const,\n        onPointerEnter: () => setActive(true),\n        onPointerLeave: () => setActive(false),\n        onFocus: () => setActive(true),\n        onBlur: () => setActive(false),\n      }\n    : {};\n\n  const Tag = as as unknown as React.ComponentType<\n    React.HTMLAttributes<HTMLElement> & { ref?: React.RefCallback<HTMLElement | null> }\n  >;\n\n  const show = active || reduceMotion;\n  const ease = \"cubic-bezier(.65,0,.35,1)\";\n\n  return (\n    <Tag\n      ref={(node) => {\n        hostRef.current = node;\n      }}\n      aria-label={ariaLabel}\n      className={cn(\"relative inline-block\", className)}\n      {...hoverProps}\n    >\n      <span ref={textRef} className=\"relative z-[1]\">\n        {children}\n      </span>\n      {size.w > 0 && marks.length > 0 ? (\n        <svg\n          width={size.w}\n          height={size.h}\n          viewBox={`0 0 ${size.w} ${size.h}`}\n          fill=\"none\"\n          aria-hidden=\"true\"\n          className=\"pointer-events-none absolute left-0 top-0 z-[1] overflow-visible\"\n        >\n          {marks.map((m, i) => (\n            <path\n              key={i}\n              d={m.d}\n              stroke={stroke}\n              strokeWidth={strokeWidth}\n              strokeLinecap=\"round\"\n              strokeLinejoin=\"round\"\n              pathLength={100}\n              style={{\n                strokeDasharray: 100,\n                strokeDashoffset: show ? 0 : 100,\n                transition: reduceMotion\n                  ? \"none\"\n                  : `stroke-dashoffset ${duration}s ${ease} ${m.delay}s`,\n              }}\n            />\n          ))}\n        </svg>\n      ) : null}\n    </Tag>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-scribble.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-scribble.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-scribble",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-scribble",
+      "shadcnUrl": "https://ui.wensity.com/r/text-scribble",
+      "cliInstall": "pnpm dlx wensity@latest add text-scribble"
+    }
+  }
+}

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-highlight",
+  "type": "registry:block",
+  "title": "Text Highlight",
+  "description": "Highlight React text with a hand-placed marker band that sweeps in and tracks wrapping lines.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-highlight.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-highlight.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type TextHighlightTrigger = \"view\" | \"hover\" | \"mount\";\n\nexport interface TextHighlightProps {\n  /** The inline content to highlight. */\n  children: React.ReactNode;\n  /** Marker color. Defaults to the Wensity brand (chili). */\n  color?: string;\n  /** Opacity of the marker band. Default: 0.4. */\n  opacity?: number;\n  /** Seconds for the sweep. Default: 0.9. */\n  duration?: number;\n  /** Seconds to wait before sweeping. Default: 0. */\n  delay?: number;\n  /** When to draw. Default: `\"view\"`. */\n  trigger?: TextHighlightTrigger;\n  /** Extra px around the text before the band is drawn. Default: 2. */\n  padding?: number;\n  /**\n   * Force the draw state. `true` keeps it drawn, `false` retracted; when\n   * omitted the `trigger` drives it. Reduced-motion always draws instantly.\n   */\n  drawn?: boolean;\n  /** Outer element tag. Default: `\"span\"`. */\n  as?: keyof React.JSX.IntrinsicElements;\n  /** Tailwind class for the host (size / weight / color of the text). */\n  className?: string;\n  /** Optional accessible name override for the host. */\n  \"aria-label\"?: string;\n}\n\ntype Band = { x: number; y: number; w: number; h: number; delay: number };\n\n/** Wensity brand (chili). Falls back to the literal for copied-out source. */\nconst DEFAULT_COLOR = \"var(--color-chili-500, #cd1c18)\";\n\nfunction bandsEqual(a: Band[], b: Band[]) {\n  if (a.length !== b.length) return false;\n  for (let i = 0; i < a.length; i++) {\n    const left = a[i];\n    const right = b[i];\n    if (\n      left.x !== right.x ||\n      left.y !== right.y ||\n      left.w !== right.w ||\n      left.h !== right.h ||\n      left.delay !== right.delay\n    ) {\n      return false;\n    }\n  }\n  return true;\n}\n\n/**\n * TextHighlight\n *\n * A hand-placed highlighter band that sweeps in behind React text. Tracks\n * wrapping lines and re-fits on resize / font load.\n *\n * Motion contract:\n * - Measures the live text via Range client rects (ResizeObserver, no polling).\n * - Bands paint client-side only (no SSR path → no hydration diff).\n * - Sweep is a compositor `scaleX` from the left — one cheap transition.\n * - `trigger=\"view\"` draws once on-screen; `\"hover\"` draws and retracts.\n * - Honours `prefers-reduced-motion` by drawing instantly, no transition.\n */\nexport function TextHighlight({\n  children,\n  color,\n  opacity = 0.4,\n  duration = 0.9,\n  delay = 0,\n  trigger = \"view\",\n  padding = 2,\n  drawn,\n  as = \"span\",\n  className,\n  \"aria-label\": ariaLabel,\n}: TextHighlightProps) {\n  const hostRef = React.useRef<HTMLElement | null>(null);\n  const textRef = React.useRef<HTMLSpanElement | null>(null);\n\n  const [size, setSize] = React.useState({ w: 0, h: 0 });\n  const [bands, setBands] = React.useState<Band[]>([]);\n  const [active, setActive] = React.useState(trigger === \"mount\");\n  const [reduceMotion, setReduceMotion] = React.useState(false);\n\n  const fill = color ?? DEFAULT_COLOR;\n\n  // --- Measure text geometry into marker bands -----------------------------\n  const measure = React.useCallback(() => {\n    const host = hostRef.current;\n    const text = textRef.current;\n    if (!host || !text || !text.firstChild) return;\n\n    const hostBox = host.getBoundingClientRect();\n    if (hostBox.width < 1) return;\n\n    const range = document.createRange();\n    range.selectNodeContents(text);\n    const lineRects = Array.from(range.getClientRects()).filter((r) => r.width > 1);\n    if (lineRects.length === 0) return;\n\n    const stagger = lineRects.length > 1 ? duration * 0.3 : duration * 0.12;\n    const next: Band[] = lineRects.map((r, i) => {\n      const x = r.left - hostBox.left;\n      const y = r.top - hostBox.top;\n      // Cover most of the line box and bias the band downward so glyph\n      // descenders (p, g, y) sit inside it — a centered band clips them.\n      const bandH = r.height * 0.94;\n      const topGap = (r.height - bandH) * 0.72;\n      return {\n        x: x - padding,\n        y: y + topGap,\n        w: r.width + padding * 2,\n        h: bandH,\n        delay: delay + i * stagger,\n      };\n    });\n\n    setSize((prev) =>\n      prev.w === hostBox.width && prev.h === hostBox.height\n        ? prev\n        : { w: hostBox.width, h: hostBox.height },\n    );\n    setBands((prev) => (bandsEqual(prev, next) ? prev : next));\n  }, [padding, delay, duration]);\n\n  React.useLayoutEffect(() => {\n    let cancelled = false;\n    const run = () => {\n      if (!cancelled) measure();\n    };\n\n    run();\n    const host = hostRef.current;\n    if (!host) return;\n\n    const ro = new ResizeObserver(run);\n    ro.observe(host);\n\n    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;\n    fonts?.ready?.then(run).catch(() => {});\n\n    return () => {\n      cancelled = true;\n      ro.disconnect();\n    };\n  }, [measure, children]);\n\n  // --- Reduced motion ------------------------------------------------------\n  React.useEffect(() => {\n    if (typeof window.matchMedia !== \"function\") return;\n    const mq = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n    const sync = () => setReduceMotion(mq.matches);\n    sync();\n    mq.addEventListener(\"change\", sync);\n    return () => mq.removeEventListener(\"change\", sync);\n  }, []);\n\n  // --- Trigger -------------------------------------------------------------\n  React.useEffect(() => {\n    if (drawn !== undefined) {\n      setActive(drawn);\n      return;\n    }\n    if (trigger === \"mount\") {\n      setActive(true);\n      return;\n    }\n    if (trigger === \"view\") {\n      const host = hostRef.current;\n      if (!host) return;\n      const io = new IntersectionObserver(\n        (entries) => {\n          if (entries.some((e) => e.isIntersecting)) {\n            setActive(true);\n            io.disconnect();\n          }\n        },\n        { threshold: 0.35 },\n      );\n      io.observe(host);\n      return () => io.disconnect();\n    }\n  }, [trigger, drawn]);\n\n  const isHover = trigger === \"hover\" && drawn === undefined;\n  const hoverProps = isHover\n    ? {\n        tabIndex: 0 as const,\n        onPointerEnter: () => setActive(true),\n        onPointerLeave: () => setActive(false),\n        onFocus: () => setActive(true),\n        onBlur: () => setActive(false),\n      }\n    : {};\n\n  const Tag = as as unknown as React.ComponentType<\n    React.HTMLAttributes<HTMLElement> & { ref?: React.RefCallback<HTMLElement | null> }\n  >;\n\n  const show = active || reduceMotion;\n  const ease = \"cubic-bezier(.65,0,.35,1)\";\n\n  // On dark the band `screen`-blends over near-black, so a flat 0.4 lands dim.\n  // Drive it harder there so the ink stays vivid; light keeps the soft marker.\n  const darkOpacity = Math.min(0.92, opacity * 1.9);\n\n  return (\n    <Tag\n      ref={(node) => {\n        hostRef.current = node;\n      }}\n      aria-label={ariaLabel}\n      className={cn(\"relative inline-block\", className)}\n      style={\n        {\n          \"--wensity-hl-op\": opacity,\n          \"--wensity-hl-op-dark\": darkOpacity,\n        } as React.CSSProperties\n      }\n      {...hoverProps}\n    >\n      {size.w > 0 && bands.length > 0 ? (\n        <svg\n          width={size.w}\n          height={size.h}\n          viewBox={`0 0 ${size.w} ${size.h}`}\n          fill=\"none\"\n          aria-hidden=\"true\"\n          className=\"pointer-events-none absolute left-0 top-0 z-0 overflow-visible\"\n        >\n          {bands.map((b, i) => (\n            <rect\n              key={i}\n              x={b.x}\n              y={b.y}\n              width={b.w}\n              height={b.h}\n              rx={Math.min(4, b.h / 3)}\n              fill={fill}\n              // Marker blend: darkens the paper on light, lifts the ink out of\n              // the near-black surface on dark (a flat tint would go muddy).\n              // Opacity is themed — dark runs hotter so the band stays vivid.\n              className=\"mix-blend-multiply dark:mix-blend-screen [opacity:var(--wensity-hl-op)] dark:[opacity:var(--wensity-hl-op-dark)]\"\n              style={{\n                // fill-box keeps origin relative to the rect across browsers.\n                transformBox: \"fill-box\",\n                transformOrigin: \"left center\",\n                transform: show ? \"scaleX(1)\" : \"scaleX(0)\",\n                transition: reduceMotion\n                  ? \"none\"\n                  : `transform ${duration}s ${ease} ${b.delay}s`,\n              }}\n            />\n          ))}\n        </svg>\n      ) : null}\n      <span ref={textRef} className=\"relative z-[1]\">\n        {children}\n      </span>\n    </Tag>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-highlight.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-highlight.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-highlight",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-highlight",
+      "shadcnUrl": "https://ui.wensity.com/r/text-highlight",
+      "cliInstall": "pnpm dlx wensity@latest add text-highlight"
+    }
+  }
+}

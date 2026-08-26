@@ -3,7 +3,7 @@
   "name": "empty-state",
   "type": "registry:block",
   "title": "Empty State",
-  "description": "A centered empty-state layout with icon, title, description, and optional action slot. Supports six variants: basic placeholder text, action-driven recovery, illustrative containers, grayscale avatar profiles, search/filter empty results, and error-state feedback with a retry action.",
+  "description": "Empty layouts for placeholders, search results, and errors.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "clsx",
@@ -28,7 +28,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

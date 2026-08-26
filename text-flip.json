@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-flip",
+  "type": "registry:block",
+  "title": "Text Flip",
+  "description": "3D flip text for React headlines. Staggered characters, reduced-motion safe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-flip.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-flip.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type TextFlipDirection = \"top\" | \"right\" | \"bottom\" | \"left\";\nexport type TextFlipTrigger = \"hover\" | \"click\" | \"both\";\nexport type TextFlipStaggerFrom = \"first\" | \"last\" | \"center\" | \"random\" | number;\n\nexport interface TextFlipHandle {\n  /** Run one flip cycle. */\n  flip: () => Promise<void>;\n  /** Cancel in-flight flips and reset glyphs. */\n  reset: () => void;\n}\n\nexport interface TextFlipProps {\n  /** The string to render. */\n  text: string;\n  /** Tag rendered as the outer element. */\n  as?: keyof React.JSX.IntrinsicElements;\n  /** Outer layout class (color, size, tracking, etc.). */\n  className?: string;\n  /** Class applied to the front face of each glyph. */\n  frontClassName?: string;\n  /** Class applied to the back (second) face of each glyph. */\n  backClassName?: string;\n  /** Front-face color. Omit for theme-aware ink/white. */\n  frontColor?: string;\n  /** Back-face color. Omit for theme-aware ink/white. */\n  backColor?: string;\n  /** Axis the characters rotate around when flipping. */\n  direction?: TextFlipDirection;\n  /** Flip duration per character in seconds. */\n  duration?: number;\n  /** Delay between each character, in seconds. */\n  staggerDuration?: number;\n  /** Where the stagger wave originates. */\n  staggerFrom?: TextFlipStaggerFrom;\n  /** CSS easing. Default approximates the reference spring. */\n  easing?: string;\n  /** What starts a flip cycle. */\n  trigger?: TextFlipTrigger;\n  /** Disable pointer triggers (imperative `flip()` still works). */\n  disabled?: boolean;\n  /** Changing this value forces a flip cycle. */\n  replayKey?: string | number;\n  /** Fired when a flip cycle begins. */\n  onFlipStart?: () => void;\n  /** Fired when a flip cycle finishes (including early exits). */\n  onFlipComplete?: () => void;\n}\n\n/** Approximates reference spring (damping 30 / stiffness 300). */\nconst SPRINGY_EASE = \"cubic-bezier(0.34, 1.4, 0.64, 1)\";\n\nconst REFERENCE_DURATION = 0.45;\n\nconst ROTATION_MAP = {\n  top: \"rotateX(90deg)\",\n  right: \"rotateY(90deg)\",\n  bottom: \"rotateX(-90deg)\",\n  left: \"rotateY(-90deg)\",\n} as const;\n\n/** Exact cube offsets from the reference Text3DFlip. */\nconst CONTAINER_TRANSFORMS = {\n  top: \"translateZ(-0.5lh)\",\n  bottom: \"translateZ(-0.5lh)\",\n  left: \"rotateY(90deg) translateX(50%) rotateY(-90deg)\",\n  right: \"rotateY(90deg) translateX(50%) rotateY(-90deg)\",\n} as const;\n\nconst FRONT_FACE_TRANSFORMS = {\n  top: \"translateZ(0.5lh)\",\n  bottom: \"translateZ(0.5lh)\",\n  left: \"rotateY(90deg) translateX(50%) rotateY(-90deg)\",\n  right: \"rotateY(-90deg) translateX(50%) rotateY(90deg)\",\n} as const;\n\nconst SECOND_FACE_TRANSFORMS = {\n  top: \"rotateX(-90deg) translateZ(0.5lh)\",\n  right:\n    \"rotateY(90deg) translateX(50%) rotateY(-90deg) translateX(-50%) rotateY(-90deg) translateX(50%)\",\n  bottom: \"rotateX(90deg) translateZ(0.5lh)\",\n  left: \"rotateY(90deg) translateX(50%) rotateY(-90deg) translateX(50%) rotateY(-90deg) translateX(50%)\",\n} as const;\n\nconst CHAR_SELECTOR = \"[data-wensity-text-flip-char]\";\n\nlet graphemeSegmenter: Intl.Segmenter | null = null;\n\nfunction getGraphemeSegmenter(): Intl.Segmenter | null {\n  if (typeof Intl === \"undefined\" || !(\"Segmenter\" in Intl)) return null;\n  graphemeSegmenter ??= new Intl.Segmenter(\"en\", { granularity: \"grapheme\" });\n  return graphemeSegmenter;\n}\n\nfunction splitIntoCharacters(value: string): string[] {\n  const segmenter = getGraphemeSegmenter();\n  if (segmenter) {\n    return Array.from(segmenter.segment(value), ({ segment }) => segment);\n  }\n  return Array.from(value);\n}\n\ntype WordChars = {\n  characters: string[];\n  needsSpace: boolean;\n};\n\nfunction buildWords(text: string): WordChars[] {\n  const words = text.length > 0 ? text.split(\" \") : [\"\"];\n  return words.map((word, i) => ({\n    characters: splitIntoCharacters(word.length > 0 ? word : \"\\u00A0\"),\n    needsSpace: i !== words.length - 1,\n  }));\n}\n\nfunction getStaggerDelay(\n  index: number,\n  total: number,\n  staggerFrom: TextFlipStaggerFrom,\n  staggerDuration: number,\n  randomOrigin: number,\n): number {\n  if (total <= 1 || staggerDuration <= 0) return 0;\n  if (staggerFrom === \"first\") return index * staggerDuration;\n  if (staggerFrom === \"last\") return (total - 1 - index) * staggerDuration;\n  if (staggerFrom === \"center\") {\n    const center = Math.floor(total / 2);\n    return Math.abs(center - index) * staggerDuration;\n  }\n  if (staggerFrom === \"random\") {\n    return Math.abs(randomOrigin - index) * staggerDuration;\n  }\n  return Math.abs(staggerFrom - index) * staggerDuration;\n}\n\nfunction prefersReducedMotion(): boolean {\n  if (typeof window === \"undefined\" || typeof window.matchMedia !== \"function\") {\n    return false;\n  }\n  return window.matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\n}\n\nfunction cancelAnimations(list: Animation[]) {\n  for (const animation of list) {\n    try {\n      animation.cancel();\n    } catch {\n      // already finished\n    }\n  }\n}\n\n/**\n * TextFlip — reference Text3DFlip cube + WAAPI springy flip.\n *\n * Same DOM/geometry as the Motion demo. Animation is WAAPI because\n * `useAnimate` + transform springs were silently no-oping here.\n */\nexport const TextFlip = React.forwardRef<TextFlipHandle, TextFlipProps>(\n  function TextFlip(\n    {\n      text,\n      as: ElementTag = \"span\",\n      className,\n      frontClassName,\n      backClassName,\n      frontColor,\n      backColor,\n      direction = \"top\",\n      duration = REFERENCE_DURATION,\n      staggerDuration = 0.05,\n      staggerFrom = \"first\",\n      easing = SPRINGY_EASE,\n      trigger = \"hover\",\n      disabled = false,\n      replayKey,\n      onFlipStart,\n      onFlipComplete,\n    },\n    ref,\n  ) {\n    const rootRef = React.useRef<HTMLSpanElement | null>(null);\n    const isAnimatingRef = React.useRef(false);\n    const isMountedRef = React.useRef(true);\n    const randomOriginRef = React.useRef(0);\n    const replaySeenRef = React.useRef(replayKey);\n    const runningRef = React.useRef<Animation[]>([]);\n    const reduceMotionRef = React.useRef(false);\n    const [reduceMotion, setReduceMotion] = React.useState(false);\n\n    const words = React.useMemo(() => buildWords(text), [text]);\n    const totalChars = React.useMemo(\n      () => words.reduce((sum, word) => sum + word.characters.length, 0),\n      [words],\n    );\n\n    const containerTransform = CONTAINER_TRANSFORMS[direction];\n    const flipTransform = ROTATION_MAP[direction];\n\n    React.useEffect(() => {\n      isMountedRef.current = true;\n      const reduced = prefersReducedMotion();\n      reduceMotionRef.current = reduced;\n      setReduceMotion(reduced);\n\n      const mq = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n      const onChange = () => {\n        reduceMotionRef.current = mq.matches;\n        setReduceMotion(mq.matches);\n      };\n      mq.addEventListener(\"change\", onChange);\n\n      return () => {\n        isMountedRef.current = false;\n        isAnimatingRef.current = false;\n        cancelAnimations(runningRef.current);\n        runningRef.current = [];\n        mq.removeEventListener(\"change\", onChange);\n      };\n    }, []);\n\n    React.useEffect(() => {\n      if (staggerFrom !== \"random\" || totalChars <= 0) return;\n      randomOriginRef.current = Math.floor(Math.random() * totalChars);\n    }, [staggerFrom, totalChars]);\n\n    const snapRest = React.useCallback(() => {\n      const root = rootRef.current;\n      cancelAnimations(runningRef.current);\n      runningRef.current = [];\n      if (!root) return;\n      root.querySelectorAll<HTMLElement>(CHAR_SELECTOR).forEach((node) => {\n        node.style.transform = containerTransform;\n        node.style.willChange = \"auto\";\n      });\n    }, [containerTransform]);\n\n    const runFlip = React.useCallback(async () => {\n      if (reduceMotionRef.current) return;\n\n      const root = rootRef.current;\n      if (!root || totalChars === 0) return;\n      if (isAnimatingRef.current) return;\n\n      const nodes = Array.from(\n        root.querySelectorAll<HTMLElement>(CHAR_SELECTOR),\n      );\n      if (nodes.length === 0) return;\n\n      isAnimatingRef.current = true;\n      onFlipStart?.();\n\n      const durationMs = Math.round(\n        Math.max(180, Math.min(1200, duration * 1000)),\n      );\n\n      try {\n        cancelAnimations(runningRef.current);\n\n        const delays = nodes.map((_, i) =>\n          getStaggerDelay(\n            i,\n            nodes.length,\n            staggerFrom,\n            Math.max(0, staggerDuration),\n            randomOriginRef.current,\n          ),\n        );\n\n        const animations = nodes.map((node, i) => {\n          node.style.willChange = \"transform\";\n          // Start from the cube rest pose (same as reference).\n          node.style.transform = containerTransform;\n\n          return node.animate(\n            [\n              { transform: containerTransform },\n              { transform: flipTransform },\n            ],\n            {\n              duration: durationMs,\n              delay: delays[i] * 1000,\n              easing,\n              fill: \"forwards\",\n            },\n          );\n        });\n\n        runningRef.current = animations;\n\n        await Promise.all(\n          animations.map((animation) =>\n            animation.finished.catch(() => {\n              // cancelled\n            }),\n          ),\n        );\n\n        if (!isMountedRef.current) return;\n\n        // Instant reset to cube rest — same beat as the reference.\n        snapRest();\n      } catch {\n        snapRest();\n      } finally {\n        isAnimatingRef.current = false;\n        if (isMountedRef.current) onFlipComplete?.();\n      }\n    }, [\n      containerTransform,\n      duration,\n      easing,\n      flipTransform,\n      onFlipComplete,\n      onFlipStart,\n      snapRest,\n      staggerDuration,\n      staggerFrom,\n      totalChars,\n    ]);\n\n    React.useImperativeHandle(\n      ref,\n      () => ({\n        flip: () => runFlip(),\n        reset: () => {\n          isAnimatingRef.current = false;\n          snapRest();\n        },\n      }),\n      [runFlip, snapRest],\n    );\n\n    React.useEffect(() => {\n      if (replayKey === undefined) return;\n      if (replaySeenRef.current === replayKey) return;\n      replaySeenRef.current = replayKey;\n      void runFlip();\n    }, [replayKey, runFlip]);\n\n    const allowHover = !disabled && (trigger === \"hover\" || trigger === \"both\");\n    const allowClick = !disabled && (trigger === \"click\" || trigger === \"both\");\n\n    if (reduceMotion) {\n      return React.createElement(\n        ElementTag,\n        { className: cn(\"inline-block\", className) },\n        text,\n      );\n    }\n\n    // Interactive root owns hover + sizing. `as` is only a semantic wrapper.\n    const interactive = (\n      <span\n        ref={rootRef}\n        className={cn(\n          \"relative inline-flex flex-wrap items-baseline overflow-visible\",\n          \"[perspective:1000px]\",\n          allowHover || allowClick ? \"cursor-default\" : undefined,\n          className,\n        )}\n        onPointerEnter={\n          allowHover\n            ? () => {\n                void runFlip();\n              }\n            : undefined\n        }\n        onClick={\n          allowClick\n            ? () => {\n                void runFlip();\n              }\n            : undefined\n        }\n      >\n        <span className=\"sr-only\">{text}</span>\n\n        {words.map((word, wordIndex) => (\n          <span key={wordIndex} aria-hidden className=\"inline-flex\">\n            {word.characters.map((char, charIndex) => (\n              <CharBox\n                key={`${wordIndex}-${charIndex}`}\n                char={char}\n                direction={direction}\n                frontClassName={frontClassName}\n                backClassName={backClassName}\n                frontColor={frontColor}\n                backColor={backColor}\n              />\n            ))}\n            {word.needsSpace ? <span className=\"whitespace-pre\"> </span> : null}\n          </span>\n        ))}\n      </span>\n    );\n\n    if (ElementTag === \"span\") return interactive;\n\n    return React.createElement(ElementTag, null, interactive);\n  },\n);\n\nTextFlip.displayName = \"TextFlip\";\n\nconst CharBox = React.memo(function CharBox({\n  char,\n  direction,\n  frontClassName,\n  backClassName,\n  frontColor,\n  backColor,\n}: {\n  char: string;\n  direction: TextFlipDirection;\n  frontClassName?: string;\n  backClassName?: string;\n  frontColor?: string;\n  backColor?: string;\n}) {\n  const glyph = char === \" \" ? \"\\u00A0\" : char;\n\n  return (\n    // Reference structure: ONE element holds cube offset + is animated.\n    <span\n      data-wensity-text-flip-char=\"\"\n      className=\"inline transform-3d\"\n      style={{ transform: CONTAINER_TRANSFORMS[direction] }}\n    >\n      <span\n        className={cn(\n          \"relative inline-block h-[1lh] whitespace-pre backface-hidden\",\n          !frontColor && \"text-zinc-900 dark:text-white\",\n          frontClassName,\n        )}\n        style={{\n          transform: FRONT_FACE_TRANSFORMS[direction],\n          ...(frontColor ? { color: frontColor } : null),\n        }}\n      >\n        {glyph}\n      </span>\n      <span\n        className={cn(\n          \"absolute top-0 left-0 inline-block h-[1lh] whitespace-pre backface-hidden\",\n          !backColor && !frontColor && \"text-zinc-900 dark:text-white\",\n          backClassName,\n        )}\n        style={{\n          transform: SECOND_FACE_TRANSFORMS[direction],\n          ...(backColor\n            ? { color: backColor }\n            : frontColor\n              ? { color: frontColor }\n              : null),\n        }}\n      >\n        {glyph}\n      </span>\n    </span>\n  );\n});\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-flip.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-flip.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-flip",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-flip",
+      "shadcnUrl": "https://ui.wensity.com/r/text-flip",
+      "cliInstall": "pnpm dlx wensity@latest add text-flip"
+    }
+  }
+}

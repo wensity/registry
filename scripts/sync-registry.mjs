@@ -62,6 +62,14 @@ async function mapLimit(items, limit, fn) {
 
 const fetched = await mapLimit(index.items, 12, async (item) => {
   const payload = await getJson(`${UPSTREAM}/${item.name}.json`);
+
+  // Second gate, at the payload level. The index says what is free; this
+  // checks what each item says about itself, so a mislabelled index entry
+  // cannot leak a paid component into a public repository.
+  const access = payload?.meta?.wensity?.access;
+  if (access !== undefined && access !== "free") {
+    throw new Error(`${item.name} reports access="${access}". Refusing to write.`);
+  }
   return [item.name, `${JSON.stringify(payload, null, 2)}\n`];
 });
 

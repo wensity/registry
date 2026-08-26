@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "canvas-text",
+  "type": "registry:block",
+  "title": "Canvas Text",
+  "description": "Rasterize a headline into canvas particles that load as a spinning ring, then slowly resolve into letterforms. Zero deps, reduced-motion safe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/canvas-text.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/canvas-text.tsx",
+      "content": "\"use client\";\n\n/**\n * CanvasText\n * ──────────\n * Headline rendered as a cloud of canvas particles. Glyphs are rasterized\n * offscreen, sampled into points, then animated through a loading-circle\n * hold that slowly morphs into the letterforms — with soft idle drift and\n * optional pointer magnetism after settle. Zero deps beyond React.\n *\n * Motion contract:\n * - Intro timeline is driven by `loadDuration` (ring spin) then\n *   `morphDuration` (ring → text).\n * - rAF loop only while animating / drifting / pointer-active; stops when\n *   the lattice is locked (drift=0, no pointer) to save CPU.\n * - Load spin writes positions directly; morph freezes ring origins once\n *   (no per-frame trig). Glyph sampling reads only the text bounding box.\n * - `prefers-reduced-motion` paints a static sampled glyph (no drift).\n * - Particles reassemble on text / size / density / scatter / replay changes.\n */\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface CanvasTextProps {\n  /** The string to rasterize into particles. */\n  text: string;\n  /** Fill color for particles. Defaults to currentColor. */\n  color?: string;\n  /** Particle diameter in CSS pixels. Default: 1.6. */\n  particleSize?: number;\n  /**\n   * Sampling stride in source pixels (1 = densest). Higher = fewer particles.\n   * Default: 2.\n   */\n  density?: number;\n  /** Soft idle drift after settle, in CSS pixels. 0 = locked grid (default). */\n  drift?: number;\n  /** How far the loading ring sits from center, in CSS pixels. Default: 48. */\n  scatter?: number;\n  /** Seconds spent spinning on the loading ring before morph starts. Default: 1.0. */\n  loadDuration?: number;\n  /** Seconds for the ring → text morph. Default: 1.4. */\n  morphDuration?: number;\n  /** Pointer attraction strength (0 = off). Default: 0.35. */\n  magnetic?: number;\n  /** Radius of pointer influence in CSS pixels. Default: 100. */\n  magneticRadius?: number;\n  /** Force the loop paused. When omitted, auto-pauses off-screen / hidden. */\n  paused?: boolean;\n  /**\n   * Bump to re-run the scatter → assemble intro without changing other props.\n   * Useful for playground Replay controls.\n   */\n  replayKey?: string | number;\n  /** Optional Tailwind class for sizing the host box. */\n  className?: string;\n  /** Font size in CSS pixels. Default: 64. */\n  fontSize?: number;\n  /** Font weight. Default: 600. */\n  fontWeight?: number | string;\n  /** Font family. Default: system UI sans. */\n  fontFamily?: string;\n}\n\ntype Particle = {\n  homeX: number;\n  homeY: number;\n  /** Ring → text lerp start, captured once when morph begins. */\n  originX: number;\n  originY: number;\n  x: number;\n  y: number;\n  vx: number;\n  vy: number;\n  seed: number;\n  orbitAngle: number;\n  orbitRadius: number;\n};\n\ntype Engine = {\n  particles: Particle[];\n  width: number;\n  height: number;\n  cx: number;\n  cy: number;\n  dpr: number;\n  /** Last dpr applied via setTransform — skip redundant transforms. */\n  paintedDpr: number;\n  color: string;\n  particleSize: number;\n  drift: number;\n  magnetic: number;\n  magneticRadius: number;\n  /** Intro time that has actually been animated, excluding paused time. */\n  introElapsed: number;\n  /** Last rAF timestamp used to advance the intro timeline. */\n  lastFrameTime: number;\n  /** Ms spent on the spinning ring. */\n  loadMs: number;\n  /** Ms spent morphing ring → text. */\n  morphMs: number;\n  /** True after morph origins were frozen from the live ring. */\n  morphOriginsReady: boolean;\n  pointer: { x: number; y: number; active: boolean };\n  reducedMotion: boolean;\n  /** True once intro finished and lattice is static (no drift / pointer). */\n  idleLocked: boolean;\n  ctx: CanvasRenderingContext2D;\n};\n\nconst DEFAULT_FONT_FAMILY =\n  'ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif';\n\nconst SPIN_RATE = 0.0024;\n/** Soft cap — denser samples are stride-skipped so mobile stays smooth. */\nconst MAX_PARTICLES = 2800;\nconst RESIZE_DEBOUNCE_MS = 80;\nconst TWO_PI = Math.PI * 2;\n\n/**\n * Canvas-backed particle headline. Samples rasterized glyphs into points that\n * load as a spinning circle, then slowly resolve into letterforms.\n */\nexport function CanvasText({\n  text,\n  color,\n  particleSize = 1.6,\n  density = 2,\n  drift = 0,\n  scatter = 48,\n  loadDuration = 1,\n  morphDuration = 1.4,\n  magnetic = 0.35,\n  magneticRadius = 100,\n  paused,\n  replayKey,\n  className,\n  fontSize = 64,\n  fontWeight = 600,\n  fontFamily = DEFAULT_FONT_FAMILY,\n}: CanvasTextProps) {\n  const wrapRef = React.useRef<HTMLDivElement | null>(null);\n  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);\n  const engineRef = React.useRef<Engine | null>(null);\n  const offscreenRef = React.useRef<HTMLCanvasElement | null>(null);\n  const rafRef = React.useRef<number>(0);\n  const resizeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(\n    null,\n  );\n  const wrapRectRef = React.useRef<DOMRect | null>(null);\n  const inViewRef = React.useRef(true);\n  const pageVisibleRef = React.useRef(true);\n  const pausedPropRef = React.useRef(paused);\n  const colorPropRef = React.useRef(color);\n  const kickLoopRef = React.useRef<((force?: boolean) => void) | null>(null);\n  pausedPropRef.current = paused;\n  colorPropRef.current = color;\n\n  const safeDensity = Math.max(1, Math.round(density));\n  const safeParticleSize = Math.max(0.6, particleSize);\n  const safeDrift = Math.max(0, drift);\n  const safeScatter = Math.max(12, scatter);\n  const safeLoadDuration = Math.max(0.2, loadDuration);\n  const safeMorphDuration = Math.max(0.2, morphDuration);\n  const safeMagnetic = Math.max(0, magnetic);\n  const safeMagneticRadius = Math.max(8, magneticRadius);\n\n  const hostMinHeight = Math.max(\n    160,\n    Math.ceil(safeScatter * 2.35 + safeParticleSize * 4 + 32),\n  );\n\n  const liveRef = React.useRef({\n    particleSize: safeParticleSize,\n    drift: safeDrift,\n    magnetic: safeMagnetic,\n    magneticRadius: safeMagneticRadius,\n  });\n  liveRef.current = {\n    particleSize: safeParticleSize,\n    drift: safeDrift,\n    magnetic: safeMagnetic,\n    magneticRadius: safeMagneticRadius,\n  };\n\n  const rebuild = React.useCallback(() => {\n    const wrap = wrapRef.current;\n    const canvas = canvasRef.current;\n    if (!wrap || !canvas) return;\n\n    const cssW = Math.max(1, wrap.clientWidth);\n    const cssH = Math.max(1, wrap.clientHeight);\n    const dpr = Math.min(window.devicePixelRatio || 1, 2);\n    const cx = cssW / 2;\n    const cy = cssH / 2;\n    const pixelW = Math.max(1, Math.round(cssW * dpr));\n    const pixelH = Math.max(1, Math.round(cssH * dpr));\n\n    // Avoid resetting the bitmap (and flashing) when size is unchanged.\n    if (canvas.width !== pixelW) canvas.width = pixelW;\n    if (canvas.height !== pixelH) canvas.height = pixelH;\n    canvas.style.width = `${cssW}px`;\n    canvas.style.height = `${cssH}px`;\n\n    // Reuse the existing 2d context when the canvas bitmaps were not reset.\n    const prev = engineRef.current;\n    const ctx =\n      prev && prev.width === cssW && prev.height === cssH && prev.dpr === dpr\n        ? prev.ctx\n        : canvas.getContext(\"2d\", { alpha: true });\n    if (!ctx) return;\n\n    const resolvedColor = resolveFillColor(wrap, colorPropRef.current);\n\n    let off = offscreenRef.current;\n    if (!off) {\n      off = document.createElement(\"canvas\");\n      offscreenRef.current = off;\n    }\n    if (off.width !== pixelW) off.width = pixelW;\n    if (off.height !== pixelH) off.height = pixelH;\n\n    const octx = off.getContext(\"2d\", { willReadFrequently: true });\n    if (!octx) return;\n\n    const safeFontSize = Math.max(12, fontSize);\n    octx.setTransform(dpr, 0, 0, dpr, 0, 0);\n    octx.clearRect(0, 0, cssW, cssH);\n    octx.fillStyle = \"#ffffff\";\n    octx.font = `${fontWeight} ${safeFontSize}px ${fontFamily}`;\n    octx.textAlign = \"center\";\n    octx.textBaseline = \"middle\";\n    octx.fillText(text || \" \", cx, cy);\n\n    // Read only the glyph bounding box — full-canvas getImageData is expensive.\n    const metrics = octx.measureText(text || \" \");\n    const textW = Math.max(\n      safeFontSize,\n      (metrics.actualBoundingBoxLeft ?? 0) +\n        (metrics.actualBoundingBoxRight ?? metrics.width / 2),\n    );\n    const textH = Math.max(\n      safeFontSize,\n      (metrics.actualBoundingBoxAscent ?? safeFontSize * 0.8) +\n        (metrics.actualBoundingBoxDescent ?? safeFontSize * 0.25),\n    );\n    const pad = Math.ceil(safeFontSize * 0.35);\n    const boxCssX = Math.max(0, Math.floor(cx - textW / 2 - pad));\n    const boxCssY = Math.max(0, Math.floor(cy - textH / 2 - pad));\n    const boxCssW = Math.min(cssW - boxCssX, Math.ceil(textW + pad * 2));\n    const boxCssH = Math.min(cssH - boxCssY, Math.ceil(textH + pad * 2));\n    const boxX = Math.floor(boxCssX * dpr);\n    const boxY = Math.floor(boxCssY * dpr);\n    const boxW = Math.max(1, Math.ceil(boxCssW * dpr));\n    const boxH = Math.max(1, Math.ceil(boxCssH * dpr));\n\n    const { data, width: dataW, height: dataH } = octx.getImageData(\n      boxX,\n      boxY,\n      boxW,\n      boxH,\n    );\n    let step = Math.max(1, Math.round(safeDensity * dpr));\n\n    // Estimate sample count; widen stride if we'd blow the particle budget.\n    const approx =\n      Math.ceil(dataW / step) * Math.ceil(dataH / step) * 0.35; // denser inside glyph bbox\n    if (approx > MAX_PARTICLES) {\n      step = Math.max(\n        step,\n        Math.ceil(Math.sqrt((dataW * dataH * 0.35) / MAX_PARTICLES)),\n      );\n    }\n\n    const particles: Particle[] = [];\n    const invDpr = 1 / dpr;\n    const originOffsetX = boxX * invDpr;\n    const originOffsetY = boxY * invDpr;\n\n    for (let y = 0; y < dataH; y += step) {\n      const row = y * dataW;\n      for (let x = 0; x < dataW; x += step) {\n        if (data[(row + x) * 4 + 3] < 128) continue;\n        const homeX = Math.round(originOffsetX + x * invDpr);\n        const homeY = Math.round(originOffsetY + y * invDpr);\n        particles.push({\n          homeX,\n          homeY,\n          originX: homeX,\n          originY: homeY,\n          x: 0,\n          y: 0,\n          vx: 0,\n          vy: 0,\n          seed: 0,\n          orbitAngle: 0,\n          orbitRadius: 0,\n        });\n        if (particles.length >= MAX_PARTICLES) break;\n      }\n      if (particles.length >= MAX_PARTICLES) break;\n    }\n\n    const orbitJitter = 1.12;\n    const edgePad = safeParticleSize * 2 + 10;\n    const maxFitRadius =\n      Math.max(8, Math.min(cssW, cssH) / 2 - edgePad) / orbitJitter;\n    const ringRadius = Math.min(safeScatter, maxFitRadius);\n    const count = Math.max(particles.length, 1);\n    const twoPiOverCount = TWO_PI / count;\n\n    for (let i = 0; i < particles.length; i++) {\n      const p = particles[i]!;\n      const seed = Math.random();\n      p.orbitAngle = i * twoPiOverCount + seed * 0.08;\n      p.orbitRadius = ringRadius * (0.88 + seed * 0.24);\n      p.x = cx + Math.cos(p.orbitAngle) * p.orbitRadius;\n      p.y = cy + Math.sin(p.orbitAngle) * p.orbitRadius;\n      p.originX = p.x;\n      p.originY = p.y;\n      p.seed = seed * 1000;\n    }\n\n    const reducedMotion = window.matchMedia(\n      \"(prefers-reduced-motion: reduce)\",\n    ).matches;\n\n    if (reducedMotion) {\n      for (let i = 0; i < particles.length; i++) {\n        const p = particles[i]!;\n        p.x = p.homeX;\n        p.y = p.homeY;\n        p.originX = p.homeX;\n        p.originY = p.homeY;\n      }\n    }\n\n    const prevPointer = prev?.pointer ?? {\n      x: cx,\n      y: cy,\n      active: false,\n    };\n\n    const live = liveRef.current;\n    const now = performance.now();\n    engineRef.current = {\n      particles,\n      width: cssW,\n      height: cssH,\n      cx,\n      cy,\n      dpr,\n      paintedDpr: -1,\n      color: resolvedColor,\n      particleSize: live.particleSize,\n      drift: live.drift,\n      magnetic: live.magnetic,\n      magneticRadius: live.magneticRadius,\n      introElapsed: 0,\n      lastFrameTime: now,\n      loadMs: safeLoadDuration * 1000,\n      morphMs: safeMorphDuration * 1000,\n      morphOriginsReady: false,\n      pointer: prevPointer,\n      reducedMotion,\n      idleLocked: reducedMotion,\n      ctx,\n    };\n\n    wrapRectRef.current = wrap.getBoundingClientRect();\n    paintFrame(engineRef.current);\n    // Force the loop awake for the new intro (even if a prior run had idle-locked).\n    kickLoopRef.current?.(true);\n  }, [\n    text,\n    fontSize,\n    fontWeight,\n    fontFamily,\n    safeDensity,\n    safeScatter,\n    safeLoadDuration,\n    safeMorphDuration,\n    replayKey,\n  ]);\n\n  const syncFillColor = React.useCallback(() => {\n    const wrap = wrapRef.current;\n    const engine = engineRef.current;\n    if (!wrap || !engine) return;\n    const next = resolveFillColor(wrap, colorPropRef.current);\n    if (next === engine.color) return;\n    engine.color = next;\n    paintFrame(engine);\n  }, []);\n\n  React.useEffect(() => {\n    const engine = engineRef.current;\n    if (!engine) return;\n    engine.particleSize = safeParticleSize;\n    engine.drift = safeDrift;\n    engine.magnetic = safeMagnetic;\n    engine.magneticRadius = safeMagneticRadius;\n    if (safeMagnetic <= 0) {\n      engine.pointer.active = false;\n    }\n    // Drift coming online must wake a stopped idle loop.\n    if (engine.idleLocked && safeDrift > 0) {\n      kickLoopRef.current?.(true);\n    }\n    paintFrame(engine);\n  }, [safeParticleSize, safeDrift, safeMagnetic, safeMagneticRadius]);\n\n  React.useEffect(() => {\n    rebuild();\n\n    const wrap = wrapRef.current;\n    if (!wrap) return;\n\n    const scheduleRebuild = () => {\n      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);\n      resizeTimerRef.current = setTimeout(() => {\n        resizeTimerRef.current = null;\n        wrapRectRef.current = wrap.getBoundingClientRect();\n        rebuild();\n      }, RESIZE_DEBOUNCE_MS);\n    };\n\n    const ro = new ResizeObserver(scheduleRebuild);\n    ro.observe(wrap);\n\n    const mo = new MutationObserver(() => syncFillColor());\n    mo.observe(document.documentElement, {\n      attributes: true,\n      attributeFilter: [\"class\", \"data-theme\"],\n    });\n\n    return () => {\n      ro.disconnect();\n      mo.disconnect();\n      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);\n    };\n  }, [rebuild, syncFillColor]);\n\n  React.useEffect(() => {\n    syncFillColor();\n  }, [color, syncFillColor]);\n\n  React.useEffect(() => {\n    const canvas = canvasRef.current;\n    const wrap = wrapRef.current;\n    if (!canvas || !wrap) return;\n\n    let running = false;\n\n    const shouldRun = () => {\n      const engine = engineRef.current;\n      if (!engine || engine.reducedMotion) return false;\n      if (pausedPropRef.current === true) return false;\n      if (engine.idleLocked) return false;\n      if (pausedPropRef.current === false) return true;\n      return inViewRef.current && pageVisibleRef.current;\n    };\n\n    const tick = (now: number) => {\n      const engine = engineRef.current;\n      if (!engine || !shouldRun()) {\n        running = false;\n        if (engine) paintFrame(engine);\n        return;\n      }\n\n      const stillAnimating = stepParticles(engine, now);\n      paintFrame(engine);\n\n      if (!stillAnimating && engine.drift <= 0 && !engine.pointer.active) {\n        engine.idleLocked = true;\n        running = false;\n        return;\n      }\n\n      rafRef.current = requestAnimationFrame(tick);\n    };\n\n    const ensureLoop = (force = false) => {\n      const engine = engineRef.current;\n      if (!engine || engine.reducedMotion) return;\n      if (pausedPropRef.current === true) return;\n\n      if (force) engine.idleLocked = false;\n\n      // Locked lattice with no drift / pointer — stay asleep.\n      if (\n        engine.idleLocked &&\n        engine.drift <= 0 &&\n        !engine.pointer.active\n      ) {\n        return;\n      }\n\n      if (\n        pausedPropRef.current !== false &&\n        !(inViewRef.current && pageVisibleRef.current)\n      ) {\n        return;\n      }\n\n      if (running) return;\n      engine.idleLocked = false;\n      engine.lastFrameTime = performance.now();\n      running = true;\n      rafRef.current = requestAnimationFrame(tick);\n    };\n    kickLoopRef.current = ensureLoop;\n\n    const io = new IntersectionObserver(\n      (entries) => {\n        inViewRef.current = entries.some((e) => e.isIntersecting);\n        if (inViewRef.current) ensureLoop();\n      },\n      { threshold: 0.01 },\n    );\n    io.observe(wrap);\n\n    const onVisibility = () => {\n      pageVisibleRef.current = document.visibilityState !== \"hidden\";\n      if (pageVisibleRef.current) ensureLoop();\n    };\n    document.addEventListener(\"visibilitychange\", onVisibility);\n    pageVisibleRef.current = document.visibilityState !== \"hidden\";\n\n    ensureLoop();\n\n    return () => {\n      running = false;\n      kickLoopRef.current = null;\n      cancelAnimationFrame(rafRef.current);\n      io.disconnect();\n      document.removeEventListener(\"visibilitychange\", onVisibility);\n    };\n  }, [paused]);\n\n  React.useEffect(() => {\n    const wrap = wrapRef.current;\n    if (!wrap || safeMagnetic <= 0) return;\n\n    const onMove = (event: PointerEvent) => {\n      const engine = engineRef.current;\n      if (!engine || engine.magnetic <= 0) return;\n      const rect = wrap.getBoundingClientRect();\n      wrapRectRef.current = rect;\n      engine.pointer.x = event.clientX - rect.left;\n      engine.pointer.y = event.clientY - rect.top;\n      engine.pointer.active = true;\n      if (engine.idleLocked) {\n        kickLoopRef.current?.(true);\n      }\n    };\n\n    const onLeave = () => {\n      const engine = engineRef.current;\n      if (!engine) return;\n      engine.pointer.active = false;\n      // Snap back to the locked lattice when magnetism releases.\n      if (engine.drift <= 0) {\n        const ps = engine.particles;\n        for (let i = 0; i < ps.length; i++) {\n          const p = ps[i]!;\n          p.x = p.homeX;\n          p.y = p.homeY;\n          p.vx = 0;\n          p.vy = 0;\n        }\n        engine.idleLocked = true;\n        paintFrame(engine);\n      }\n    };\n\n    wrap.addEventListener(\"pointermove\", onMove, { passive: true });\n    wrap.addEventListener(\"pointerleave\", onLeave);\n    wrap.addEventListener(\"pointercancel\", onLeave);\n\n    return () => {\n      wrap.removeEventListener(\"pointermove\", onMove);\n      wrap.removeEventListener(\"pointerleave\", onLeave);\n      wrap.removeEventListener(\"pointercancel\", onLeave);\n    };\n  }, [safeMagnetic]);\n\n  return (\n    <div\n      ref={wrapRef}\n      className={cn(\n        \"relative w-full max-w-3xl\",\n        \"[--wensity-canvas-text:#09090b] dark:[--wensity-canvas-text:#ffffff]\",\n        \"text-[color:var(--wensity-canvas-text)]\",\n        className,\n      )}\n      style={{ minHeight: hostMinHeight }}\n      aria-label={text}\n      role=\"img\"\n    >\n      <span className=\"sr-only\">{text}</span>\n      <canvas\n        ref={canvasRef}\n        className=\"absolute inset-0 h-full w-full [transform:translateZ(0)]\"\n        aria-hidden\n      />\n    </div>\n  );\n}\n\nfunction resolveFillColor(wrap: HTMLElement, color?: string): string {\n  if (color && color.trim()) return color.trim();\n\n  const token = getComputedStyle(wrap)\n    .getPropertyValue(\"--wensity-canvas-text\")\n    .trim();\n  if (token) return token;\n\n  const inherited = getComputedStyle(wrap).color;\n  if (inherited && inherited !== \"rgba(0, 0, 0, 0)\") return inherited;\n\n  return document.documentElement.classList.contains(\"dark\")\n    ? \"#ffffff\"\n    : \"#09090b\";\n}\n\n/** Fast departure from the ring, soft landing on the letterforms. */\nfunction easeOutCubic(t: number): number {\n  return 1 - (1 - t) ** 3;\n}\n\n/**\n * Advance particle simulation. Returns `true` while the intro is still\n * running (caller should keep rAF alive).\n */\nfunction stepParticles(engine: Engine, now: number): boolean {\n  const {\n    particles,\n    drift,\n    magnetic,\n    magneticRadius,\n    pointer,\n    loadMs,\n    morphMs,\n    cx,\n    cy,\n  } = engine;\n\n  const elapsed = Math.max(\n    0,\n    engine.introElapsed + Math.max(0, now - engine.lastFrameTime),\n  );\n  engine.introElapsed = elapsed;\n  engine.lastFrameTime = now;\n  const pointerLive = pointer.active && magnetic > 0;\n  const len = particles.length;\n\n  // Phase 1 — loading ring (direct positions; spring was wasted work here).\n  if (elapsed < loadMs) {\n    const spin = elapsed * SPIN_RATE;\n    for (let i = 0; i < len; i++) {\n      const p = particles[i]!;\n      const angle = p.orbitAngle + spin;\n      p.x = cx + Math.cos(angle) * p.orbitRadius;\n      p.y = cy + Math.sin(angle) * p.orbitRadius;\n      p.vx = 0;\n      p.vy = 0;\n    }\n    return true;\n  }\n\n  // Phase 2 — morph ring → text (starts immediately when load ends).\n  const morphElapsed = elapsed - loadMs;\n  if (morphElapsed < morphMs) {\n    if (!engine.morphOriginsReady) {\n      // Freeze live ring positions once — no per-frame trig during morph.\n      for (let i = 0; i < len; i++) {\n        const p = particles[i]!;\n        p.originX = p.x;\n        p.originY = p.y;\n      }\n      engine.morphOriginsReady = true;\n    }\n\n    const raw = Math.min(1, morphElapsed / Math.max(1, morphMs));\n\n    for (let i = 0; i < len; i++) {\n      const p = particles[i]!;\n      // Light stagger only — keeps a cascade without delaying leave-circle.\n      const stagger = (p.seed % 180) / 1000;\n      const delayed = Math.min(\n        1,\n        Math.max(0, (raw - stagger * 0.12) / (1 - stagger * 0.12)),\n      );\n      const u = easeOutCubic(delayed);\n\n      if (u >= 0.995) {\n        p.x = p.homeX;\n        p.y = p.homeY;\n        p.vx = 0;\n        p.vy = 0;\n        continue;\n      }\n\n      p.x = p.originX + (p.homeX - p.originX) * u;\n      p.y = p.originY + (p.homeY - p.originY) * u;\n      p.vx = 0;\n      p.vy = 0;\n    }\n    return true;\n  }\n\n  // Phase 3 — settled lattice.\n  if (!pointerLive && drift <= 0) {\n    for (let i = 0; i < len; i++) {\n      const p = particles[i]!;\n      p.x = p.homeX;\n      p.y = p.homeY;\n      p.vx = 0;\n      p.vy = 0;\n    }\n    return false;\n  }\n\n  const radiusSq = magneticRadius * magneticRadius;\n\n  for (let i = 0; i < len; i++) {\n    const p = particles[i]!;\n    let targetX = p.homeX;\n    let targetY = p.homeY;\n\n    if (drift > 0) {\n      targetX += Math.sin(now * 0.0012 + p.seed) * drift;\n      targetY += Math.cos(now * 0.0015 + p.seed * 1.3) * drift;\n    }\n\n    if (pointerLive) {\n      const dx = p.homeX - pointer.x;\n      const dy = p.homeY - pointer.y;\n      const distSq = dx * dx + dy * dy;\n      if (distSq < radiusSq && distSq > 0) {\n        const dist = Math.sqrt(distSq);\n        const falloff = 1 - dist / magneticRadius;\n        const push = magnetic * falloff * falloff * 28;\n        targetX += (dx / dist) * push;\n        targetY += (dy / dist) * push;\n      }\n    }\n\n    p.vx = (p.vx + (targetX - p.x) * 0.22) * 0.76;\n    p.vy = (p.vy + (targetY - p.y) * 0.22) * 0.76;\n    p.x += p.vx;\n    p.y += p.vy;\n  }\n\n  return true;\n}\n\n/** Paint particles as axis-aligned squares — indistinguishable from discs at ~1–3px, far cheaper than arc(). */\nfunction paintFrame(engine: Engine) {\n  const { ctx, dpr, particles, color, particleSize, width, height } = engine;\n  if (engine.paintedDpr !== dpr) {\n    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);\n    engine.paintedDpr = dpr;\n  }\n  ctx.clearRect(0, 0, width, height);\n  ctx.fillStyle = color;\n\n  const size = particleSize;\n  const half = size * 0.5;\n  const len = particles.length;\n  // Single path + one fill beats N beginPath/fill pairs.\n  ctx.beginPath();\n  for (let i = 0; i < len; i++) {\n    const p = particles[i]!;\n    ctx.rect(p.x - half, p.y - half, size, size);\n  }\n  ctx.fill();\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/canvas-text.tsx. For Pro components and updates, use pnpm dlx wensity@latest add canvas-text.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "canvas-text",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/canvas-text",
+      "shadcnUrl": "https://ui.wensity.com/r/canvas-text",
+      "cliInstall": "pnpm dlx wensity@latest add canvas-text"
+    }
+  }
+}

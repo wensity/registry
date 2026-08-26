@@ -3,7 +3,7 @@
   "name": "calendar",
   "type": "registry:block",
   "title": "Calendar",
-  "description": "A date grid with single, range, and multiple selection modes, fast month/year navigation, booked-date and event-indicator support.",
+  "description": "An always-visible month grid for scheduling and booking views. Renders inline with single, range, and multi-date selection.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "@tabler/icons-react",
@@ -29,7 +29,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

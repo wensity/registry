@@ -3,7 +3,7 @@
   "name": "aspect-ratio",
   "type": "registry:block",
   "title": "Aspect Ratio",
-  "description": "A media container with five preset ratios and a built-in image loader that crossfades in from a shimmer placeholder.",
+  "description": "Media containers with preset ratios and a shimmer image loader.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "clsx",
@@ -28,7 +28,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-shimmer",
+  "type": "registry:block",
+  "title": "Text Shimmer",
+  "description": "Shimmering text for React headlines. One element, reduced-motion safe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-shimmer.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-shimmer.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface TextShimmerProps {\n  /** The string to render. */\n  text: string;\n  /** Tag rendered as the outer element. */\n  as?: keyof React.JSX.IntrinsicElements;\n  /** Full sweep cycle duration in seconds. Lower = faster. Default: 2s. */\n  duration?: number;\n  /** Resting fill color. Defaults to a theme-aware muted tone. */\n  baseColor?: string;\n  /** Bright highlight color. Defaults to a theme-aware foreground tone. */\n  shimmerColor?: string;\n  /** Band half-width scale (8–60). Converted to px from text length so the shine stays proportional. */\n  spread?: number;\n  /** Gradient angle in degrees (0 = left→right, 90 = top→bottom). */\n  angle?: number;\n  /** Sweep travel direction. */\n  direction?: \"left\" | \"right\";\n  /** Hold at the end of each sweep before restarting, in seconds. */\n  delay?: number;\n  /** Ping-pong the sweep instead of looping in one direction. */\n  yoyo?: boolean;\n  /** Pause the loop while the pointer is over the text. */\n  pauseOnHover?: boolean;\n  /**\n   * Force the infinite loop paused. When omitted, the loop runs forever while\n   * visible and auto-pauses when off-screen or the tab is hidden.\n   */\n  paused?: boolean;\n  /** Optional Tailwind class for size, weight, tracking, etc. */\n  className?: string;\n}\n\nconst BASE_STYLE_ID = \"wensity-text-shimmer-base\";\nconst registeredDelays = new Set<string>();\n\n/**\n * TextShimmer\n *\n * Infinite headline shimmer. Dual-layer paint: a solid base fill plus a\n * moving transparent→shine→transparent band, clipped with `background-clip:\n * text`. Only `background-position` animates — no layout thrash, no\n * per-character DOM, no Motion/rAF loop.\n *\n * Motion contract:\n * - Loop is CSS `linear infinite` (or `alternate` when yoyo).\n * - Default duration is 2s for a clear, readable sweep.\n * - Auto-pauses off-screen / hidden tabs via `animation-play-state` (no re-render).\n * - Optional hover pause via the same play-state path.\n * - Honours `prefers-reduced-motion` in CSS with a static highlight fill.\n */\nexport function TextShimmer({\n  text,\n  as = \"span\",\n  duration = 2,\n  baseColor,\n  shimmerColor,\n  spread = 22,\n  angle = 90,\n  direction = \"left\",\n  delay = 0,\n  yoyo = false,\n  pauseOnHover = false,\n  paused,\n  className,\n}: TextShimmerProps) {\n  const nodeRef = React.useRef<HTMLElement | null>(null);\n  const pausedPropRef = React.useRef(paused);\n  const hoverPausedRef = React.useRef(false);\n  const inViewRef = React.useRef(true);\n  pausedPropRef.current = paused;\n\n  const safeDuration = Math.max(2, duration);\n  const safeDelay = Math.max(0, delay);\n  const totalDuration = safeDuration + safeDelay;\n  const sweepEnd = safeDelay > 0 ? Math.round((safeDuration / totalDuration) * 1000) / 10 : 100;\n  const delayKey = String(sweepEnd);\n\n  React.useLayoutEffect(() => {\n    ensureBaseStyles();\n    ensureDelayKeyframes(delayKey, sweepEnd);\n  }, [delayKey, sweepEnd]);\n\n  React.useEffect(() => {\n    const node = nodeRef.current;\n    if (!node) return;\n\n    let pageVisible = document.visibilityState !== \"hidden\";\n\n    const syncPlayState = () => {\n      const forced = pausedPropRef.current;\n      const autoPause = !(inViewRef.current && pageVisible);\n      const shouldPause =\n        forced === true ||\n        hoverPausedRef.current ||\n        (forced !== false && autoPause);\n      node.dataset.shimmerPaused = shouldPause ? \"true\" : \"false\";\n    };\n\n    if (paused === true) {\n      syncPlayState();\n      return;\n    }\n\n    const io = new IntersectionObserver(\n      (entries) => {\n        inViewRef.current = entries.some((entry) => entry.isIntersecting);\n        syncPlayState();\n      },\n      { threshold: 0.01 },\n    );\n\n    const onVisibility = () => {\n      pageVisible = document.visibilityState !== \"hidden\";\n      syncPlayState();\n    };\n\n    if (paused !== false) {\n      io.observe(node);\n      document.addEventListener(\"visibilitychange\", onVisibility);\n    }\n\n    syncPlayState();\n\n    return () => {\n      io.disconnect();\n      document.removeEventListener(\"visibilitychange\", onVisibility);\n    };\n  }, [paused]);\n\n  const Tag = as as unknown as React.ComponentType<\n    React.HTMLAttributes<HTMLElement> & {\n      ref?: React.RefCallback<HTMLElement | null>;\n      \"data-shimmer-paused\"?: \"true\" | \"false\";\n      \"data-shimmer-yoyo\"?: \"true\" | \"false\";\n      \"data-shimmer-direction\"?: \"left\" | \"right\";\n      \"data-shimmer-delay\"?: string;\n    }\n  >;\n\n  const clampedSpread = Math.min(60, Math.max(8, spread));\n  // Length-aware band: default ~2px per character.\n  const bandPx = Math.max(8, Math.round((text.length || 1) * (clampedSpread / 11)));\n\n  const syncHoverPause = (next: boolean) => {\n    hoverPausedRef.current = next;\n    const node = nodeRef.current;\n    if (!node) return;\n\n    const forced = pausedPropRef.current;\n    if (forced === true) {\n      node.dataset.shimmerPaused = \"true\";\n      return;\n    }\n    if (forced === false) {\n      node.dataset.shimmerPaused = next ? \"true\" : \"false\";\n      return;\n    }\n\n    if (next) {\n      node.dataset.shimmerPaused = \"true\";\n      return;\n    }\n\n    const pageVisible = document.visibilityState !== \"hidden\";\n    node.dataset.shimmerPaused =\n      inViewRef.current && pageVisible ? \"false\" : \"true\";\n  };\n\n  return (\n    <Tag\n      ref={(node) => {\n        nodeRef.current = node;\n      }}\n      data-shimmer-paused={paused === true ? \"true\" : \"false\"}\n      data-shimmer-yoyo={yoyo ? \"true\" : \"false\"}\n      data-shimmer-direction={direction}\n      data-shimmer-delay={delayKey}\n      onMouseEnter={\n        pauseOnHover\n          ? () => {\n              syncHoverPause(true);\n            }\n          : undefined\n      }\n      onMouseLeave={\n        pauseOnHover\n          ? () => {\n              syncHoverPause(false);\n            }\n          : undefined\n      }\n      className={cn(\n        \"wensity-text-shimmer relative inline-block overflow-visible\",\n        \"py-[0.14em] leading-[1.2]\",\n        \"[background-size:250%_100%,auto] [background-clip:text]\",\n        \"[background-repeat:no-repeat,padding-box]\",\n        \"[-webkit-background-clip:text] [-webkit-text-fill-color:transparent]\",\n        \"[box-decoration-break:clone] [-webkit-box-decoration-break:clone]\",\n        \"[transform:translateZ(0)] [text-wrap:balance]\",\n        // Theme-aware defaults (same idea as ShimmeringSkeletonWrapper).\n        // Light: muted zinc base + near-black shine. Dark: soft zinc base + white shine.\n        \"[--wensity-shimmer-base:#a1a1aa] [--wensity-shimmer-hi:#09090b]\",\n        \"dark:[--wensity-shimmer-base:#71717a] dark:[--wensity-shimmer-hi:#ffffff]\",\n        className,\n      )}\n      style={\n        {\n          ...(baseColor ? { \"--wensity-shimmer-base\": baseColor } : null),\n          ...(shimmerColor ? { \"--wensity-shimmer-hi\": shimmerColor } : null),\n          \"--wensity-shimmer-duration\": `${totalDuration}s`,\n          \"--wensity-shimmer-spread\": `${bandPx}px`,\n          // Layer 1: moving shine band. Layer 2: solid base fill.\n          backgroundImage: [\n            `linear-gradient(${angle}deg, transparent calc(50% - var(--wensity-shimmer-spread)), var(--wensity-shimmer-hi), transparent calc(50% + var(--wensity-shimmer-spread)))`,\n            `linear-gradient(var(--wensity-shimmer-base), var(--wensity-shimmer-base))`,\n          ].join(\", \"),\n        } as React.CSSProperties\n      }\n    >\n      {text}\n    </Tag>\n  );\n}\n\nfunction ensureBaseStyles() {\n  if (typeof document === \"undefined\") return;\n  if (document.getElementById(BASE_STYLE_ID)) return;\n  const style = document.createElement(\"style\");\n  style.id = BASE_STYLE_ID;\n  style.textContent = BASE_STYLES;\n  document.head.appendChild(style);\n}\n\nfunction ensureDelayKeyframes(delayKey: string, sweepEnd: number) {\n  if (typeof document === \"undefined\") return;\n  if (registeredDelays.has(delayKey)) return;\n  registeredDelays.add(delayKey);\n\n  const id = `wensity-text-shimmer-delay-${delayKey.replace(\".\", \"_\")}`;\n  if (document.getElementById(id)) return;\n\n  const style = document.createElement(\"style\");\n  style.id = id;\n  style.textContent = `\n.wensity-text-shimmer[data-shimmer-delay=\"${delayKey}\"] {\n  animation-name: wensity-text-shimmer-fwd-${delayKey.replace(\".\", \"_\")};\n}\n.wensity-text-shimmer[data-shimmer-delay=\"${delayKey}\"][data-shimmer-direction=\"right\"] {\n  animation-name: wensity-text-shimmer-rev-${delayKey.replace(\".\", \"_\")};\n}\n@keyframes wensity-text-shimmer-fwd-${delayKey.replace(\".\", \"_\")} {\n  0% { background-position: 105% center, 0 0; }\n  ${sweepEnd}% { background-position: -5% center, 0 0; }\n  100% { background-position: -5% center, 0 0; }\n}\n@keyframes wensity-text-shimmer-rev-${delayKey.replace(\".\", \"_\")} {\n  0% { background-position: -5% center, 0 0; }\n  ${sweepEnd}% { background-position: 105% center, 0 0; }\n  100% { background-position: 105% center, 0 0; }\n}\n`;\n  document.head.appendChild(style);\n}\n\nconst BASE_STYLES = `\n.wensity-text-shimmer {\n  animation-duration: var(--wensity-shimmer-duration, 2s);\n  animation-timing-function: linear;\n  animation-iteration-count: infinite;\n  animation-fill-mode: both;\n  animation-play-state: running;\n  animation-direction: normal;\n}\n.wensity-text-shimmer[data-shimmer-yoyo=\"true\"] {\n  animation-direction: alternate;\n}\n.wensity-text-shimmer[data-shimmer-direction=\"right\"][data-shimmer-yoyo=\"true\"] {\n  animation-direction: alternate-reverse;\n}\n.wensity-text-shimmer[data-shimmer-paused=\"true\"] {\n  animation-play-state: paused;\n}\n@media (prefers-reduced-motion: reduce) {\n  .wensity-text-shimmer {\n    animation: none !important;\n    background-image: none !important;\n    /* Use highlight token so light (ink) and dark (white) both stay readable. */\n    -webkit-text-fill-color: var(--wensity-shimmer-hi) !important;\n    color: var(--wensity-shimmer-hi);\n  }\n}\n`;\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-shimmer.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-shimmer.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-shimmer",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-shimmer",
+      "shadcnUrl": "https://ui.wensity.com/r/text-shimmer",
+      "cliInstall": "pnpm dlx wensity@latest add text-shimmer"
+    }
+  }
+}

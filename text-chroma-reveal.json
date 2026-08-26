@@ -1,0 +1,300 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-chroma-reveal",
+  "type": "registry:block",
+  "title": "Text Chroma Reveal",
+  "description": "Chromatic ribbon text reveal for headlines, reduced-motion safe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-chroma-reveal.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-chroma-reveal.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport {\n  animate,\n  motion,\n  useInView,\n  useMotionValue,\n  useReducedMotion,\n  useTransform,\n  type AnimationPlaybackControls,\n  type HTMLMotionProps,\n} from \"framer-motion\";\n\nimport { cn } from \"@/lib/utils\";\n\nconst motionElements = {\n  div: motion.div,\n  h1: motion.h1,\n  h2: motion.h2,\n  h3: motion.h3,\n  h4: motion.h4,\n  h5: motion.h5,\n  h6: motion.h6,\n  p: motion.p,\n  span: motion.span,\n} as const;\n\nexport type TextChromaRevealTag = keyof typeof motionElements;\nexport type TextChromaRevealDirection = \"ltr\" | \"rtl\";\nexport type TextChromaRevealEase =\n  | \"linear\"\n  | \"easeIn\"\n  | \"easeOut\"\n  | \"easeInOut\"\n  | \"circIn\"\n  | \"circOut\"\n  | \"circInOut\"\n  | \"backIn\"\n  | \"backOut\"\n  | \"backInOut\"\n  | \"anticipate\"\n  | readonly [number, number, number, number];\n\nexport interface TextChromaRevealHandle {\n  /** (Re)starts the sweep immediately, ignoring startOnView gating. */\n  play: () => void;\n  /** Resets to the first phrase and starts the sweep immediately. */\n  replay: () => void;\n}\n\nexport interface TextChromaRevealProps {\n  /** Phrase or rotating phrases to reveal. */\n  text: string | string[];\n  /** Tag rendered as the outer element. Default: `\"span\"`. */\n  as?: TextChromaRevealTag;\n  /** Outer layout class (size, weight, tracking). */\n  className?: string;\n  /** Chromatic ribbon colors across the reveal band. */\n  colors?: string[];\n  /** Final revealed text color. Default: `\"currentColor\"`. */\n  textColor?: string;\n  /** Sweep direction across the text. Default: `\"ltr\"`. */\n  direction?: TextChromaRevealDirection;\n  /** Reveal sweep duration in seconds. Default: `1.5`. */\n  duration?: number;\n  /** Delay before the sweep starts, in seconds. Default: `0`. */\n  delay?: number;\n  /** Easing for the reveal sweep. */\n  ease?: TextChromaRevealEase;\n  /** Easing for the fade-out between repeats. */\n  fadeEase?: TextChromaRevealEase;\n  /** When true, cycle phrases / replay after hold + fade. Default: `false`. */\n  repeat?: boolean;\n  /** Pause after fade before the next sweep, in seconds. Default: `0.5`. */\n  repeatDelay?: number;\n  /** Hold fully revealed before fading, in seconds. Default: `1`. */\n  holdDuration?: number;\n  /** Fade-out duration between cycles, in seconds. Default: `0.6`. */\n  fadeDuration?: number;\n  /** Lock width to the longest phrase so rotating text does not shift layout. */\n  fixedWidth?: boolean;\n  /** Wait for viewport entry before playing. Default: `true`. */\n  startOnView?: boolean;\n  /** Play only once when using viewport trigger. Default: `true`. */\n  once?: boolean;\n  /** IntersectionObserver rootMargin. */\n  inViewMargin?:\n    | `${number}px`\n    | `${number}px ${number}px`\n    | `${number}px ${number}px ${number}px`\n    | `${number}px ${number}px ${number}px ${number}px`;\n  /** Called every time a phrase finishes revealing (fully visible). */\n  onComplete?: () => void;\n  /** Imperative play / replay handle. */\n  ref?: React.Ref<TextChromaRevealHandle>;\n}\n\nconst DEFAULT_COLORS = [\n  \"#c679c4\",\n  \"#fa3d1d\",\n  \"#ffb005\",\n  \"#e1e1fe\",\n  \"#0358f7\",\n] as const;\n\nconst DEFAULT_EASE: TextChromaRevealEase = [0.23, 1, 0.32, 1];\nconst SWEEP_HIDDEN = 100;\nconst SWEEP_REVEALED = 0;\nconst BACKGROUND_SIZE = \"300% 100%\";\n\ntype CycleConfig = {\n  duration: number;\n  delay: number;\n  ease: TextChromaRevealEase;\n  fadeEase: TextChromaRevealEase;\n  repeat: boolean;\n  repeatDelay: number;\n  holdDuration: number;\n  fadeDuration: number;\n  phraseCount: number;\n  onComplete?: () => void;\n};\n\nfunction buildGradient(colors: readonly string[], textColor: string, angle: number) {\n  const bandStart = 40;\n  const bandEnd = 60;\n  const stops =\n    colors.length === 0\n      ? [`${textColor} 50%`]\n      : colors.map((color, index) => {\n          const t = colors.length === 1 ? 0.5 : index / (colors.length - 1);\n          const pct = bandStart + t * (bandEnd - bandStart);\n          return `${color} ${pct}%`;\n        });\n\n  // First third = final text color, middle = chromatic ribbon, last third =\n  // transparent (hidden). Start at background-position 100% (transparent),\n  // animate to 0%. `angle` flips which edge the reveal starts from.\n  return `linear-gradient(${angle}deg, ${textColor} 0%, ${textColor} 33.33%, ${stops.join(\", \")}, transparent 66.67%, transparent 100%)`;\n}\n\nfunction measureMaxWidth(element: HTMLElement, texts: readonly string[]) {\n  const ghost = document.createElement(element.tagName.toLowerCase());\n  const computed = getComputedStyle(element);\n\n  ghost.className = element.className;\n  Object.assign(ghost.style, {\n    position: \"absolute\",\n    visibility: \"hidden\",\n    pointerEvents: \"none\",\n    inset: \"auto\",\n    width: \"auto\",\n    maxWidth: \"none\",\n    height: \"auto\",\n    whiteSpace: \"nowrap\",\n    font: computed.font,\n    letterSpacing: computed.letterSpacing,\n    textTransform: computed.textTransform,\n    fontFeatureSettings: computed.fontFeatureSettings,\n  });\n\n  const parent = element.parentElement ?? document.body;\n  parent.appendChild(ghost);\n\n  let max = 0;\n  for (const entry of texts) {\n    ghost.textContent = entry;\n    max = Math.max(max, ghost.getBoundingClientRect().width);\n  }\n\n  ghost.remove();\n  return Math.ceil(max);\n}\n\nfunction wait(ms: number, signal: { cancelled: boolean }) {\n  return new Promise<void>((resolve) => {\n    if (signal.cancelled || ms <= 0) {\n      resolve();\n      return;\n    }\n    const id = window.setTimeout(() => resolve(), ms);\n    // Store timeout id on the signal so clearCycle can cancel waits.\n    (signal as { timeoutId?: number }).timeoutId = id;\n  });\n}\n\n/**\n * TextChromaReveal\n *\n * Chromatic ribbon sweep for headlines. A single `background-clip: text`\n * element paints a spectrum band across the glyphs as opacity rises —\n * no per-character DOM. Supports rotating phrases with hold/fade cycles,\n * imperative play/replay, and reduced-motion fallbacks.\n */\nexport function TextChromaReveal({\n  text,\n  colors,\n  textColor = \"currentColor\",\n  direction = \"ltr\",\n  duration = 1.5,\n  delay = 0,\n  ease = DEFAULT_EASE,\n  fadeEase = \"easeInOut\",\n  repeat = false,\n  repeatDelay = 0.5,\n  holdDuration = 1,\n  fadeDuration = 0.6,\n  fixedWidth = false,\n  startOnView = true,\n  once = true,\n  inViewMargin = \"0px\",\n  onComplete,\n  as: tag = \"span\",\n  className,\n  ref: controlRef,\n}: TextChromaRevealProps) {\n  const elementRef = React.useRef<HTMLElement | null>(null);\n  const isInView = useInView(elementRef, {\n    once,\n    margin: inViewMargin,\n  });\n  const prefersReducedMotion = useReducedMotion();\n  const canAnimate = !prefersReducedMotion && (!startOnView || isInView);\n\n  const texts = React.useMemo(\n    () => (Array.isArray(text) ? text : [text]),\n    [text],\n  );\n  const ribbonColors = colors?.length ? colors : DEFAULT_COLORS;\n  const isMulti = texts.length > 1;\n  const [activeIndex, setActiveIndex] = React.useState(0);\n  const [lockedWidth, setLockedWidth] = React.useState<number | undefined>();\n\n  const indexRef = React.useRef(0);\n  const runIdRef = React.useRef(0);\n  const controlsRef = React.useRef<AnimationPlaybackControls[]>([]);\n  const signalRef = React.useRef<{ cancelled: boolean; timeoutId?: number }>({\n    cancelled: false,\n  });\n  const configRef = React.useRef<CycleConfig>({\n    duration,\n    delay,\n    ease,\n    fadeEase,\n    repeat,\n    repeatDelay,\n    holdDuration,\n    fadeDuration,\n    phraseCount: texts.length,\n    onComplete,\n  });\n\n  // sweep: 100 = hidden, 0 = fully revealed. Position and opacity are driven\n  // independently so the gradient only ever resets while fully invisible.\n  const sweep = useMotionValue(SWEEP_HIDDEN);\n  const textOpacity = useMotionValue(0);\n  const backgroundPosition = useTransform(sweep, (value) => `${value}% 50%`);\n  const angle = direction === \"rtl\" ? 270 : 90;\n\n  const gradient = React.useMemo(\n    () => buildGradient(ribbonColors, textColor, angle),\n    [ribbonColors, textColor, angle],\n  );\n  const resolvedColor = textColor === \"currentColor\" ? \"inherit\" : textColor;\n\n  configRef.current = {\n    duration,\n    delay,\n    ease,\n    fadeEase,\n    repeat,\n    repeatDelay,\n    holdDuration,\n    fadeDuration,\n    phraseCount: texts.length,\n    onComplete,\n  };\n\n  const clearCycle = React.useCallback(() => {\n    runIdRef.current += 1;\n    signalRef.current.cancelled = true;\n    if (signalRef.current.timeoutId != null) {\n      window.clearTimeout(signalRef.current.timeoutId);\n      signalRef.current.timeoutId = undefined;\n    }\n    for (const control of controlsRef.current) {\n      control.stop();\n    }\n    controlsRef.current = [];\n    signalRef.current = { cancelled: false };\n  }, []);\n\n  const playCycle = React.useCallback(async () => {\n    clearCycle();\n    const runId = runIdRef.current;\n    const signal = signalRef.current;\n    const cfg = configRef.current;\n\n    sweep.set(SWEEP_HIDDEN);\n    textOpacity.set(0);\n\n    try {\n      const sweepControl = animate(sweep, SWEEP_REVEALED, {\n        duration: cfg.duration,\n        delay: cfg.delay,\n        ease: cfg.ease,\n      });\n      const opacityControl = animate(textOpacity, 1, {\n        duration: cfg.duration,\n        delay: cfg.delay,\n        ease: cfg.ease,\n      });\n      controlsRef.current = [sweepControl, opacityControl];\n\n      await Promise.all([sweepControl, opacityControl]);\n      if (signal.cancelled || runId !== runIdRef.current) return;\n\n      cfg.onComplete?.();\n\n      if (!cfg.repeat) return;\n\n      await wait(cfg.holdDuration * 1000, signal);\n      if (signal.cancelled || runId !== runIdRef.current) return;\n\n      const fadeControl = animate(textOpacity, 0, {\n        duration: cfg.fadeDuration,\n        ease: cfg.fadeEase,\n      });\n      controlsRef.current = [fadeControl];\n      await fadeControl;\n      if (signal.cancelled || runId !== runIdRef.current) return;\n\n      indexRef.current = (indexRef.current + 1) % Math.max(cfg.phraseCount, 1);\n      setActiveIndex(indexRef.current);\n      sweep.set(SWEEP_HIDDEN);\n\n      await wait(cfg.repeatDelay * 1000, signal);\n      if (signal.cancelled || runId !== runIdRef.current) return;\n\n      void playCycle();\n    } catch {\n      // Stopped / interrupted animations reject — ignore.\n    }\n  }, [clearCycle, sweep, textOpacity]);\n\n  const play = React.useCallback(() => {\n    if (prefersReducedMotion) return;\n    void playCycle();\n  }, [playCycle, prefersReducedMotion]);\n\n  const replay = React.useCallback(() => {\n    if (prefersReducedMotion) return;\n    indexRef.current = 0;\n    setActiveIndex(0);\n    void playCycle();\n  }, [playCycle, prefersReducedMotion]);\n\n  React.useImperativeHandle(controlRef, () => ({ play, replay }), [play, replay]);\n\n  React.useLayoutEffect(() => {\n    const element = elementRef.current;\n    if (!(element && fixedWidth && isMulti)) {\n      setLockedWidth(undefined);\n      return;\n    }\n\n    let cancelled = false;\n\n    const measure = () => {\n      if (cancelled || !elementRef.current) return;\n      setLockedWidth(measureMaxWidth(elementRef.current, texts));\n    };\n\n    measure();\n\n    if (typeof document !== \"undefined\" && \"fonts\" in document) {\n      void document.fonts.ready.then(() => {\n        if (!cancelled) measure();\n      });\n    }\n\n    return () => {\n      cancelled = true;\n    };\n  }, [fixedWidth, isMulti, texts]);\n\n  React.useEffect(() => {\n    indexRef.current = 0;\n    setActiveIndex(0);\n    clearCycle();\n    sweep.set(SWEEP_HIDDEN);\n    textOpacity.set(0);\n\n    if (canAnimate) {\n      void playCycle();\n    }\n\n    return clearCycle;\n  }, [canAnimate, texts, clearCycle, playCycle, sweep, textOpacity]);\n\n  const MotionComponent = motionElements[tag];\n  const displayText = prefersReducedMotion ? texts[0] : texts[activeIndex];\n  const widthStyle =\n    lockedWidth != null\n      ? ({ width: lockedWidth, whiteSpace: \"nowrap\" } as const)\n      : undefined;\n\n  const paintStyle = prefersReducedMotion\n    ? {\n        color: resolvedColor,\n        WebkitTextFillColor: \"transparent\",\n        backgroundImage: gradient,\n        backgroundSize: BACKGROUND_SIZE,\n        backgroundPosition: \"0% 50%\",\n        opacity: 1,\n        ...widthStyle,\n      }\n    : {\n        color: resolvedColor,\n        WebkitTextFillColor: \"transparent\",\n        backgroundImage: gradient,\n        backgroundSize: BACKGROUND_SIZE,\n        backgroundPosition,\n        opacity: textOpacity,\n        ...widthStyle,\n      };\n\n  return (\n    <MotionComponent\n      ref={elementRef as React.Ref<never>}\n      className={cn(\"inline-block bg-clip-text\", className)}\n      style={paintStyle as HTMLMotionProps<\"span\">[\"style\"]}\n      aria-live={isMulti ? \"polite\" : undefined}\n      aria-atomic={isMulti ? true : undefined}\n    >\n      {displayText}\n    </MotionComponent>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-chroma-reveal.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-chroma-reveal.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-chroma-reveal",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-chroma-reveal",
+      "shadcnUrl": "https://ui.wensity.com/r/text-chroma-reveal",
+      "cliInstall": "pnpm dlx wensity@latest add text-chroma-reveal"
+    }
+  }
+}

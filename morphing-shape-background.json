@@ -3,7 +3,7 @@
   "name": "morphing-shape-background",
   "type": "registry:block",
   "title": "Morphing Shape Background",
-  "description": "Vivid blobs drift and melt behind your content. The kind of hero background that stops the scroll.",
+  "description": "Vivid blobs drift and melt behind your content for a hero that stops scroll.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "clsx",
@@ -27,7 +27,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

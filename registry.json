@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 70,
+  "count": 91,
   "items": [
     {
       "name": "font-inter",
@@ -17,10 +17,10 @@
       "dependencies": [
         "@fontsource/inter"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-inter.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-inter",
       "meta": {
         "kind": "font",
-        "docsUrl": "https://ui.wensity.com/docs/primitives/setup"
+        "docsUrl": "https://ui.wensity.com/docs/primitives"
       }
     },
     {
@@ -36,10 +36,10 @@
       "dependencies": [
         "@fontsource/geist"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-geist.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-geist",
       "meta": {
         "kind": "font",
-        "docsUrl": "https://ui.wensity.com/docs/primitives/setup"
+        "docsUrl": "https://ui.wensity.com/docs/primitives"
       }
     },
     {
@@ -58,10 +58,10 @@
         "@wensity/font-inter",
         "@wensity/font-geist"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/wensity-base.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/wensity-base",
       "meta": {
         "kind": "base",
-        "docsUrl": "https://ui.wensity.com/docs/primitives/setup",
+        "docsUrl": "https://ui.wensity.com/docs/primitives",
         "cliInstall": "pnpm dlx wensity@latest init --preset <preset-code>"
       }
     },
@@ -69,7 +69,7 @@
       "name": "liquid-multimodal-input",
       "type": "registry:block",
       "title": "Liquid Multimodal Input",
-      "description": "Expanding prompt area with a glowing drop-zone.",
+      "description": "An expanding prompt area with a glowing drop zone that breathes open to meet you as you type a thought or drag a file.",
       "categories": [
         "Agentic AI Interfaces",
         "wensity",
@@ -79,7 +79,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/liquid-multimodal-input.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/liquid-multimodal-input",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/liquid-multimodal-input",
@@ -90,14 +90,14 @@
       "name": "generative-skeleton-mesh",
       "type": "registry:block",
       "title": "Generative Skeleton Mesh",
-      "description": "An organic loading state, not a spinner.",
+      "description": "An organic loading state instead of a spinner, with a slow aurora that breathes in the space where your content will land.",
       "categories": [
         "Agentic AI Interfaces",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/generative-skeleton-mesh.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/generative-skeleton-mesh",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/generative-skeleton-mesh",
@@ -108,7 +108,7 @@
       "name": "voice-aurora-wave",
       "type": "registry:block",
       "title": "Voice Aurora Wave",
-      "description": "A breathing voice orb. Never jittery, always organic.",
+      "description": "A breathing voice orb that swells with speech and settles between turns, never jittery and always organic to look at.",
       "categories": [
         "Agentic AI Interfaces",
         "wensity",
@@ -118,7 +118,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/voice-aurora-wave.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/voice-aurora-wave",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/voice-aurora-wave",
@@ -129,7 +129,7 @@
       "name": "model-context-switcher",
       "type": "registry:block",
       "title": "Model Context Switcher",
-      "description": "A Radix dropdown that scales out from the trigger and glides between options.",
+      "description": "A Radix dropdown that scales out from its trigger and glides the selection pill across to meet whichever model you pick.",
       "categories": [
         "Agentic AI Interfaces",
         "wensity",
@@ -140,7 +140,7 @@
         "@tabler/icons-react",
         "@radix-ui/react-dropdown-menu"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/model-context-switcher.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/model-context-switcher",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/model-context-switcher",
@@ -151,14 +151,14 @@
       "name": "infinite-marquee",
       "type": "registry:block",
       "title": "Infinite Marquee",
-      "description": "Seamless, GPU-only logo strip that never stutters.",
+      "description": "A seamless, GPU-only logo strip that never stutters or snaps at the loop point.",
       "categories": [
         "Cinematic Interactions",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/infinite-marquee.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/infinite-marquee",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/infinite-marquee",
@@ -169,14 +169,14 @@
       "name": "morphing-shape-background",
       "type": "registry:block",
       "title": "Morphing Shape Background",
-      "description": "Lava-lamp blobs that drift behind your hero at 120fps with no SVG morph.",
+      "description": "Lava-lamp blobs that drift behind your hero at 120fps with no SVG morphing.",
       "categories": [
         "Cinematic Interactions",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/morphing-shape-background.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/morphing-shape-background",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/morphing-shape-background",
@@ -187,7 +187,7 @@
       "name": "scrubbable-video-reveal",
       "type": "registry:block",
       "title": "Scrubbable Video Reveal",
-      "description": "Apple-style scroll-scrubbed image sequence on a canvas.",
+      "description": "An Apple-style image sequence scrubbed frame by frame on canvas, following your hand as you scroll in either direction.",
       "categories": [
         "Cinematic Interactions",
         "wensity",
@@ -196,7 +196,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/scrubbable-video-reveal.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/scrubbable-video-reveal",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/scrubbable-video-reveal",
@@ -204,10 +204,30 @@
       }
     },
     {
+      "name": "animated-tabs",
+      "type": "registry:block",
+      "title": "Animated Tabs",
+      "description": "A physical stack of photo cards shuffled to the front by clipped tabs, with a tight image inset and copy in the footer.",
+      "categories": [
+        "Cinematic Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/animated-tabs",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/animated-tabs",
+        "cliInstall": "pnpm dlx wensity@latest add animated-tabs"
+      }
+    },
+    {
       "name": "gooey-navigation-menu",
       "type": "registry:block",
       "title": "Gooey Navigation Menu",
-      "description": "A liquid FAB whose children stretch out of it like metal.",
+      "description": "A liquid FAB whose child actions stretch out of the trigger like molten metal.",
       "categories": [
         "Elite Micro-Interactions",
         "wensity",
@@ -217,7 +237,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/gooey-navigation-menu.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/gooey-navigation-menu",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
@@ -228,7 +248,7 @@
       "name": "multi-select-token-pills",
       "type": "registry:block",
       "title": "Multi-Select Token Pills",
-      "description": "Tag input that pops in, slides out, and never snaps the layout.",
+      "description": "A tag input where pills pop in as you add them and slide out on remove, closing the gap without snapping the layout.",
       "categories": [
         "Elite Micro-Interactions",
         "wensity",
@@ -238,7 +258,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/multi-select-token-pills.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/multi-select-token-pills",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/multi-select-token-pills",
@@ -249,7 +269,7 @@
       "name": "shimmering-skeleton-wrapper",
       "type": "registry:block",
       "title": "Shimmering Skeleton Wrapper",
-      "description": "One angled GPU sweep across any placeholder geometry. Never one shimmer per row.",
+      "description": "One angled GPU sweep that travels across any placeholder geometry you wrap, never a separate shimmer stuttering per row.",
       "categories": [
         "Elite Micro-Interactions",
         "wensity",
@@ -258,7 +278,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/shimmering-skeleton-wrapper.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/shimmering-skeleton-wrapper",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/shimmering-skeleton-wrapper",
@@ -266,10 +286,69 @@
       }
     },
     {
+      "name": "cool-button",
+      "type": "registry:block",
+      "title": "Cool Button",
+      "description": "A dual-layer orbit glow that soft-spins around the edge of any button or link you wrap it around, at zero layout cost.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/cool-button",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/cool-button",
+        "cliInstall": "pnpm dlx wensity@latest add cool-button"
+      }
+    },
+    {
+      "name": "file-uploader",
+      "type": "registry:block",
+      "title": "File Uploader",
+      "description": "A bold red dropzone for any file, with gallery tiles and progress after upload.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/file-uploader",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/file-uploader",
+        "cliInstall": "pnpm dlx wensity@latest add file-uploader"
+      }
+    },
+    {
+      "name": "before-after-card",
+      "type": "registry:block",
+      "title": "Before After Card",
+      "description": "Drag the handle to wipe between before and after images with absolutely zero lag.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/before-after-card",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/before-after-card",
+        "cliInstall": "pnpm dlx wensity@latest add before-after-card"
+      }
+    },
+    {
       "name": "github-activity-grid",
       "type": "registry:block",
       "title": "GitHub-Style Activity Grid",
-      "description": "365 squares, one shared tooltip, and a cascading reveal that ripples backward from today.",
+      "description": "365 squares sharing one tooltip that flies between days on rails, with a reveal that ripples backward from today.",
       "categories": [
         "Heavy SaaS Blocks",
         "wensity",
@@ -278,7 +357,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/github-activity-grid.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/github-activity-grid",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/github-activity-grid",
@@ -286,10 +365,328 @@
       }
     },
     {
+      "name": "text-shimmer",
+      "type": "registry:block",
+      "title": "Text Shimmer",
+      "description": "A CSS shimmer sweep for headlines, one single element and entirely GPU-friendly.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-shimmer",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-shimmer",
+        "cliInstall": "pnpm dlx wensity@latest add text-shimmer"
+      }
+    },
+    {
+      "name": "text-flip",
+      "type": "registry:block",
+      "title": "Text Flip",
+      "description": "A 3D character flip on hover, staggered and springy across every single letter.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-flip",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-flip",
+        "cliInstall": "pnpm dlx wensity@latest add text-flip"
+      }
+    },
+    {
+      "name": "text-morphing",
+      "type": "registry:block",
+      "title": "Text Morphing",
+      "description": "Blur-morphing headlines that cycle phrases with a gooey, seamless crossfade.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-morphing",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-morphing",
+        "cliInstall": "pnpm dlx wensity@latest add text-morphing"
+      }
+    },
+    {
+      "name": "text-char-slide",
+      "type": "registry:block",
+      "title": "Text Char Slide",
+      "description": "A per-character slide-left cascade with a cleanly staggered entrance timing.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-char-slide",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-char-slide",
+        "cliInstall": "pnpm dlx wensity@latest add text-char-slide"
+      }
+    },
+    {
+      "name": "text-motion",
+      "type": "registry:block",
+      "title": "Text Motion",
+      "description": "Headline entrances driven entirely by your own custom Framer Motion variants.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-motion",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-motion",
+        "cliInstall": "pnpm dlx wensity@latest add text-motion"
+      }
+    },
+    {
+      "name": "text-cycle",
+      "type": "registry:block",
+      "title": "Text Cycle",
+      "description": "Cycles through your headline words with a soft per-character blur stagger.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-cycle",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-cycle",
+        "cliInstall": "pnpm dlx wensity@latest add text-cycle"
+      }
+    },
+    {
+      "name": "text-word-flip",
+      "type": "registry:block",
+      "title": "Text Word Flip",
+      "description": "Spring-loaded word flips paired with a soft letter-by-letter blur stagger.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-word-flip",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-word-flip",
+        "cliInstall": "pnpm dlx wensity@latest add text-word-flip"
+      }
+    },
+    {
+      "name": "text-blur-reveal",
+      "type": "registry:block",
+      "title": "Text Blur Reveal",
+      "description": "A blur-in stagger by word or by letter, triggered the moment you scroll.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-blur-reveal",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-blur-reveal",
+        "cliInstall": "pnpm dlx wensity@latest add text-blur-reveal"
+      }
+    },
+    {
+      "name": "canvas-text",
+      "type": "registry:block",
+      "title": "Canvas Text",
+      "description": "Loading-ring canvas particles that slowly resolve into solid letterforms.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/canvas-text",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/canvas-text",
+        "cliInstall": "pnpm dlx wensity@latest add canvas-text"
+      }
+    },
+    {
+      "name": "line-fill-text",
+      "type": "registry:block",
+      "title": "Line Fill Text",
+      "description": "Alpha-cascade ribbons clipped neatly inside the letterforms themselves.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/line-fill-text",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/line-fill-text",
+        "cliInstall": "pnpm dlx wensity@latest add line-fill-text"
+      }
+    },
+    {
+      "name": "text-glitch",
+      "type": "registry:block",
+      "title": "Text Glitch",
+      "description": "A chromatic clip-path glitch for headlines, CSS-only and entirely GPU-friendly.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-glitch",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-glitch",
+        "cliInstall": "pnpm dlx wensity@latest add text-glitch"
+      }
+    },
+    {
+      "name": "text-path",
+      "type": "registry:block",
+      "title": "Text Path",
+      "description": "SVG text riding a curved wave, arc, or circle path on a seamless, light loop.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-path",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-path",
+        "cliInstall": "pnpm dlx wensity@latest add text-path"
+      }
+    },
+    {
+      "name": "text-highlight",
+      "type": "registry:block",
+      "title": "Text Highlight",
+      "description": "A hand-placed highlighter band that sweeps in behind your text and tracks wrapping.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-highlight",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-highlight",
+        "cliInstall": "pnpm dlx wensity@latest add text-highlight"
+      }
+    },
+    {
+      "name": "text-scribble",
+      "type": "registry:block",
+      "title": "Text Scribble",
+      "description": "Hand-drawn scribble, underline, and strike marks that draw themselves onto text.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-scribble",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-scribble",
+        "cliInstall": "pnpm dlx wensity@latest add text-scribble"
+      }
+    },
+    {
+      "name": "text-chroma-reveal",
+      "type": "registry:block",
+      "title": "Text Chroma Reveal",
+      "description": "A chromatic ribbon sweep that paints each of your headlines cleanly into view.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-chroma-reveal",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-chroma-reveal",
+        "cliInstall": "pnpm dlx wensity@latest add text-chroma-reveal"
+      }
+    },
+    {
+      "name": "text-spectrum",
+      "type": "registry:block",
+      "title": "Text Spectrum",
+      "description": "An animated multi-stop color wash that drifts endlessly through headlines.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-spectrum",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-spectrum",
+        "cliInstall": "pnpm dlx wensity@latest add text-spectrum"
+      }
+    },
+    {
+      "name": "text-ripple",
+      "type": "registry:block",
+      "title": "Text Ripple",
+      "description": "A 3D character ripple with a traveling color crest, CSS-only and GPU-light.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-ripple",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-ripple",
+        "cliInstall": "pnpm dlx wensity@latest add text-ripple"
+      }
+    },
+    {
       "name": "button",
       "type": "registry:block",
       "title": "Button",
-      "description": "Accessible button with variants, sizes, icons, and loading state.",
+      "description": "An accessible action primitive with solid, outline, ghost, and destructive variants, plus sizes, icons, and loading state.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -298,7 +695,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/button.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/button",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/button",
@@ -309,7 +706,7 @@
       "name": "button-group",
       "type": "registry:block",
       "title": "Button Group",
-      "description": "Segmented action group with shared borders, split actions, and menu support.",
+      "description": "A segmented action group with shared borders, split primary actions, and dropdown menu support for dense toolbars.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -318,7 +715,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/button-group.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/button-group",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/button-group",
@@ -329,7 +726,7 @@
       "name": "input",
       "type": "registry:block",
       "title": "Input",
-      "description": "Accessible text input with label, hint, error, icons, and clear action.",
+      "description": "An accessible text field with labels, hints, inline errors, leading and trailing icons, and a one-tap clear action.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -339,7 +736,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/input.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/input",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/input",
@@ -350,7 +747,7 @@
       "name": "text-area",
       "type": "registry:block",
       "title": "Text Area",
-      "description": "Accessible multi-line input with variants, auto-resize, counts, and validation.",
+      "description": "An accessible multi-line field with auto-resize, character counts, validation states, and variants for notes or prompts.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -359,7 +756,7 @@
       "dependencies": [
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-area.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-area",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/text-area",
@@ -370,7 +767,7 @@
       "name": "select",
       "type": "registry:block",
       "title": "Select",
-      "description": "Accessible select with polished triggers, grouped options, and controlled state.",
+      "description": "An accessible select with a polished trigger, grouped options, controlled state, and keyboard navigation throughout.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -380,7 +777,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/select.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/select",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/select",
@@ -391,7 +788,7 @@
       "name": "form-field",
       "type": "registry:block",
       "title": "Form Field",
-      "description": "Composable form field wrapper with labels, descriptions, errors, and section layouts.",
+      "description": "A composable field wrapper carrying labels, descriptions, inline errors, and section layouts for any form you assemble.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -400,7 +797,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/form-field.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/form-field",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/form-field",
@@ -411,7 +808,7 @@
       "name": "badge",
       "type": "registry:block",
       "title": "Badge",
-      "description": "Polished status and metadata badges with icons, dots, removable chips, and subtle depth.",
+      "description": "Status and metadata badges with icons, presence dots, removable chips, and just enough depth to read as a real surface.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -421,7 +818,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/badge.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/badge",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/badge",
@@ -432,7 +829,7 @@
       "name": "checkbox",
       "type": "registry:block",
       "title": "Checkbox",
-      "description": "Accessible checkbox with focused styles, groups, cards, and indeterminate state.",
+      "description": "An accessible checkbox with sharply focused styles, grouped rows, selectable cards, and a proper indeterminate state.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -441,7 +838,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/checkbox.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/checkbox",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/checkbox",
@@ -452,7 +849,7 @@
       "name": "switch",
       "type": "registry:block",
       "title": "Switch",
-      "description": "Accessible switch with distinct variants, smooth motion, groups, cards, and controlled state.",
+      "description": "An accessible switch with distinct variants, smooth motion, grouped rows, selectable cards, and fully controlled state.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -461,7 +858,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/switch.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/switch",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/switch",
@@ -472,7 +869,7 @@
       "name": "radio-group",
       "type": "registry:block",
       "title": "Radio Group",
-      "description": "Native radio selection with distinctive rows, segments, cards, and controlled state.",
+      "description": "Native radio selection with distinctive rows, segmented layouts, selectable cards, and controlled state throughout.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -482,7 +879,7 @@
         "@base-ui/react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/radio-group.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/radio-group",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/radio-group",
@@ -493,7 +890,7 @@
       "name": "toggle",
       "type": "registry:block",
       "title": "Toggle",
-      "description": "Pressable on/off control with default, icon, outline, soft, and grouped selection.",
+      "description": "A pressable on/off control with default, icon, outline, and soft variants, plus grouped selection for toolbars.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -502,7 +899,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/toggle.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/toggle",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/toggle",
@@ -513,14 +910,14 @@
       "name": "label",
       "type": "registry:block",
       "title": "Label",
-      "description": "Accessible form label with default, required, optional, muted, and inline variants.",
+      "description": "An accessible form label with default, required, optional, muted, and inline variants for any field group you build.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/label.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/label",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/label",
@@ -531,7 +928,7 @@
       "name": "input-otp",
       "type": "registry:block",
       "title": "Input OTP",
-      "description": "Accessible one-time code input with alphanumeric, masked, and grouped variants.",
+      "description": "An accessible one-time code field with alphanumeric, masked, and grouped variants for verification and two-factor flows.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -540,7 +937,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/input-otp.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/input-otp",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/input-otp",
@@ -551,7 +948,7 @@
       "name": "combobox",
       "type": "registry:block",
       "title": "Combobox",
-      "description": "Searchable combobox with multi-select, async loading, and creatable options.",
+      "description": "A searchable combobox with multi-select, async option loading, and creatable entries for forms, filters, and pickers.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -561,7 +958,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/combobox.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/combobox",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/combobox",
@@ -572,7 +969,7 @@
       "name": "avatar",
       "type": "registry:block",
       "title": "Avatar",
-      "description": "Profile avatars with image fallback, presence status, stacked groups, and upload.",
+      "description": "Identity avatars with image fallbacks, presence status rings, stacked groups, and an upload affordance for profile edits.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -583,7 +980,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/avatar.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/avatar",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/avatar",
@@ -594,7 +991,7 @@
       "name": "table",
       "type": "registry:block",
       "title": "Table",
-      "description": "Data tables with sortable columns, row selection, expandable rows, and sticky headers.",
+      "description": "A structured table with sortable columns, row selection, expandable rows, and sticky headers for dashboards and admin.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -604,7 +1001,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/table.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/table",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/table",
@@ -615,7 +1012,7 @@
       "name": "progress",
       "type": "registry:block",
       "title": "Progress",
-      "description": "Progress indicators - linear, circular, segmented steps, indeterminate, and stacked.",
+      "description": "Progress indicators in linear, circular, segmented, indeterminate, and stacked forms for uploads and onboarding.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -625,7 +1022,7 @@
         "@base-ui/react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/progress.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/progress",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/progress",
@@ -636,7 +1033,7 @@
       "name": "alert",
       "type": "registry:block",
       "title": "Alert",
-      "description": "Status alerts for info, success, warning, error, and action-oriented messages.",
+      "description": "Inline status feedback for info, success, warning, and error states, including action-oriented messages with buttons.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -645,7 +1042,7 @@
       "dependencies": [
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/alert.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/alert",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/alert",
@@ -656,14 +1053,14 @@
       "name": "skeleton",
       "type": "registry:block",
       "title": "Skeleton",
-      "description": "Loading placeholders for text, avatar, card, table, and custom compositions.",
+      "description": "Loading placeholders for text, avatars, cards, and tables, plus a wrapper for composing your own custom layouts.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/skeleton.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/skeleton",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/skeleton",
@@ -674,14 +1071,14 @@
       "name": "spinner",
       "type": "registry:block",
       "title": "Spinner",
-      "description": "Indeterminate loading indicators in default, ring, dots, pulse, and overlay styles.",
+      "description": "Indeterminate loading indicators in default, ring, dots, pulse, and overlay styles for inline and blocking states.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/spinner.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/spinner",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/spinner",
@@ -692,7 +1089,7 @@
       "name": "toast",
       "type": "registry:block",
       "title": "Toast",
-      "description": "Transient notifications for info, success, warning, error, and action states.",
+      "description": "Transient notifications for info, success, warning, and error states, with action buttons and stacked positioning.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -702,7 +1099,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/toast.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/toast",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/toast",
@@ -713,7 +1110,7 @@
       "name": "dialog",
       "type": "registry:block",
       "title": "Dialog",
-      "description": "Modal dialogs for focused tasks - default, confirmation, form, fullscreen, and scrollable layouts.",
+      "description": "Accessible modal dialogs in default, confirmation, form, fullscreen, and scrollable layouts for any focused task.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -723,7 +1120,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/dialog.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/dialog",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/dialog",
@@ -734,7 +1131,7 @@
       "name": "sheet",
       "type": "registry:block",
       "title": "Sheet",
-      "description": "Edge-mounted panels that slide in from any side, with an optional persistent mode.",
+      "description": "Edge-mounted panels that slide in from any side, with an optional persistent mode for inspectors and navigation.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -744,7 +1141,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/sheet.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/sheet",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/sheet",
@@ -755,7 +1152,7 @@
       "name": "drawer",
       "type": "registry:block",
       "title": "Drawer",
-      "description": "Gesture-driven drawers with velocity dismiss, snap points, and multi-side support.",
+      "description": "Gesture-driven drawers with velocity dismissal, snap points, drag handles, and support for every side of the screen.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -765,7 +1162,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/drawer.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/drawer",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/drawer",
@@ -776,7 +1173,7 @@
       "name": "popover",
       "type": "registry:block",
       "title": "Popover",
-      "description": "Floating panels for menus, inline forms, rich previews, and controlled state.",
+      "description": "Floating panels for menus, inline forms, and rich previews, with controlled state and collision-aware positioning.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -785,7 +1182,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/popover.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/popover",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/popover",
@@ -796,7 +1193,7 @@
       "name": "tooltip",
       "type": "registry:block",
       "title": "Tooltip",
-      "description": "Contextual hints with rich content, keyboard shortcuts, and cursor tracking.",
+      "description": "Contextual hints carrying rich content, keyboard shortcut labels, and optional cursor tracking as you move across.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -805,7 +1202,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/tooltip.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/tooltip",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/tooltip",
@@ -816,7 +1213,7 @@
       "name": "tabs",
       "type": "registry:block",
       "title": "Tabs",
-      "description": "Tabbed navigation with sliding indicators, segmented controls, and vertical layouts.",
+      "description": "Tabbed navigation with a sliding indicator, segmented control styling, vertical layouts, and smooth state changes.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -826,7 +1223,7 @@
         "@base-ui/react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/tabs.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/tabs",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/tabs",
@@ -837,7 +1234,7 @@
       "name": "breadcrumb",
       "type": "registry:block",
       "title": "Breadcrumb",
-      "description": "Wayfinding trail with smart collapsing, dropdowns, and animated hover states.",
+      "description": "A wayfinding trail with smart collapsing, dropdown overflow menus, custom separators, and animated hover states.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -847,7 +1244,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/breadcrumb.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/breadcrumb",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/breadcrumb",
@@ -858,7 +1255,7 @@
       "name": "pagination",
       "type": "registry:block",
       "title": "Pagination",
-      "description": "Page navigation with sliding indicators, compact counters, and progressive loading.",
+      "description": "Page navigation with numbered pages, compact counters, first and last controls, and progressive loading for lists.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -868,7 +1265,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/pagination.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/pagination",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/pagination",
@@ -879,7 +1276,7 @@
       "name": "card",
       "type": "registry:block",
       "title": "Card",
-      "description": "Premium content containers with interactive, media, stat, and feature variants.",
+      "description": "Premium content containers with media, stat, feature, and interactive variants, plus responsive spacing throughout.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -889,7 +1286,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/card.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/card",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/card",
@@ -900,14 +1297,14 @@
       "name": "separator",
       "type": "registry:block",
       "title": "Separator",
-      "description": "Custom dividers with text labels, gradient fades, and dashed borders.",
+      "description": "Dividers for layout sections, carrying text labels, gradient fades, dashed borders, and vertical split support.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/separator.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/separator",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/separator",
@@ -918,7 +1315,7 @@
       "name": "scroll-area",
       "type": "registry:block",
       "title": "Scroll Area",
-      "description": "Styled scrolling container with auto-hide scrollbars for constrained content regions.",
+      "description": "A styled scrolling container with auto-hide scrollbars, keeping constrained panels, lists, and overflow regions tidy.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -927,7 +1324,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/scroll-area.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/scroll-area",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/scroll-area",
@@ -938,14 +1335,14 @@
       "name": "resizable",
       "type": "registry:block",
       "title": "Resizable",
-      "description": "Flexible resizable layouts featuring draggable splitter bars, panel snappers, and local persistence.",
+      "description": "Resizable panel layouts with draggable splitters, panel snapping, collapsible regions, and local size persistence.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/resizable.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/resizable",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/resizable",
@@ -956,7 +1353,7 @@
       "name": "hover-card",
       "type": "registry:block",
       "title": "Hover Card",
-      "description": "Snappy preview card overlays triggered on hovering links/text without click interruption.",
+      "description": "Snappy preview overlays triggered by hovering a link or name, with rich content and no click interruption at all.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -965,7 +1362,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/hover-card.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/hover-card",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/hover-card",
@@ -976,7 +1373,7 @@
       "name": "accordion",
       "type": "registry:block",
       "title": "Accordion",
-      "description": "Expandable content sections for FAQs and interfaces.",
+      "description": "Expandable disclosure sections for FAQs and settings, with single or multiple open modes and nested content support.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -986,7 +1383,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/accordion.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/accordion",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/accordion",
@@ -997,7 +1394,7 @@
       "name": "aspect-ratio",
       "type": "registry:block",
       "title": "Aspect Ratio",
-      "description": "Maintains consistent media dimensions across responsive layouts.",
+      "description": "Media containers that hold preset ratios across responsive layouts, with a shimmer placeholder while images load.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1006,7 +1403,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/aspect-ratio.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/aspect-ratio",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/aspect-ratio",
@@ -1017,7 +1414,7 @@
       "name": "attachment",
       "type": "registry:block",
       "title": "Attachment",
-      "description": "Displays uploaded files in chats and interfaces.",
+      "description": "File attachment rows for uploads, chats, and media previews, with download actions and per-type document icons.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1027,7 +1424,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/attachment.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/attachment",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/attachment",
@@ -1038,7 +1435,7 @@
       "name": "calendar",
       "type": "registry:block",
       "title": "Calendar",
-      "description": "Displays and selects dates across scheduling interfaces.",
+      "description": "Date grids for single, range, and multi-date selection, with month navigation and event-ready day rendering.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1048,7 +1445,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/calendar.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/calendar",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/calendar",
@@ -1059,7 +1456,7 @@
       "name": "carousel",
       "type": "registry:block",
       "title": "Carousel",
-      "description": "Displays scrollable content across galleries and showcases.",
+      "description": "Swipeable carousels with slide indicators, autoplay, looping, and keyboard navigation for galleries and showcases.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1069,7 +1466,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/carousel.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/carousel",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/carousel",
@@ -1080,7 +1477,7 @@
       "name": "chart",
       "type": "registry:block",
       "title": "Chart",
-      "description": "Visualizes data, trends, comparisons, and distributions.",
+      "description": "Recharts line, bar, area, pie, and radar views with themed tooltips, responsive sizing, and consistent axis styling.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1090,7 +1487,7 @@
         "recharts",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/chart.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/chart",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/chart",
@@ -1101,7 +1498,7 @@
       "name": "collapsible",
       "type": "registry:block",
       "title": "Collapsible",
-      "description": "Hides and reveals secondary content sections.",
+      "description": "Collapsible panels for sidebar sections, show-more previews, and any secondary content you want out of the way.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1111,7 +1508,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/collapsible.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/collapsible",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/collapsible",
@@ -1122,7 +1519,7 @@
       "name": "slider",
       "type": "registry:block",
       "title": "Slider",
-      "description": "A keyboard- and pointer-accessible slider built on Base UI with a value bubble that reveals on drag or focus.",
+      "description": "An accessible slider built on Base UI, with keyboard and pointer support and a value bubble that reveals on drag.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1131,7 +1528,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/slider.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/slider",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/slider",
@@ -1142,7 +1539,7 @@
       "name": "command",
       "type": "registry:block",
       "title": "Command",
-      "description": "Provides fast searchable actions and navigation interfaces.",
+      "description": "A command palette with fuzzy search, grouped actions, keyboard shortcuts, and fast navigation built on top of cmdk.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1152,7 +1549,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/command.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/command",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/command",
@@ -1163,7 +1560,7 @@
       "name": "context-menu",
       "type": "registry:block",
       "title": "Context Menu",
-      "description": "Displays contextual actions on right-click interactions.",
+      "description": "Contextual actions on right-click, with grouped sections, nested submenus, shortcut labels, and destructive items.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1173,7 +1570,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/context-menu.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/context-menu",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/context-menu",
@@ -1184,7 +1581,7 @@
       "name": "data-table",
       "type": "registry:block",
       "title": "Data Table",
-      "description": "Organizes complex datasets with sorting, filtering, selection, pagination, and expandable rows.",
+      "description": "Data tables with search, sorting, filtering, row selection, pagination, and expandable detail rows for dashboards.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1194,7 +1591,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/data-table.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/data-table",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/data-table",
@@ -1205,7 +1602,7 @@
       "name": "date-picker",
       "type": "registry:block",
       "title": "Date Picker",
-      "description": "Selects dates and ranges through calendar popovers with presets, time, and month/year quick-nav.",
+      "description": "Calendar popovers for single, range, and multi-date picks, with presets, time selection, and month or year quick-nav.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1215,7 +1612,7 @@
         "@tabler/icons-react",
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/date-picker.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/date-picker",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/date-picker",
@@ -1226,7 +1623,7 @@
       "name": "direction",
       "type": "registry:block",
       "title": "Direction",
-      "description": "Controls interface layout for LTR, RTL, and dynamic language-based reading directions.",
+      "description": "LTR and RTL direction context for layout and composition, driving reading order from the active locale automatically.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1235,7 +1632,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/direction.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/direction",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/direction",
@@ -1246,7 +1643,7 @@
       "name": "dropdown-menu",
       "type": "registry:block",
       "title": "Dropdown Menu",
-      "description": "Displays compact actions and options from triggers with grouped sections, nested submenus, checkboxes, radio groups, and destructive items.",
+      "description": "Compact actions from any trigger, with grouped sections, nested submenus, checkbox and radio items, and shortcuts.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1256,7 +1653,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/dropdown-menu.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/dropdown-menu",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/dropdown-menu",
@@ -1267,7 +1664,7 @@
       "name": "empty-state",
       "type": "registry:block",
       "title": "Empty State",
-      "description": "Communicates missing content and guides next actions with basic, action, illustration, avatar, search, and error variants.",
+      "description": "Empty layouts for placeholders, search results, and errors, with basic, action, illustration, and avatar variants.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1276,7 +1673,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/empty-state.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/empty-state",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/empty-state",
@@ -1287,7 +1684,7 @@
       "name": "field",
       "type": "registry:block",
       "title": "Field",
-      "description": "Composable field wrapper with labels, descriptions, and validation states.",
+      "description": "A composable field shell carrying labels, help text, required markers, and error, success, and validation states.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1296,7 +1693,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/field.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/field",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/field",
@@ -1307,14 +1704,14 @@
       "name": "kbd",
       "type": "registry:block",
       "title": "Kbd",
-      "description": "Displays keyboard keys and shortcuts across interfaces.",
+      "description": "Keyboard key styling for shortcuts, hotkey hints, documentation, and inline command labels anywhere in your app.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/kbd.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/kbd",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/kbd",
@@ -1325,7 +1722,7 @@
       "name": "marker",
       "type": "registry:block",
       "title": "Marker",
-      "description": "Highlights positions, points, and statuses visually.",
+      "description": "Status markers for live state, ordered points, and contextual cues, with solid dots and pulsing presence indicators.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1335,7 +1732,7 @@
         "framer-motion",
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/marker.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/marker",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/marker",
@@ -1346,14 +1743,14 @@
       "name": "native-select",
       "type": "registry:block",
       "title": "Native Select",
-      "description": "Provides browser-native option selection for forms.",
+      "description": "Browser-native option selection for forms, with grouped options, placeholders, inline variants, and error states.",
       "categories": [
         "UI Primitives",
         "wensity",
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/native-select.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/native-select",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/native-select",
@@ -1364,7 +1761,7 @@
       "name": "navigation-menu",
       "type": "registry:block",
       "title": "Navigation Menu",
-      "description": "Organizes primary navigation with expandable content menus.",
+      "description": "Primary navigation with dropdown panels, mega menus, nested links, and full keyboard accessibility for headers.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1375,7 +1772,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/navigation-menu.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/navigation-menu",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/navigation-menu",
@@ -1386,7 +1783,7 @@
       "name": "sidebar",
       "type": "registry:block",
       "title": "Sidebar",
-      "description": "Organizes application navigation, sections, and workspace actions.",
+      "description": "App sidebars with collapsible rails, grouped sections, badge counts, resizable widths, and keyboard shortcut support.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1397,7 +1794,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/sidebar.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/sidebar",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/sidebar",
@@ -1408,7 +1805,7 @@
       "name": "typography",
       "type": "registry:block",
       "title": "Typography",
-      "description": "Styles and structures readable content across interfaces.",
+      "description": "Type primitives for headings, prose blocks, lead and muted text, inline code, and consistently styled lists.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1417,7 +1814,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/typography.json",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/typography",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/typography",

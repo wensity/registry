@@ -3,7 +3,7 @@
   "name": "marker",
   "type": "registry:block",
   "title": "Marker",
-  "description": "Five semantic variants - dot, pulse, numbered, icon, and status - for indicating live state, ordered position, or contextual meaning at a glance.",
+  "description": "Status markers for live state, order, and contextual cues.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "@base-ui/react",
@@ -29,7 +29,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

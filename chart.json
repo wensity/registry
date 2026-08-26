@@ -3,7 +3,7 @@
   "name": "chart",
   "type": "registry:block",
   "title": "Chart",
-  "description": "A Recharts-backed chart primitive with Line, Bar, Area, Pie, and Radar variants, a CVD-validated categorical palette, and a shared tooltip/legend.",
+  "description": "Recharts charts for line, bar, area, pie, and radar views.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [
     "clsx",
@@ -29,7 +29,8 @@
   "cssVars": {
     "theme": {
       "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
-      "font-display": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
       "color-background": "var(--background)",
       "color-foreground": "var(--foreground)",
       "color-surface": "var(--surface)",

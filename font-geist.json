@@ -39,7 +39,7 @@
       "access": "free",
       "category": "font",
       "kind": "font",
-      "componentUrl": "https://ui.wensity.com/docs/primitives/setup",
+      "componentUrl": "https://ui.wensity.com/docs/primitives",
       "shadcnUrl": "https://ui.wensity.com/r/font-geist",
       "cliInstall": "pnpm dlx shadcn@latest add @wensity/font-geist"
     }

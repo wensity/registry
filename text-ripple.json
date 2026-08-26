@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-ripple",
+  "type": "registry:block",
+  "title": "Text Ripple",
+  "description": "3D ripple text for React headlines. Traveling crest, reduced-motion safe.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-ripple.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-ripple.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface TextRippleProps {\n  /** The string to render. */\n  text: string;\n  /** Tag rendered as the outer element. */\n  as?: keyof React.JSX.IntrinsicElements;\n  /** Crest travel duration for one character, in seconds. Default: 1 */\n  duration?: number;\n  /** Forward depth of the crest in CSS pixels. Default: 10 */\n  zDistance?: number;\n  /** Lateral nudge of the crest in CSS pixels. Default: 2 */\n  xDistance?: number;\n  /** Vertical nudge of the crest in CSS pixels. Default: -2 */\n  yDistance?: number;\n  /**\n   * How tightly the crest packs across characters (0.4–3).\n   * Higher = faster stagger + shorter hold between loops.\n   */\n  spread?: number;\n  /** Peak scale at the crest. Default: 1.1 */\n  scaleDistance?: number;\n  /** Peak Y rotation at the crest, in degrees. Default: 10 */\n  rotateYDistance?: number;\n  /** Resting fill color. Omit for theme-aware muted zinc. */\n  baseColor?: string;\n  /** Crest highlight color. Omit for theme-aware foreground. */\n  rippleColor?: string;\n  /**\n   * Force the infinite loop paused. When omitted, auto-pauses off-screen\n   * or when the tab is hidden.\n   */\n  paused?: boolean;\n  /** Optional Tailwind class for size, weight, tracking, etc. */\n  className?: string;\n}\n\nconst BASE_STYLE_ID = \"wensity-text-ripple-base\";\nconst registeredCycles = new Set<string>();\n\nfunction isCombiningMark(codePoint: number): boolean {\n  return (\n    (codePoint >= 0x0300 && codePoint <= 0x036f) ||\n    (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||\n    (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||\n    (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||\n    (codePoint >= 0xfe20 && codePoint <= 0xfe2f)\n  );\n}\n\nfunction isGraphemeExtender(codePoint: number): boolean {\n  return (\n    isCombiningMark(codePoint) ||\n    (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||\n    (codePoint >= 0xe0100 && codePoint <= 0xe01ef) ||\n    (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff)\n  );\n}\n\nfunction isRegionalIndicator(codePoint: number): boolean {\n  return codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff;\n}\n\n/**\n * Keep the initial server and client trees identical without relying on\n * environment-specific Intl.Segmenter support. This covers the grapheme\n * sequences headlines commonly contain while keeping the shipped source\n * dependency-free.\n */\nfunction splitIntoCharacters(value: string): string[] {\n  const codePoints = Array.from(value);\n  const characters: string[] = [];\n  let regionalIndicatorCount = 0;\n\n  for (const character of codePoints) {\n    const codePoint = character.codePointAt(0) ?? 0;\n    const previous = characters.at(-1);\n    const followsJoiner = previous?.endsWith(\"\\u200d\") ?? false;\n    const joinsPrevious =\n      previous !== undefined &&\n      (codePoint === 0x200d ||\n        followsJoiner ||\n        isGraphemeExtender(codePoint) ||\n        (isRegionalIndicator(codePoint) && regionalIndicatorCount % 2 === 1));\n\n    if (joinsPrevious) {\n      characters[characters.length - 1] += character;\n    } else {\n      characters.push(character);\n    }\n\n    regionalIndicatorCount = isRegionalIndicator(codePoint)\n      ? regionalIndicatorCount + 1\n      : 0;\n  }\n\n  return characters;\n}\n\ntype WordChars = {\n  characters: string[];\n  needsSpace: boolean;\n};\n\nfunction buildWords(text: string): WordChars[] {\n  const words = text.length > 0 ? text.split(\" \") : [\"\"];\n  return words.map((word, i) => ({\n    characters: splitIntoCharacters(word.length > 0 ? word : \"\\u00A0\"),\n    needsSpace: i !== words.length - 1,\n  }));\n}\n\nfunction cycleKey(peakAt: number, activeEnd: number): string {\n  return `${peakAt}_${activeEnd}`.replace(/\\./g, \"_\");\n}\n\n/**\n * TextRipple\n *\n * Per-character 3D crest that travels through a headline — lift, slight\n * yaw, and a color flash. CSS keyframes only (no Motion / rAF). Stagger\n * is pure `animation-delay`; the hold between loops is baked into the\n * keyframe table so every glyph shares one compositor timeline.\n *\n * Motion contract:\n * - Animates `transform` + `color` only (GPU-friendly).\n * - Auto-pauses off-screen / hidden tabs via `animation-play-state`.\n * - Honours `prefers-reduced-motion` with a static highlight fill.\n */\nexport function TextRipple({\n  text,\n  as = \"span\",\n  duration = 1,\n  zDistance = 10,\n  xDistance = 2,\n  yDistance = -2,\n  spread = 1,\n  scaleDistance = 1.1,\n  rotateYDistance = 10,\n  baseColor,\n  rippleColor,\n  paused,\n  className,\n}: TextRippleProps) {\n  const nodeRef = React.useRef<HTMLElement | null>(null);\n  const pausedPropRef = React.useRef(paused);\n  const inViewRef = React.useRef(true);\n  pausedPropRef.current = paused;\n\n  const safeDuration = Math.max(0.35, duration);\n  const safeSpread = Math.min(3, Math.max(0.4, spread));\n  const words = buildWords(text);\n  const count = Math.max(\n    1,\n    words.reduce((sum, word) => sum + word.characters.length, 0),\n  );\n\n  // Match the reference timing model, but encode the hold in keyframes\n  // so CSS can loop without Motion's per-instance repeatDelay.\n  const stagger = (safeDuration * (1 / safeSpread)) / count;\n  const hold = (count * 0.05) / safeSpread;\n  const staggerWindow = (count - 1) * stagger;\n  const cycle = staggerWindow + safeDuration + hold;\n  const activeEnd = Math.round((safeDuration / cycle) * 1000) / 10;\n  const peakAt = Math.max(1, Math.round((activeEnd / 2) * 10) / 10);\n  const key = cycleKey(peakAt, activeEnd);\n\n  React.useLayoutEffect(() => {\n    ensureBaseStyles();\n    ensureCycleKeyframes(key, peakAt, activeEnd);\n  }, [key, peakAt, activeEnd]);\n\n  React.useEffect(() => {\n    const node = nodeRef.current;\n    if (!node) return;\n\n    let pageVisible = document.visibilityState !== \"hidden\";\n\n    const syncPlayState = () => {\n      const forced = pausedPropRef.current;\n      const autoPause = !(inViewRef.current && pageVisible);\n      const shouldPause =\n        forced === true || (forced !== false && autoPause);\n      node.dataset.ripplePaused = shouldPause ? \"true\" : \"false\";\n    };\n\n    if (paused === true) {\n      syncPlayState();\n      return;\n    }\n\n    const io = new IntersectionObserver(\n      (entries) => {\n        inViewRef.current = entries.some((entry) => entry.isIntersecting);\n        syncPlayState();\n      },\n      { threshold: 0.01 },\n    );\n\n    const onVisibility = () => {\n      pageVisible = document.visibilityState !== \"hidden\";\n      syncPlayState();\n    };\n\n    if (paused !== false) {\n      io.observe(node);\n      document.addEventListener(\"visibilitychange\", onVisibility);\n    }\n\n    syncPlayState();\n\n    return () => {\n      io.disconnect();\n      document.removeEventListener(\"visibilitychange\", onVisibility);\n    };\n  }, [paused]);\n\n  const Tag = as as unknown as React.ComponentType<\n    React.HTMLAttributes<HTMLElement> & {\n      ref?: React.RefCallback<HTMLElement | null>;\n      \"data-ripple-paused\"?: \"true\" | \"false\";\n      \"data-ripple-cycle\"?: string;\n      \"aria-label\"?: string;\n    }\n  >;\n\n  let charIndex = 0;\n\n  return (\n    <Tag\n      ref={(node) => {\n        nodeRef.current = node;\n      }}\n      aria-label={text}\n      data-ripple-paused={paused === true ? \"true\" : \"false\"}\n      data-ripple-cycle={key}\n      className={cn(\n        \"wensity-text-ripple relative inline-block\",\n        \"[perspective:500px] [transform:translateZ(0)] [text-wrap:balance]\",\n        \"[--wensity-ripple-base:#a1a1aa] [--wensity-ripple-hi:#09090b]\",\n        \"dark:[--wensity-ripple-base:#71717a] dark:[--wensity-ripple-hi:#ffffff]\",\n        className,\n      )}\n      style={\n        {\n          color: \"var(--wensity-ripple-base)\",\n          \"--wensity-ripple-duration\": `${cycle}s`,\n          \"--wensity-ripple-z\": `${zDistance}px`,\n          \"--wensity-ripple-x\": `${xDistance}px`,\n          \"--wensity-ripple-y\": `${yDistance}px`,\n          \"--wensity-ripple-scale\": String(scaleDistance),\n          \"--wensity-ripple-rotate\": `${rotateYDistance}deg`,\n          ...(baseColor ? { \"--wensity-ripple-base\": baseColor } : null),\n          ...(rippleColor ? { \"--wensity-ripple-hi\": rippleColor } : null),\n        } as React.CSSProperties\n      }\n    >\n      {words.map((word, wordIndex) => (\n        <span key={`w-${wordIndex}`} className=\"inline-block whitespace-pre\">\n          {word.characters.map((char) => {\n            const i = charIndex;\n            charIndex += 1;\n            return (\n              <span\n                key={`c-${wordIndex}-${i}`}\n                aria-hidden=\"true\"\n                className=\"wensity-text-ripple-char inline-block whitespace-pre [transform-style:preserve-3d]\"\n                style={{ animationDelay: `${i * stagger}s` }}\n              >\n                {char}\n              </span>\n            );\n          })}\n          {word.needsSpace ? (\n            <span aria-hidden=\"true\" className=\"inline-block whitespace-pre\">\n              {\" \"}\n            </span>\n          ) : null}\n        </span>\n      ))}\n    </Tag>\n  );\n}\n\nfunction ensureBaseStyles() {\n  if (typeof document === \"undefined\") return;\n  if (document.getElementById(BASE_STYLE_ID)) return;\n  const style = document.createElement(\"style\");\n  style.id = BASE_STYLE_ID;\n  style.textContent = BASE_STYLES;\n  document.head.appendChild(style);\n}\n\nfunction ensureCycleKeyframes(key: string, peakAt: number, activeEnd: number) {\n  if (typeof document === \"undefined\") return;\n  if (registeredCycles.has(key)) return;\n  registeredCycles.add(key);\n\n  const id = `wensity-text-ripple-cycle-${key}`;\n  if (document.getElementById(id)) return;\n\n  const style = document.createElement(\"style\");\n  style.id = id;\n  style.textContent = `\n.wensity-text-ripple[data-ripple-cycle=\"${key}\"] .wensity-text-ripple-char {\n  animation-name: wensity-text-ripple-${key};\n}\n@keyframes wensity-text-ripple-${key} {\n  0% {\n    transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);\n    color: var(--wensity-ripple-base);\n  }\n  ${peakAt}% {\n    transform: translate3d(\n        var(--wensity-ripple-x, 2px),\n        var(--wensity-ripple-y, -2px),\n        var(--wensity-ripple-z, 10px)\n      )\n      scale(var(--wensity-ripple-scale, 1.1))\n      rotateY(var(--wensity-ripple-rotate, 10deg));\n    color: var(--wensity-ripple-hi);\n  }\n  ${activeEnd}% {\n    transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);\n    color: var(--wensity-ripple-base);\n  }\n  100% {\n    transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);\n    color: var(--wensity-ripple-base);\n  }\n}\n`;\n  document.head.appendChild(style);\n}\n\nconst BASE_STYLES = `\n.wensity-text-ripple-char {\n  color: var(--wensity-ripple-base);\n  animation-duration: var(--wensity-ripple-duration, 1.5s);\n  animation-timing-function: ease-in-out;\n  animation-iteration-count: infinite;\n  animation-fill-mode: both;\n  animation-play-state: running;\n}\n.wensity-text-ripple[data-ripple-paused=\"true\"] .wensity-text-ripple-char {\n  animation-play-state: paused;\n}\n@media (prefers-reduced-motion: reduce) {\n  .wensity-text-ripple-char {\n    animation: none !important;\n    transform: none !important;\n    color: var(--wensity-ripple-hi) !important;\n  }\n}\n`;\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-ripple.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-ripple.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-ripple",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-ripple",
+      "shadcnUrl": "https://ui.wensity.com/r/text-ripple",
+      "cliInstall": "pnpm dlx wensity@latest add text-ripple"
+    }
+  }
+}
