@@ -17,7 +17,7 @@
       "dependencies": [
         "@fontsource/inter"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-inter",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-inter.json",
       "meta": {
         "kind": "font",
         "docsUrl": "https://ui.wensity.com/docs/primitives"
@@ -36,7 +36,7 @@
       "dependencies": [
         "@fontsource/geist"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-geist",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/font-geist.json",
       "meta": {
         "kind": "font",
         "docsUrl": "https://ui.wensity.com/docs/primitives"
@@ -58,7 +58,7 @@
         "@wensity/font-inter",
         "@wensity/font-geist"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/wensity-base",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/wensity-base.json",
       "meta": {
         "kind": "base",
         "docsUrl": "https://ui.wensity.com/docs/primitives",
@@ -79,7 +79,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/liquid-multimodal-input",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/liquid-multimodal-input.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/liquid-multimodal-input",
@@ -97,7 +97,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/generative-skeleton-mesh",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/generative-skeleton-mesh.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/generative-skeleton-mesh",
@@ -118,7 +118,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/voice-aurora-wave",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/voice-aurora-wave.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/voice-aurora-wave",
@@ -140,7 +140,7 @@
         "@tabler/icons-react",
         "@radix-ui/react-dropdown-menu"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/model-context-switcher",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/model-context-switcher.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/model-context-switcher",
@@ -158,7 +158,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/infinite-marquee",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/infinite-marquee.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/infinite-marquee",
@@ -176,7 +176,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/morphing-shape-background",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/morphing-shape-background.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/morphing-shape-background",
@@ -196,7 +196,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/scrubbable-video-reveal",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/scrubbable-video-reveal.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/scrubbable-video-reveal",
@@ -216,7 +216,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/animated-tabs",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/animated-tabs.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/animated-tabs",
@@ -237,7 +237,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/gooey-navigation-menu",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/gooey-navigation-menu.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
@@ -258,7 +258,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/multi-select-token-pills",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/multi-select-token-pills.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/multi-select-token-pills",
@@ -278,7 +278,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/shimmering-skeleton-wrapper",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/shimmering-skeleton-wrapper.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/shimmering-skeleton-wrapper",
@@ -296,7 +296,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/cool-button",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/cool-button.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/cool-button",
@@ -317,7 +317,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/file-uploader",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/file-uploader.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/file-uploader",
@@ -337,7 +337,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/before-after-card",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/before-after-card.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/before-after-card",
@@ -357,7 +357,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/github-activity-grid",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/github-activity-grid.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/github-activity-grid",
@@ -375,7 +375,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-shimmer",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-shimmer.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-shimmer",
@@ -393,7 +393,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-flip",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-flip.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-flip",
@@ -411,7 +411,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-morphing",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-morphing.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-morphing",
@@ -431,7 +431,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-char-slide",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-char-slide.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-char-slide",
@@ -451,7 +451,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-motion",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-motion.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-motion",
@@ -471,7 +471,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-cycle",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-cycle.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-cycle",
@@ -491,7 +491,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-word-flip",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-word-flip.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-word-flip",
@@ -511,7 +511,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-blur-reveal",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-blur-reveal.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-blur-reveal",
@@ -529,7 +529,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/canvas-text",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/canvas-text.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/canvas-text",
@@ -547,7 +547,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/line-fill-text",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/line-fill-text.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/line-fill-text",
@@ -565,7 +565,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-glitch",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-glitch.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-glitch",
@@ -583,7 +583,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-path",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-path.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-path",
@@ -601,7 +601,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-highlight",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-highlight.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-highlight",
@@ -619,7 +619,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-scribble",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-scribble.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-scribble",
@@ -639,7 +639,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-chroma-reveal",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-chroma-reveal.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-chroma-reveal",
@@ -657,7 +657,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-spectrum",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-spectrum.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-spectrum",
@@ -675,7 +675,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-ripple",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-ripple.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-ripple",
@@ -695,7 +695,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/button",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/button.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/button",
@@ -715,7 +715,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/button-group",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/button-group.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/button-group",
@@ -736,7 +736,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/input",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/input.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/input",
@@ -756,7 +756,7 @@
       "dependencies": [
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-area",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-area.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/text-area",
@@ -777,7 +777,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/select",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/select.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/select",
@@ -797,7 +797,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/form-field",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/form-field.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/form-field",
@@ -818,7 +818,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/badge",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/badge.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/badge",
@@ -838,7 +838,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/checkbox",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/checkbox.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/checkbox",
@@ -858,7 +858,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/switch",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/switch.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/switch",
@@ -879,7 +879,7 @@
         "@base-ui/react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/radio-group",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/radio-group.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/radio-group",
@@ -899,7 +899,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/toggle",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/toggle.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/toggle",
@@ -917,7 +917,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/label",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/label.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/label",
@@ -937,7 +937,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/input-otp",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/input-otp.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/input-otp",
@@ -958,7 +958,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/combobox",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/combobox.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/combobox",
@@ -980,7 +980,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/avatar",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/avatar.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/avatar",
@@ -1001,7 +1001,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/table",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/table.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/table",
@@ -1022,7 +1022,7 @@
         "@base-ui/react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/progress",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/progress.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/progress",
@@ -1042,7 +1042,7 @@
       "dependencies": [
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/alert",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/alert.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/alert",
@@ -1060,7 +1060,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/skeleton",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/skeleton.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/skeleton",
@@ -1078,7 +1078,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/spinner",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/spinner.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/spinner",
@@ -1099,7 +1099,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/toast",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/toast.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/toast",
@@ -1120,7 +1120,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/dialog",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/dialog.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/dialog",
@@ -1141,7 +1141,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/sheet",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/sheet.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/sheet",
@@ -1162,7 +1162,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/drawer",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/drawer.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/drawer",
@@ -1182,7 +1182,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/popover",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/popover.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/popover",
@@ -1202,7 +1202,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/tooltip",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/tooltip.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/tooltip",
@@ -1223,7 +1223,7 @@
         "@base-ui/react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/tabs",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/tabs.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/tabs",
@@ -1244,7 +1244,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/breadcrumb",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/breadcrumb.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/breadcrumb",
@@ -1265,7 +1265,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/pagination",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/pagination.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/pagination",
@@ -1286,7 +1286,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/card",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/card.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/card",
@@ -1304,7 +1304,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/separator",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/separator.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/separator",
@@ -1324,7 +1324,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/scroll-area",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/scroll-area.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/scroll-area",
@@ -1342,7 +1342,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/resizable",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/resizable.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/resizable",
@@ -1362,7 +1362,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/hover-card",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/hover-card.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/hover-card",
@@ -1383,7 +1383,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/accordion",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/accordion.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/accordion",
@@ -1403,7 +1403,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/aspect-ratio",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/aspect-ratio.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/aspect-ratio",
@@ -1424,7 +1424,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/attachment",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/attachment.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/attachment",
@@ -1445,7 +1445,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/calendar",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/calendar.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/calendar",
@@ -1466,7 +1466,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/carousel",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/carousel.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/carousel",
@@ -1487,7 +1487,7 @@
         "recharts",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/chart",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/chart.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/chart",
@@ -1508,7 +1508,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/collapsible",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/collapsible.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/collapsible",
@@ -1528,7 +1528,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/slider",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/slider.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/slider",
@@ -1549,7 +1549,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/command",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/command.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/command",
@@ -1570,7 +1570,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/context-menu",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/context-menu.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/context-menu",
@@ -1591,7 +1591,7 @@
         "@tabler/icons-react",
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/data-table",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/data-table.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/data-table",
@@ -1612,7 +1612,7 @@
         "@tabler/icons-react",
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/date-picker",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/date-picker.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/date-picker",
@@ -1632,7 +1632,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/direction",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/direction.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/direction",
@@ -1653,7 +1653,7 @@
         "@base-ui/react",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/dropdown-menu",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/dropdown-menu.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/dropdown-menu",
@@ -1673,7 +1673,7 @@
       "dependencies": [
         "framer-motion"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/empty-state",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/empty-state.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/empty-state",
@@ -1693,7 +1693,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/field",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/field.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/field",
@@ -1711,7 +1711,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/kbd",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/kbd.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/kbd",
@@ -1732,7 +1732,7 @@
         "framer-motion",
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/marker",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/marker.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/marker",
@@ -1750,7 +1750,7 @@
         "free"
       ],
       "dependencies": [],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/native-select",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/native-select.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/native-select",
@@ -1772,7 +1772,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/navigation-menu",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/navigation-menu.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/navigation-menu",
@@ -1794,7 +1794,7 @@
         "framer-motion",
         "@tabler/icons-react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/sidebar",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/sidebar.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/sidebar",
@@ -1814,7 +1814,7 @@
       "dependencies": [
         "@base-ui/react"
       ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/typography",
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/typography.json",
       "meta": {
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/typography",
