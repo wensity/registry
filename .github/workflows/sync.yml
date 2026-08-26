@@ -1,0 +1,46 @@
+name: Sync registry
+
+# Manual dispatch only, deliberately.
+#
+# A run republishes whatever ui.wensity.com/r/ currently serves, which can add
+# items and change token contracts in shipped components. That is a catalog
+# decision, so it needs a human to press the button. Add a schedule here only
+# once you are happy for the public registry to track upstream automatically.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report the diff without committing"
+        type: boolean
+        default: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Report pending changes
+        run: node scripts/sync-registry.mjs --dry-run
+
+      - name: Apply
+        if: ${{ inputs.dry_run == false }}
+        run: node scripts/sync-registry.mjs
+
+      - name: Commit
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Already in sync."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Sync registry from ui.wensity.com"
+          git push
