@@ -1,0 +1,301 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "color-picker",
+  "type": "registry:block",
+  "title": "Color Picker",
+  "description": "A pointer and keyboard driven color picker: an HSV canvas with hue and alpha rails, the native screen eyedropper, switchable HEX, RGB, and HSL fields, and an optional preset palette.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "@tabler/icons-react",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/color-picker.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/color-picker.tsx",
+      "content": "\"use client\";\n\n/**\n * ColorPicker — saturation/value canvas + hue/alpha rails + HEX/RGB/HSL fields.\n *\n * HSV is the internal source of truth so dragging through pure black or pure\n * white does not discard hue/saturation the way a hex round-trip would.\n * Chrome is token-driven; only the color surfaces themselves carry live values.\n */\n\nimport * as React from \"react\";\nimport { IconColorPicker, IconSelector, IconCheck } from \"@tabler/icons-react\";\nimport { Popover as BasePopover } from \"@base-ui/react/popover\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── color math ────────────────────────────────────────────── */\n\nexport interface Hsva {\n  h: number;\n  s: number;\n  v: number;\n  a: number;\n}\n\nexport interface Rgba {\n  r: number;\n  g: number;\n  b: number;\n  a: number;\n}\n\nconst clamp = (n: number, min = 0, max = 100) =>\n  Math.min(max, Math.max(min, n));\n\nconst round = (n: number, digits = 0) => {\n  const p = 10 ** digits;\n  return Math.round(n * p) / p;\n};\n\nfunction hsvaToRgba({ h, s, v, a }: Hsva): Rgba {\n  const hh = ((h % 360) + 360) % 360 / 60;\n  const ss = s / 100;\n  const vv = v / 100;\n  const c = vv * ss;\n  const x = c * (1 - Math.abs((hh % 2) - 1));\n  const m = vv - c;\n  const seg = Math.floor(hh) % 6;\n  const segments: readonly (readonly [number, number, number])[] = [\n    [c, x, 0],\n    [x, c, 0],\n    [0, c, x],\n    [0, x, c],\n    [x, 0, c],\n    [c, 0, x],\n  ];\n  const [r, g, b] = segments[seg] ?? segments[0]!;\n  return {\n    r: Math.round((r + m) * 255),\n    g: Math.round((g + m) * 255),\n    b: Math.round((b + m) * 255),\n    a,\n  };\n}\n\nfunction rgbaToHsva({ r, g, b, a }: Rgba): Hsva {\n  const rr = r / 255;\n  const gg = g / 255;\n  const bb = b / 255;\n  const max = Math.max(rr, gg, bb);\n  const min = Math.min(rr, gg, bb);\n  const d = max - min;\n  let h = 0;\n  if (d !== 0) {\n    if (max === rr) h = 60 * (((gg - bb) / d) % 6);\n    else if (max === gg) h = 60 * ((bb - rr) / d + 2);\n    else h = 60 * ((rr - gg) / d + 4);\n  }\n  if (h < 0) h += 360;\n  return {\n    h: round(h, 1),\n    s: max === 0 ? 0 : round((d / max) * 100, 1),\n    v: round(max * 100, 1),\n    a,\n  };\n}\n\nfunction hsvaToHsl({ h, s, v }: Hsva) {\n  const vv = v / 100;\n  const ss = s / 100;\n  const l = vv * (1 - ss / 2);\n  const sl = l === 0 || l === 1 ? 0 : (vv - l) / Math.min(l, 1 - l);\n  return { h: Math.round(h), s: Math.round(sl * 100), l: Math.round(l * 100) };\n}\n\nfunction hslToHsva(h: number, s: number, l: number, a: number): Hsva {\n  const ll = l / 100;\n  const ss = s / 100;\n  const v = ll + ss * Math.min(ll, 1 - ll);\n  return {\n    h: ((h % 360) + 360) % 360,\n    s: v === 0 ? 0 : (2 * (1 - ll / v)) * 100,\n    v: v * 100,\n    a,\n  };\n}\n\nconst hex2 = (n: number) => Math.round(clamp(n, 0, 255)).toString(16).padStart(2, \"0\");\n\nexport function rgbaToHex({ r, g, b, a }: Rgba, withAlpha = false): string {\n  const base = `#${hex2(r)}${hex2(g)}${hex2(b)}`;\n  if (!withAlpha || a >= 1) return base;\n  return `${base}${hex2(a * 255)}`;\n}\n\n/** Parses `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` (with or without `#`). */\nexport function parseHex(input: string): Rgba | null {\n  const raw = input.trim().replace(/^#/, \"\");\n  if (!/^([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(raw)) return null;\n  const full =\n    raw.length <= 4\n      ? raw\n          .split(\"\")\n          .map((c) => c + c)\n          .join(\"\")\n      : raw;\n  return {\n    r: parseInt(full.slice(0, 2), 16),\n    g: parseInt(full.slice(2, 4), 16),\n    b: parseInt(full.slice(4, 6), 16),\n    a: full.length === 8 ? parseInt(full.slice(6, 8), 16) / 255 : 1,\n  };\n}\n\n/** WCAG relative luminance, used to pick a readable mark over a swatch. */\nfunction isLightColor({ r, g, b }: Rgba) {\n  const channel = (c: number) => {\n    const v = c / 255;\n    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;\n  };\n  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b) > 0.45;\n}\n\nfunction hsvaToCss(hsva: Hsva, withAlpha: boolean) {\n  const { r, g, b, a } = hsvaToRgba(hsva);\n  return withAlpha ? `rgba(${r}, ${g}, ${b}, ${round(a, 2)})` : `rgb(${r}, ${g}, ${b})`;\n}\n\n/* ─── shared chrome ─────────────────────────────────────────── */\n\nexport type ColorFormat = \"hex\" | \"rgb\" | \"hsl\";\n\nconst FORMAT_ORDER: ColorFormat[] = [\"hex\", \"rgb\", \"hsl\"];\n\n/**\n * 8px alpha checkerboard, drawn behind every translucent swatch.\n * These carry position/size syntax and a trailing base color, so they are only\n * valid in the `background` shorthand — `background-image` rejects both and\n * silently drops the whole declaration.\n */\nconst CHECKERBOARD_LAYER =\n  \"repeating-conic-gradient(color-mix(in srgb, var(--foreground) 26%, transparent) 0% 25%, transparent 0% 50%) 50% / 8px 8px\";\nconst CHECKERBOARD_BASE = \"var(--background)\";\nconst CHECKERBOARD = `${CHECKERBOARD_LAYER}, ${CHECKERBOARD_BASE}`;\n\nconst thumbRingClass = cn(\n  \"pointer-events-none absolute block rounded-full\",\n  \"border-2 border-white\",\n  \"shadow-[0_0_0_1px_rgba(0,0,0,0.35),0_1px_4px_rgba(0,0,0,0.4)]\",\n);\n\nconst focusRing = cn(\n  \"outline-none\",\n  \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n  \"focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--primitive-surface-overlay)]\",\n);\n\n/** Maps a pointer event to 0..1 coordinates inside `el`. */\nfunction pointerRatio(el: HTMLElement, event: { clientX: number; clientY: number }) {\n  const rect = el.getBoundingClientRect();\n  return {\n    x: rect.width === 0 ? 0 : clamp((event.clientX - rect.left) / rect.width, 0, 1),\n    y: rect.height === 0 ? 0 : clamp((event.clientY - rect.top) / rect.height, 0, 1),\n  };\n}\n\nfunction useDrag(\n  onMove: (el: HTMLElement, event: { clientX: number; clientY: number }) => void,\n  disabled?: boolean,\n) {\n  const [dragging, setDragging] = React.useState(false);\n\n  const onPointerDown = React.useCallback(\n    (event: React.PointerEvent<HTMLDivElement>) => {\n      if (disabled || event.button !== 0) return;\n      const el = event.currentTarget;\n      el.setPointerCapture(event.pointerId);\n      setDragging(true);\n      el.focus();\n      onMove(el, event);\n    },\n    [disabled, onMove],\n  );\n\n  const onPointerMove = React.useCallback(\n    (event: React.PointerEvent<HTMLDivElement>) => {\n      if (!dragging) return;\n      event.preventDefault();\n      onMove(event.currentTarget, event);\n    },\n    [dragging, onMove],\n  );\n\n  const stop = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {\n    if (event.currentTarget.hasPointerCapture(event.pointerId)) {\n      event.currentTarget.releasePointerCapture(event.pointerId);\n    }\n    setDragging(false);\n  }, []);\n\n  return {\n    dragging,\n    handlers: {\n      onPointerDown,\n      onPointerMove,\n      onPointerUp: stop,\n      onPointerCancel: stop,\n    },\n  };\n}\n\n/** Arrow/Home/End stepping shared by the canvas and both rails. */\nfunction arrowStep(\n  key: string,\n  step: number,\n  big: number,\n): { dx: number; dy: number } | null {\n  switch (key) {\n    case \"ArrowLeft\":\n      return { dx: -step, dy: 0 };\n    case \"ArrowRight\":\n      return { dx: step, dy: 0 };\n    case \"ArrowUp\":\n      return { dx: 0, dy: step };\n    case \"ArrowDown\":\n      return { dx: 0, dy: -step };\n    case \"PageUp\":\n      return { dx: big, dy: big };\n    case \"PageDown\":\n      return { dx: -big, dy: -big };\n    default:\n      return null;\n  }\n}\n\n/* ─── saturation / value canvas ─────────────────────────────── */\n\nfunction SaturationCanvas({\n  hsva,\n  onChange,\n  disabled,\n  className,\n}: {\n  hsva: Hsva;\n  onChange: (next: { s: number; v: number }) => void;\n  disabled?: boolean;\n  className?: string;\n}) {\n  const apply = React.useCallback(\n    (el: HTMLElement, event: { clientX: number; clientY: number }) => {\n      const { x, y } = pointerRatio(el, event);\n      onChange({ s: round(x * 100, 1), v: round((1 - y) * 100, 1) });\n    },\n    [onChange],\n  );\n\n  const { dragging, handlers } = useDrag(apply, disabled);\n\n  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {\n    if (disabled) return;\n    if (event.key === \"Home\" || event.key === \"End\") {\n      event.preventDefault();\n      onChange(event.key === \"Home\" ? { s: 0, v: 100 } : { s: 100, v: 100 });\n      return;\n    }\n    const delta = arrowStep(event.key, event.shiftKey ? 10 : 1, 10);\n    if (!delta) return;\n    event.preventDefault();\n    onChange({\n      s: clamp(hsva.s + delta.dx),\n      v: clamp(hsva.v + delta.dy),\n    });\n  };\n\n  return (\n    <div\n      role=\"slider\"\n      aria-label=\"Saturation and brightness\"\n      aria-valuetext={`Saturation ${Math.round(hsva.s)}%, brightness ${Math.round(hsva.v)}%`}\n      aria-disabled={disabled || undefined}\n      data-dragging={dragging || undefined}\n      tabIndex={disabled ? -1 : 0}\n      onKeyDown={onKeyDown}\n      {...handlers}\n      className={cn(\n        \"relative isolate w-full touch-none select-none\",\n        disabled ? \"cursor-not-allowed\" : dragging ? \"cursor-grabbing\" : \"cursor-crosshair\",\n        focusRing,\n        \"focus-visible:ring-inset focus-visible:ring-offset-0\",\n        className,\n      )}\n      style={{ backgroundColor: `hsl(${hsva.h} 100% 50%)` }}\n    >\n      <div className=\"absolute inset-0 bg-[linear-gradient(to_right,#fff,transparent)]\" />\n      <div className=\"absolute inset-0 bg-[linear-gradient(to_top,#000,transparent)]\" />\n      <span\n        className={cn(\n          thumbRingClass,\n          \"size-4 -translate-x-1/2 -translate-y-1/2\",\n          \"transition-transform duration-100 ease-out data-[dragging]:scale-110\",\n          \"motion-reduce:transition-none motion-reduce:data-[dragging]:scale-100\",\n        )}\n        data-dragging={dragging || undefined}\n        style={{\n          // Clamped by half the thumb so it never clips against the panel's\n          // rounded, overflow-hidden edges at the fully saturated corners.\n          left: `clamp(8px, ${hsva.s}%, calc(100% - 8px))`,\n          top: `clamp(8px, ${100 - hsva.v}%, calc(100% - 8px))`,\n          backgroundColor: hsvaToCss({ ...hsva, a: 1 }, false),\n        }}\n      />\n    </div>\n  );\n}\n\n/* ─── rails ─────────────────────────────────────────────────── */\n\nfunction Rail({\n  label,\n  value,\n  max,\n  step = 1,\n  valueText,\n  trackStyle,\n  thumbColor,\n  onChange,\n  disabled,\n}: {\n  label: string;\n  value: number;\n  max: number;\n  step?: number;\n  valueText: string;\n  trackStyle: React.CSSProperties;\n  thumbColor: string;\n  onChange: (next: number) => void;\n  disabled?: boolean;\n}) {\n  const apply = React.useCallback(\n    (el: HTMLElement, event: { clientX: number; clientY: number }) => {\n      onChange(round(pointerRatio(el, event).x * max, 2));\n    },\n    [max, onChange],\n  );\n\n  const { dragging, handlers } = useDrag(apply, disabled);\n\n  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {\n    if (disabled) return;\n    if (event.key === \"Home\" || event.key === \"End\") {\n      event.preventDefault();\n      onChange(event.key === \"Home\" ? 0 : max);\n      return;\n    }\n    const unit = step * (event.shiftKey ? 10 : 1);\n    const delta = arrowStep(event.key, unit, step * 10);\n    if (!delta) return;\n    event.preventDefault();\n    onChange(round(clamp(value + (delta.dx || delta.dy), 0, max), 2));\n  };\n\n  return (\n    <div\n      role=\"slider\"\n      aria-label={label}\n      aria-valuemin={0}\n      aria-valuemax={max}\n      aria-valuenow={round(value, 1)}\n      aria-valuetext={valueText}\n      aria-disabled={disabled || undefined}\n      tabIndex={disabled ? -1 : 0}\n      onKeyDown={onKeyDown}\n      {...handlers}\n      className={cn(\n        \"relative h-3 w-full touch-none select-none rounded-full\",\n        \"shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_12%,transparent)]\",\n        disabled ? \"cursor-not-allowed\" : dragging ? \"cursor-grabbing\" : \"cursor-pointer\",\n        focusRing,\n      )}\n      style={trackStyle}\n    >\n      <span\n        className={cn(\n          thumbRingClass,\n          \"top-1/2 size-[18px] -translate-x-1/2 -translate-y-1/2\",\n          \"transition-transform duration-100 ease-out data-[dragging]:scale-110\",\n          \"motion-reduce:transition-none motion-reduce:data-[dragging]:scale-100\",\n        )}\n        data-dragging={dragging || undefined}\n        style={{\n          // Inset by half the thumb so it never overhangs either rail end.\n          left: `calc(9px + ${value / max} * (100% - 18px))`,\n          background: thumbColor,\n        }}\n      />\n    </div>\n  );\n}\n\n/* ─── numeric + hex fields ──────────────────────────────────── */\n\nconst fieldShellClass = cn(\n  \"flex h-8 w-full items-center rounded-[var(--primitive-radius-control-sm)]\",\n  \"border border-[var(--border)] bg-[var(--background)]\",\n  \"transition-[border-color,box-shadow] duration-150 ease-[var(--primitive-ease)]\",\n  \"hover:border-[color-mix(in_srgb,var(--foreground)_16%,transparent)]\",\n  \"focus-within:border-[color-mix(in_srgb,var(--foreground)_26%,transparent)]\",\n  \"focus-within:ring-2 focus-within:ring-[var(--primitive-ring)]\",\n  \"focus-within:ring-offset-2 focus-within:ring-offset-[var(--primitive-surface-overlay)]\",\n  \"motion-reduce:transition-none\",\n);\n\nconst fieldInputClass = cn(\n  \"h-full w-full bg-transparent text-center text-xs font-medium tabular-nums\",\n  \"text-[var(--foreground)] outline-none\",\n  \"[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none\",\n  \"disabled:cursor-not-allowed\",\n);\n\nfunction ChannelField({\n  label,\n  value,\n  min,\n  max,\n  onCommit,\n  disabled,\n}: {\n  label: string;\n  value: number;\n  min: number;\n  max: number;\n  onCommit: (next: number) => void;\n  disabled?: boolean;\n}) {\n  const [draft, setDraft] = React.useState<string | null>(null);\n  const shown = draft ?? String(Math.round(value));\n\n  const commit = (raw: string) => {\n    const parsed = Number.parseFloat(raw);\n    setDraft(null);\n    if (Number.isNaN(parsed)) return;\n    onCommit(clamp(Math.round(parsed), min, max));\n  };\n\n  return (\n    <label className=\"flex min-w-0 flex-1 flex-col items-center gap-1.5\">\n      <span className={fieldShellClass}>\n        <input\n          type=\"text\"\n          inputMode=\"numeric\"\n          value={shown}\n          disabled={disabled}\n          aria-label={label}\n          onChange={(event) => setDraft(event.target.value)}\n          onBlur={(event) => commit(event.target.value)}\n          onKeyDown={(event) => {\n            if (event.key === \"Enter\") {\n              event.preventDefault();\n              commit(event.currentTarget.value);\n            }\n            if (event.key === \"ArrowUp\" || event.key === \"ArrowDown\") {\n              event.preventDefault();\n              const step = (event.shiftKey ? 10 : 1) * (event.key === \"ArrowUp\" ? 1 : -1);\n              setDraft(null);\n              onCommit(clamp(Math.round(value) + step, min, max));\n            }\n          }}\n          className={fieldInputClass}\n        />\n      </span>\n      <span className=\"text-[10px] font-medium tracking-[0.08em] text-[var(--primitive-text-secondary)]\">\n        {label}\n      </span>\n    </label>\n  );\n}\n\nfunction HexField({\n  hex,\n  onCommit,\n  disabled,\n}: {\n  hex: string;\n  onCommit: (next: string) => void;\n  disabled?: boolean;\n}) {\n  const [draft, setDraft] = React.useState<string | null>(null);\n  const shown = (draft ?? hex).replace(/^#/, \"\").toUpperCase();\n\n  const commit = (raw: string) => {\n    setDraft(null);\n    if (parseHex(raw)) onCommit(raw.startsWith(\"#\") ? raw : `#${raw}`);\n  };\n\n  return (\n    <label className=\"flex min-w-0 flex-1 flex-col items-center gap-1.5\">\n      <span className={fieldShellClass}>\n        <span className=\"pl-2.5 text-xs text-[var(--primitive-text-placeholder)]\">#</span>\n        <input\n          type=\"text\"\n          spellCheck={false}\n          autoComplete=\"off\"\n          value={shown}\n          disabled={disabled}\n          aria-label=\"Hex color\"\n          onChange={(event) => setDraft(event.target.value)}\n          onBlur={(event) => commit(event.target.value)}\n          onKeyDown={(event) => {\n            if (event.key === \"Enter\") {\n              event.preventDefault();\n              commit(event.currentTarget.value);\n            }\n          }}\n          className={cn(fieldInputClass, \"pl-1 pr-2.5 text-left uppercase tracking-[0.08em]\")}\n        />\n      </span>\n      <span className=\"text-[10px] font-medium tracking-[0.08em] text-[var(--primitive-text-secondary)]\">\n        HEX\n      </span>\n    </label>\n  );\n}\n\n/* ─── eyedropper ────────────────────────────────────────────── */\n\ntype EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };\n\n/** Support never changes for the life of the document, so nothing subscribes. */\nconst subscribeToNothing = () => () => {};\n\nfunction useEyeDropper() {\n  // Read through useSyncExternalStore rather than an effect: the server\n  // snapshot is false, so SSR and the first client paint agree on markup\n  // without a post-mount setState and the re-render it costs.\n  const supported = React.useSyncExternalStore(\n    subscribeToNothing,\n    () => \"EyeDropper\" in window,\n    () => false,\n  );\n\n  const pick = React.useCallback(async () => {\n    const Ctor = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;\n    if (!Ctor) return null;\n    try {\n      const result = await new Ctor().open();\n      return result.sRGBHex;\n    } catch {\n      // User dismissed with Escape — not an error worth surfacing.\n      return null;\n    }\n  }, []);\n\n  return { supported, pick };\n}\n\n/* ─── panel ─────────────────────────────────────────────────── */\n\nexport interface ColorPickerPanelProps {\n  /** Controlled color as a hex string (`#rrggbb` or `#rrggbbaa`). */\n  value?: string;\n  /** Initial color when uncontrolled. */\n  defaultValue?: string;\n  /** Fires on every committed change with a hex string. */\n  onChange?: (hex: string) => void;\n  /** Initial format shown in the fields row. */\n  format?: ColorFormat;\n  /** Adds the alpha rail and emits 8-digit hex below full opacity. */\n  alpha?: boolean;\n  /** Shows the eyedropper button where the browser supports it. */\n  eyedropper?: boolean;\n  /** Preset hex swatches rendered under the fields. */\n  swatches?: string[];\n  /** Disables every control. */\n  disabled?: boolean;\n  className?: string;\n}\n\nconst DEFAULT_COLOR = \"#3b82f6\";\n\nfunction useColorState({\n  value,\n  defaultValue,\n  onChange,\n  alpha,\n}: Pick<ColorPickerPanelProps, \"value\" | \"defaultValue\" | \"onChange\" | \"alpha\">) {\n  const withAlpha = Boolean(alpha);\n\n  const [hsva, setHsvaState] = React.useState<Hsva>(() => {\n    const parsed = parseHex(value ?? defaultValue ?? DEFAULT_COLOR) ??\n      parseHex(DEFAULT_COLOR)!;\n    return rgbaToHsva(parsed);\n  });\n\n  const rgba = React.useMemo(() => hsvaToRgba(hsva), [hsva]);\n  const hex = React.useMemo(() => rgbaToHex(rgba, withAlpha), [rgba, withAlpha]);\n\n  // Adopt an external controlled value only when it is a different color than\n  // the one currently rendered, so hue survives achromatic round-trips and the\n  // value we just emitted does not bounce back through here.\n  //\n  // This adjusts state during render rather than in an effect: React discards\n  // the render and retries immediately, so the external color is never painted\n  // one frame late. The condition clears once adopted, since `hex` recomputes\n  // from the new state and both sides are normalised through `rgbaToHex`.\n  const externalRgba = value === undefined ? null : parseHex(value);\n  if (\n    externalRgba &&\n    rgbaToHex(externalRgba, withAlpha).toLowerCase() !== hex.toLowerCase()\n  ) {\n    setHsvaState((prev) => {\n      const next = rgbaToHsva(externalRgba);\n      return { ...next, h: next.s === 0 || next.v === 0 ? prev.h : next.h };\n    });\n  }\n\n  // Commit outside the updater — a state updater must stay pure, so onChange\n  // is called with the already-computed next color.\n  const commit = (next: Hsva) => {\n    setHsvaState(next);\n    onChange?.(rgbaToHex(hsvaToRgba(next), withAlpha));\n  };\n\n  const setHsva = (patch: Partial<Hsva>) => commit({ ...hsva, ...patch });\n\n  const setFromRgba = (next: Rgba) => {\n    const converted = rgbaToHsva(next);\n    commit({\n      ...converted,\n      h: converted.s === 0 || converted.v === 0 ? hsva.h : converted.h,\n    });\n  };\n\n  return { hsva, rgba, hex, withAlpha, setHsva, setFromRgba };\n}\n\nexport function ColorPickerPanel({\n  value,\n  defaultValue,\n  onChange,\n  format = \"hex\",\n  alpha = false,\n  eyedropper = true,\n  swatches,\n  disabled,\n  className,\n}: ColorPickerPanelProps) {\n  const { hsva, rgba, hex, withAlpha, setHsva, setFromRgba } = useColorState({\n    value,\n    defaultValue,\n    onChange,\n    alpha,\n  });\n\n  const [activeFormat, setActiveFormat] = React.useState<ColorFormat>(format);\n  const { supported: dropperSupported, pick } = useEyeDropper();\n  const hsl = hsvaToHsl(hsva);\n  const solid = hsvaToCss({ ...hsva, a: 1 }, false);\n  const current = hsvaToCss(hsva, withAlpha);\n\n  const cycleFormat = () =>\n    setActiveFormat(\n      (prev) =>\n        FORMAT_ORDER[(FORMAT_ORDER.indexOf(prev) + 1) % FORMAT_ORDER.length] ?? \"hex\",\n    );\n\n  const onEyedropper = async () => {\n    const picked = await pick();\n    const parsed = picked ? parseHex(picked) : null;\n    if (parsed) setFromRgba({ ...parsed, a: hsva.a });\n  };\n\n  const showDropper = eyedropper && dropperSupported;\n\n  return (\n    <div\n      data-wensity-primitive=\"\"\n      data-slot=\"wensity-color-picker-panel\"\n      className={cn(\n        \"w-[268px] overflow-hidden select-none\",\n        \"rounded-[var(--primitive-radius-surface)] border border-[var(--border)]\",\n        \"bg-[var(--primitive-surface-overlay)] text-[var(--foreground)]\",\n        disabled && \"pointer-events-none opacity-45\",\n        className,\n      )}\n    >\n      <SaturationCanvas\n        hsva={hsva}\n        disabled={disabled}\n        onChange={(next) => setHsva(next)}\n        className=\"h-[164px]\"\n      />\n\n      <div className=\"flex flex-col gap-3 p-3\">\n        <div className=\"flex items-center gap-2.5\">\n          {showDropper && (\n            <button\n              type=\"button\"\n              onClick={onEyedropper}\n              disabled={disabled}\n              aria-label=\"Pick a color from the screen\"\n              className={cn(\n                \"grid size-8 shrink-0 place-items-center rounded-[var(--primitive-radius-control-sm)]\",\n                \"border border-[var(--border)] bg-[var(--background)]\",\n                \"text-[var(--primitive-text-secondary)]\",\n                \"transition-[color,background-color,border-color,transform] duration-100 ease-out\",\n                \"hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n                \"active:scale-[0.97] disabled:cursor-not-allowed\",\n                \"motion-reduce:transition-none motion-reduce:active:scale-100\",\n                focusRing,\n              )}\n            >\n              <IconColorPicker size={15} stroke={1.7} aria-hidden />\n            </button>\n          )}\n\n          <span\n            aria-hidden\n            className={cn(\n              \"size-8 shrink-0 rounded-full\",\n              \"shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_14%,transparent)]\",\n            )}\n            style={{ background: CHECKERBOARD }}\n          >\n            <span\n              className=\"block size-full rounded-full\"\n              style={{ backgroundColor: current }}\n            />\n          </span>\n\n          <div className=\"flex min-w-0 flex-1 flex-col gap-2.5\">\n            <Rail\n              label=\"Hue\"\n              value={hsva.h}\n              max={360}\n              valueText={`${Math.round(hsva.h)} degrees`}\n              disabled={disabled}\n              onChange={(h) => setHsva({ h })}\n              thumbColor={`hsl(${hsva.h} 100% 50%)`}\n              trackStyle={{\n                backgroundImage:\n                  \"linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)\",\n              }}\n            />\n            {withAlpha && (\n              <Rail\n                label=\"Opacity\"\n                value={hsva.a * 100}\n                max={100}\n                valueText={`${Math.round(hsva.a * 100)}%`}\n                disabled={disabled}\n                onChange={(a) => setHsva({ a: clamp(a, 0, 100) / 100 })}\n                thumbColor={current}\n                trackStyle={{\n                  background: `linear-gradient(to right, transparent, ${solid}), ${CHECKERBOARD}`,\n                }}\n              />\n            )}\n          </div>\n        </div>\n\n        <div className=\"flex items-start gap-2\">\n          {activeFormat === \"hex\" && (\n            <HexField\n              hex={hex}\n              disabled={disabled}\n              onCommit={(next) => {\n                const parsed = parseHex(next);\n                if (parsed) setFromRgba(withAlpha ? parsed : { ...parsed, a: hsva.a });\n              }}\n            />\n          )}\n\n          {activeFormat === \"rgb\" && (\n            <>\n              <ChannelField\n                label=\"R\"\n                value={rgba.r}\n                min={0}\n                max={255}\n                disabled={disabled}\n                onCommit={(r) => setFromRgba({ ...rgba, r })}\n              />\n              <ChannelField\n                label=\"G\"\n                value={rgba.g}\n                min={0}\n                max={255}\n                disabled={disabled}\n                onCommit={(g) => setFromRgba({ ...rgba, g })}\n              />\n              <ChannelField\n                label=\"B\"\n                value={rgba.b}\n                min={0}\n                max={255}\n                disabled={disabled}\n                onCommit={(b) => setFromRgba({ ...rgba, b })}\n              />\n            </>\n          )}\n\n          {activeFormat === \"hsl\" && (\n            <>\n              <ChannelField\n                label=\"H\"\n                value={hsl.h}\n                min={0}\n                max={360}\n                disabled={disabled}\n                onCommit={(h) => setHsva(hslToHsva(h, hsl.s, hsl.l, hsva.a))}\n              />\n              <ChannelField\n                label=\"S\"\n                value={hsl.s}\n                min={0}\n                max={100}\n                disabled={disabled}\n                onCommit={(s) => setHsva(hslToHsva(hsl.h, s, hsl.l, hsva.a))}\n              />\n              <ChannelField\n                label=\"L\"\n                value={hsl.l}\n                min={0}\n                max={100}\n                disabled={disabled}\n                onCommit={(l) => setHsva(hslToHsva(hsl.h, hsl.s, l, hsva.a))}\n              />\n            </>\n          )}\n\n          {withAlpha && activeFormat !== \"hex\" && (\n            <ChannelField\n              label=\"A\"\n              value={hsva.a * 100}\n              min={0}\n              max={100}\n              disabled={disabled}\n              onCommit={(a) => setHsva({ a: a / 100 })}\n            />\n          )}\n\n          <button\n            type=\"button\"\n            onClick={cycleFormat}\n            disabled={disabled}\n            aria-label={`Color format: ${activeFormat.toUpperCase()}. Switch format`}\n            className={cn(\n              \"mt-0.5 grid size-8 shrink-0 place-items-center rounded-[var(--primitive-radius-control-sm)]\",\n              \"text-[var(--primitive-text-secondary)]\",\n              \"transition-[color,background-color] duration-100 ease-out\",\n              \"hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n              \"active:scale-[0.97] disabled:cursor-not-allowed\",\n              \"motion-reduce:transition-none motion-reduce:active:scale-100\",\n              focusRing,\n            )}\n          >\n            <IconSelector size={15} stroke={1.7} aria-hidden />\n          </button>\n        </div>\n\n        {swatches && swatches.length > 0 && (\n          <div className=\"flex flex-wrap gap-1.5 border-t border-[var(--border)] pt-3\">\n            {swatches.map((swatch) => {\n              const selected = swatch.toLowerCase() === hex.slice(0, 7).toLowerCase();\n              const parsedSwatch = parseHex(swatch);\n              const darkMark = parsedSwatch ? isLightColor(parsedSwatch) : false;\n              return (\n                <button\n                  key={swatch}\n                  type=\"button\"\n                  disabled={disabled}\n                  aria-label={swatch}\n                  aria-pressed={selected}\n                  onClick={() => {\n                    const parsed = parseHex(swatch);\n                    if (parsed) setFromRgba({ ...parsed, a: hsva.a });\n                  }}\n                  className={cn(\n                    \"size-5 rounded-full\",\n                    \"shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_16%,transparent)]\",\n                    \"transition-transform duration-100 ease-out\",\n                    \"hover:scale-110 active:scale-[0.94]\",\n                    \"motion-reduce:transition-none motion-reduce:hover:scale-100\",\n                    focusRing,\n                  )}\n                  style={{ backgroundColor: swatch }}\n                >\n                  <IconCheck\n                    size={12}\n                    stroke={2.6}\n                    aria-hidden\n                    className={cn(\n                      \"mx-auto\",\n                      selected ? \"opacity-100\" : \"opacity-0\",\n                      // Tick follows the swatch's luminance, so it stays legible\n                      // on both a near-black and a pale swatch.\n                      darkMark\n                        ? \"text-black/80\"\n                        : \"text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]\",\n                    )}\n                  />\n                </button>\n              );\n            })}\n          </div>\n        )}\n      </div>\n    </div>\n  );\n}\n\n/* ─── trigger + popover ─────────────────────────────────────── */\n\nexport interface ColorPickerProps extends ColorPickerPanelProps {\n  /** Controlled open state of the popover. */\n  open?: boolean;\n  /** Initial open state when uncontrolled. */\n  defaultOpen?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  /** Which side the panel opens on. */\n  side?: \"top\" | \"right\" | \"bottom\" | \"left\";\n  align?: \"start\" | \"center\" | \"end\";\n  /** Hides the hex label inside the trigger. */\n  showValue?: boolean;\n  /** Replaces the default trigger. */\n  children?: React.ReactNode;\n}\n\nexport function ColorPicker({\n  open,\n  defaultOpen,\n  onOpenChange,\n  side = \"bottom\",\n  align = \"start\",\n  showValue = true,\n  children,\n  className,\n  ...panelProps\n}: ColorPickerProps) {\n  const { value, defaultValue, alpha } = panelProps;\n  const [internalHex, setInternalHex] = React.useState(\n    () => value ?? defaultValue ?? DEFAULT_COLOR,\n  );\n  const hex = value ?? internalHex;\n  const displayHex = React.useMemo(() => {\n    const parsed = parseHex(hex);\n    return parsed ? rgbaToHex(parsed, Boolean(alpha)) : hex;\n  }, [hex, alpha]);\n\n  return (\n    <BasePopover.Root\n      open={open}\n      defaultOpen={defaultOpen}\n      onOpenChange={onOpenChange ? (next) => onOpenChange(next) : undefined}\n    >\n      <BasePopover.Trigger\n        disabled={panelProps.disabled}\n        render={\n          children ? (\n            (children as React.ReactElement)\n          ) : (\n            <button\n              type=\"button\"\n              className={cn(\n                \"inline-flex h-[var(--primitive-control-height-md)] items-center gap-2.5\",\n                \"rounded-[var(--primitive-radius-control)] border border-[var(--border)]\",\n                \"bg-[var(--background)] pl-2 pr-3 text-sm text-[var(--foreground)]\",\n                \"transition-[border-color,background-color,transform] duration-100 ease-out\",\n                \"hover:border-[color-mix(in_srgb,var(--foreground)_16%,transparent)]\",\n                \"hover:bg-[var(--primitive-surface-hover)]\",\n                \"active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45\",\n                \"motion-reduce:transition-none motion-reduce:active:scale-100\",\n                focusRing,\n                \"focus-visible:ring-offset-[var(--background)]\",\n                className,\n              )}\n            >\n              <span\n                aria-hidden\n                className=\"size-5 shrink-0 rounded-[6px] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_16%,transparent)]\"\n                style={{ background: CHECKERBOARD }}\n              >\n                <span\n                  className=\"block size-full rounded-[6px]\"\n                  style={{ backgroundColor: displayHex }}\n                />\n              </span>\n              {showValue && (\n                <span className=\"font-medium uppercase tabular-nums tracking-[0.04em]\">\n                  {displayHex}\n                </span>\n              )}\n            </button>\n          )\n        }\n      />\n      <BasePopover.Portal>\n        <BasePopover.Positioner\n          side={side}\n          align={align}\n          sideOffset={8}\n          collisionPadding={12}\n          className=\"z-[var(--primitive-z-popover)] outline-none\"\n        >\n          <BasePopover.Popup\n            data-wensity-primitive=\"\"\n            className={cn(\n              \"origin-[var(--transform-origin)] transform-gpu outline-none\",\n              \"rounded-[var(--primitive-radius-surface)]\",\n              \"[box-shadow:var(--primitive-shadow-overlay)]\",\n              \"transition-[opacity,scale] duration-[180ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n              \"data-[ending-style]:duration-[120ms]\",\n              \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n              \"data-[starting-style]:scale-[0.96] data-[ending-style]:scale-[0.96]\",\n              \"motion-reduce:transition-none motion-reduce:data-[starting-style]:scale-100 motion-reduce:data-[ending-style]:scale-100\",\n            )}\n          >\n            <ColorPickerPanel\n              {...panelProps}\n              onChange={(next) => {\n                setInternalHex(next);\n                panelProps.onChange?.(next);\n              }}\n            />\n          </BasePopover.Popup>\n        </BasePopover.Positioner>\n      </BasePopover.Portal>\n    </BasePopover.Root>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/color-picker.tsx. For Pro components and updates, use pnpm dlx wensity@latest add color-picker.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "color-picker",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/color-picker",
+      "shadcnUrl": "https://ui.wensity.com/r/color-picker",
+      "cliInstall": "pnpm dlx wensity@latest add color-picker"
+    }
+  }
+}

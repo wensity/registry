@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 91,
+  "count": 92,
   "items": [
     {
       "name": "font-inter",
@@ -68,7 +68,7 @@
     {
       "name": "liquid-multimodal-input",
       "type": "registry:block",
-      "title": "Liquid Multimodal Input",
+      "title": "AI Prompt Input",
       "description": "An expanding prompt area with a glowing drop zone that breathes open to meet you as you type a thought or drag a file.",
       "categories": [
         "Agentic AI Interfaces",
@@ -89,7 +89,7 @@
     {
       "name": "generative-skeleton-mesh",
       "type": "registry:block",
-      "title": "Generative Skeleton Mesh",
+      "title": "Animated Loading Skeleton",
       "description": "An organic loading state instead of a spinner, with a slow aurora that breathes in the space where your content will land.",
       "categories": [
         "Agentic AI Interfaces",
@@ -327,7 +327,7 @@
     {
       "name": "before-after-card",
       "type": "registry:block",
-      "title": "Before After Card",
+      "title": "Image Comparison Slider",
       "description": "Drag the handle to wipe between before and after images with absolutely zero lag.",
       "categories": [
         "Elite Micro-Interactions",
@@ -540,7 +540,7 @@
       "name": "line-fill-text",
       "type": "registry:block",
       "title": "Line Fill Text",
-      "description": "Alpha-cascade ribbons clipped neatly inside the letterforms themselves.",
+      "description": "Bold type filled with flowing curved linework that bends round the cursor.",
       "categories": [
         "Text Animations",
         "wensity",
@@ -1819,6 +1819,27 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/typography",
         "cliInstall": "pnpm dlx wensity@latest add typography"
+      }
+    },
+    {
+      "name": "color-picker",
+      "type": "registry:block",
+      "title": "Color Picker",
+      "description": "Saturation and value canvas with hue and alpha rails, a screen eyedropper, and HEX, RGB, or HSL fields in one popover.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@tabler/icons-react",
+        "@base-ui/react"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/color-picker.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/color-picker",
+        "cliInstall": "pnpm dlx wensity@latest add color-picker"
       }
     }
   ]
