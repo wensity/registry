@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "model-context-switcher",
   "type": "registry:block",
-  "title": "Model Context Switcher",
+  "title": "AI Model Selector",
   "description": "Pick a model and the selection pill glides to meet your choice.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [

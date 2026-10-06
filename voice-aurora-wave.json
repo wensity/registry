@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "voice-aurora-wave",
   "type": "registry:block",
-  "title": "Voice Aurora Wave",
+  "title": "Voice Reactive Orb",
   "description": "Speak and the aurora swells into something that feels alive.",
   "author": "Wensity <hey@wensity.com>",
   "dependencies": [

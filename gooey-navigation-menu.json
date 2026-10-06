@@ -283,7 +283,7 @@
   },
   "docs": "Free Wensity component. Installs to @components/wensity/gooey-navigation-menu.tsx. For Pro components and updates, use pnpm dlx wensity@latest add gooey-navigation-menu.",
   "categories": [
-    "Elite Micro-Interactions",
+    "Morph & Gooey",
     "wensity",
     "free"
   ],
@@ -291,7 +291,7 @@
     "wensity": {
       "slug": "gooey-navigation-menu",
       "access": "free",
-      "category": "Elite Micro-Interactions",
+      "category": "Morph & Gooey",
       "kind": "component",
       "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
       "shadcnUrl": "https://ui.wensity.com/r/gooey-navigation-menu",

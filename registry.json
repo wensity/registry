@@ -107,7 +107,7 @@
     {
       "name": "voice-aurora-wave",
       "type": "registry:block",
-      "title": "Voice Aurora Wave",
+      "title": "Voice Reactive Orb",
       "description": "A breathing voice orb that swells with speech and settles between turns, never jittery and always organic to look at.",
       "categories": [
         "Agentic AI Interfaces",
@@ -128,8 +128,8 @@
     {
       "name": "model-context-switcher",
       "type": "registry:block",
-      "title": "Model Context Switcher",
-      "description": "A Radix dropdown that scales out from its trigger and glides the selection pill across to meet whichever model you pick.",
+      "title": "AI Model Selector",
+      "description": "An AI model selector dropdown that scales out from its trigger and glides the selection pill to whichever model you pick.",
       "categories": [
         "Agentic AI Interfaces",
         "wensity",
@@ -224,30 +224,9 @@
       }
     },
     {
-      "name": "gooey-navigation-menu",
-      "type": "registry:block",
-      "title": "Gooey Navigation Menu",
-      "description": "A liquid FAB whose child actions stretch out of the trigger like molten metal.",
-      "categories": [
-        "Elite Micro-Interactions",
-        "wensity",
-        "free"
-      ],
-      "dependencies": [
-        "framer-motion",
-        "@tabler/icons-react"
-      ],
-      "href": "https://raw.githubusercontent.com/wensity/registry/main/gooey-navigation-menu.json",
-      "meta": {
-        "kind": "component",
-        "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
-        "cliInstall": "pnpm dlx wensity@latest add gooey-navigation-menu"
-      }
-    },
-    {
       "name": "multi-select-token-pills",
       "type": "registry:block",
-      "title": "Multi-Select Token Pills",
+      "title": "Multi-Select Tag Input",
       "description": "A tag input where pills pop in as you add them and slide out on remove, closing the gap without snapping the layout.",
       "categories": [
         "Elite Micro-Interactions",
@@ -362,6 +341,27 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/github-activity-grid",
         "cliInstall": "pnpm dlx wensity@latest add github-activity-grid"
+      }
+    },
+    {
+      "name": "gooey-navigation-menu",
+      "type": "registry:block",
+      "title": "Gooey Navigation Menu",
+      "description": "A liquid FAB whose child actions stretch out of the trigger like molten metal.",
+      "categories": [
+        "Morph & Gooey",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/gooey-navigation-menu.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/gooey-navigation-menu",
+        "cliInstall": "pnpm dlx wensity@latest add gooey-navigation-menu"
       }
     },
     {
@@ -521,7 +521,7 @@
     {
       "name": "canvas-text",
       "type": "registry:block",
-      "title": "Canvas Text",
+      "title": "Particle Text",
       "description": "Loading-ring canvas particles that slowly resolve into solid letterforms.",
       "categories": [
         "Text Animations",
@@ -1435,7 +1435,7 @@
       "name": "calendar",
       "type": "registry:block",
       "title": "Calendar",
-      "description": "Date grids for single, range, and multi-date selection, with month navigation and event-ready day rendering.",
+      "description": "Date grids for single, range, and multi-date selection, with month navigation, booked dates, and event dots on days.",
       "categories": [
         "UI Primitives",
         "wensity",
@@ -1805,7 +1805,7 @@
       "name": "typography",
       "type": "registry:block",
       "title": "Typography",
-      "description": "Type primitives for headings, prose blocks, lead and muted text, inline code, and consistently styled lists.",
+      "description": "Type primitives for six heading levels, prose blocks, lead and muted text, inline code, and consistently styled lists.",
       "categories": [
         "UI Primitives",
         "wensity",
