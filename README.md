@@ -77,7 +77,7 @@ those for you at add time.
 
 ## What is in here
 
-91 registry items across six groups.
+95 registry items across six groups.
 
 ### Agentic AI Interfaces
 
@@ -109,10 +109,11 @@ Headline and word-level motion, from shimmer and glitch to scribble and morph.
 | [`text-glitch`](https://ui.wensity.com/components/text-glitch) | Text Glitch | A chromatic clip-path glitch for headlines, CSS-only and entirely GPU-friendly. | `npx shadcn@latest add @wensity/text-glitch` |
 | [`text-path`](https://ui.wensity.com/components/text-path) | Text Path | SVG text riding a curved wave, arc, or circle path on a seamless, light loop. | `npx shadcn@latest add @wensity/text-path` |
 | [`text-highlight`](https://ui.wensity.com/components/text-highlight) | Text Highlight | A hand-placed highlighter band that sweeps in behind your text and tracks wrapping. | `npx shadcn@latest add @wensity/text-highlight` |
-| [`text-scribble`](https://ui.wensity.com/components/text-scribble) | Text Scribble | Hand-drawn scribble, underline, and strike marks that draw themselves onto text. | `npx shadcn@latest add @wensity/text-scribble` |
+| [`text-scribble`](https://ui.wensity.com/components/text-scribble) | Text Scribble | Hand-drawn scribble, underline, strike, circle, and box marks that draw themselves onto text. | `npx shadcn@latest add @wensity/text-scribble` |
 | [`text-chroma-reveal`](https://ui.wensity.com/components/text-chroma-reveal) | Text Chroma Reveal | A chromatic ribbon sweep that paints each of your headlines cleanly into view. | `npx shadcn@latest add @wensity/text-chroma-reveal` |
 | [`text-spectrum`](https://ui.wensity.com/components/text-spectrum) | Text Spectrum | An animated multi-stop color wash that drifts endlessly through headlines. | `npx shadcn@latest add @wensity/text-spectrum` |
 | [`text-ripple`](https://ui.wensity.com/components/text-ripple) | Text Ripple | A 3D character ripple with a traveling color crest, CSS-only and GPU-light. | `npx shadcn@latest add @wensity/text-ripple` |
+| [`underline-animation`](https://ui.wensity.com/components/underline-animation) | Underline Animation | Five CSS hover underlines for links (slide, center, fill, wavy, gradient) that follow wrapped lines. | `npx shadcn@latest add @wensity/underline-animation` |
 
 ### Cinematic Interactions
 
@@ -124,6 +125,7 @@ Scroll and motion pieces for landing pages and hero sections.
 | [`morphing-shape-background`](https://ui.wensity.com/components/morphing-shape-background) | Morphing Shape Background | Lava-lamp blobs that drift behind your hero at 120fps with no SVG morphing. | `npx shadcn@latest add @wensity/morphing-shape-background` |
 | [`scrubbable-video-reveal`](https://ui.wensity.com/components/scrubbable-video-reveal) | Scrubbable Video Reveal | An Apple-style image sequence scrubbed frame by frame on canvas, following your hand as you scroll in either direction. | `npx shadcn@latest add @wensity/scrubbable-video-reveal` |
 | [`animated-tabs`](https://ui.wensity.com/components/animated-tabs) | Animated Tabs | A physical stack of photo cards shuffled to the front by clipped tabs, with a tight image inset and copy in the footer. | `npx shadcn@latest add @wensity/animated-tabs` |
+| [`blob-animation`](https://ui.wensity.com/components/blob-animation) | Blob Animation | A pure-CSS morphing blob from a seeded border radius, as a solid, soft glow, outline, or image mask. | `npx shadcn@latest add @wensity/blob-animation` |
 
 ### Elite Micro-Interactions
 
@@ -137,6 +139,7 @@ Small, high-polish interaction details.
 | [`cool-button`](https://ui.wensity.com/components/cool-button) | Cool Button | A dual-layer orbit glow that soft-spins around the edge of any button or link you wrap it around, at zero layout cost. | `npx shadcn@latest add @wensity/cool-button` |
 | [`file-uploader`](https://ui.wensity.com/components/file-uploader) | File Uploader | A bold red dropzone for any file, with gallery tiles and progress after upload. | `npx shadcn@latest add @wensity/file-uploader` |
 | [`before-after-card`](https://ui.wensity.com/components/before-after-card) | Before After Card | Drag the handle to wipe between before and after images with absolutely zero lag. | `npx shadcn@latest add @wensity/before-after-card` |
+| [`progressive-image-loading`](https://ui.wensity.com/components/progressive-image-loading) | Progressive Image Loading | Holds the image's space with a BlurHash, preview, color, or shimmer placeholder, then develops in from blur. | `npx shadcn@latest add @wensity/progressive-image-loading` |
 
 ### Heavy SaaS Blocks
 
