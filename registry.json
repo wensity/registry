@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 92,
+  "count": 95,
   "items": [
     {
       "name": "font-inter",
@@ -169,7 +169,7 @@
       "name": "morphing-shape-background",
       "type": "registry:block",
       "title": "Morphing Shape Background",
-      "description": "Lava-lamp blobs that drift behind your hero at 120fps with no SVG morphing.",
+      "description": "Lava lamp background for React heroes: soft gradient shapes that drift and melt.",
       "categories": [
         "Cinematic Interactions",
         "wensity",
@@ -221,6 +221,24 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/animated-tabs",
         "cliInstall": "pnpm dlx wensity@latest add animated-tabs"
+      }
+    },
+    {
+      "name": "blob-animation",
+      "type": "registry:block",
+      "title": "Blob Animation",
+      "description": "Blob animation in CSS: a morphing gradient blob, soft glow, outline, or image mask.",
+      "categories": [
+        "Cinematic Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/blob-animation.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/blob-animation",
+        "cliInstall": "pnpm dlx wensity@latest add blob-animation"
       }
     },
     {
@@ -321,6 +339,24 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/before-after-card",
         "cliInstall": "pnpm dlx wensity@latest add before-after-card"
+      }
+    },
+    {
+      "name": "progressive-image-loading",
+      "type": "registry:block",
+      "title": "Progressive Image Loading",
+      "description": "Images that develop from a blur, color, or shimmer placeholder, without layout shift.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/progressive-image-loading.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/progressive-image-loading",
+        "cliInstall": "pnpm dlx wensity@latest add progressive-image-loading"
       }
     },
     {
@@ -612,7 +648,7 @@
       "name": "text-scribble",
       "type": "registry:block",
       "title": "Text Scribble",
-      "description": "Hand-drawn scribble, underline, and strike marks that draw themselves onto text.",
+      "description": "Hand-drawn scribble, squiggly underline, strike, circle, and box marks for text.",
       "categories": [
         "Text Animations",
         "wensity",
@@ -680,6 +716,24 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/text-ripple",
         "cliInstall": "pnpm dlx wensity@latest add text-ripple"
+      }
+    },
+    {
+      "name": "underline-animation",
+      "type": "registry:block",
+      "title": "Underline Animation",
+      "description": "CSS hover underlines for links: slide, center, fill, wavy, and gradient.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/underline-animation.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/underline-animation",
+        "cliInstall": "pnpm dlx wensity@latest add underline-animation"
       }
     },
     {

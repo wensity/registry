@@ -1,0 +1,299 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "progressive-image-loading",
+  "type": "registry:block",
+  "title": "Progressive Image Loading",
+  "description": "Progressive Image Loading is a React image component that holds the image's space and shows a placeholder until the file arrives, then develops it in from a soft blur to full sharpness. The placeholder can be a BlurHash string, decoded in the component with no package, or a tiny preview image, both blurred and overscaled so their edges never show, a flat fill in the photo's main color, which a BlurHash also provides, or a neutral shimmer. The frame takes its aspect ratio from ratio or from width and height, so the layout never shifts. Images already in the cache appear at once, a failed load shows a quiet error state with the alt text, and reduced motion swaps in the image with a short fade. It lazy loads by default and can render through next/image or any other image component.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/progressive-image-loading.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/progressive-image-loading.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\n\nimport { cn } from \"@/lib/utils\";\n\n/**\n * Progressive Image Loading\n *\n * An image that holds its space and shows a placeholder until the real file\n * arrives, then develops in: it fades up from a soft blur and settles at full\n * sharpness, the way Medium and Facebook load photos.\n *\n * Placeholders, in order of how much they reveal:\n * - blur: a BlurHash string or a tiny preview image, blurred and scaled so\n *   its edges never show. BlurHash is decoded here, no package needed.\n * - color: a flat fill in the photo's main color. A BlurHash supplies it\n *   for free when no color is given.\n * - shimmer: a neutral surface with a light sweep, for when nothing about\n *   the image is known yet.\n *\n * The box is sized from `ratio`, or from `width` and `height`, so nothing\n * shifts when the image lands. Images already in the cache skip the\n * animation. A failed load shows a quiet error state with the alt text.\n * Reduced motion swaps the image in with a short fade instead.\n *\n * Pass `as` to render through another image component such as next/image;\n * it receives `src`, `alt`, `onLoad`, `onError`, the class names, `width` and\n * `height` when both are given, plus anything in `imageProps`. With only a\n * `ratio`, pass `imageProps={{ fill: true }}` for next/image.\n */\n\nexport type ProgressiveImagePlaceholder = \"blur\" | \"color\" | \"shimmer\";\n\nexport interface ProgressiveImageLoadingProps {\n  /** Image url. While it is missing the placeholder stays up, for urls that arrive later. */\n  src?: string;\n  /** Alternative text. Also shown in the error state. */\n  alt: string;\n  /** Width over height, such as 4 / 3. Reserves the space before the image loads. */\n  ratio?: number;\n  /** Intrinsic width, used with height for the ratio when `ratio` is omitted. */\n  width?: number;\n  /** Intrinsic height, used with width for the ratio when `ratio` is omitted. */\n  height?: number;\n  /** Which placeholder to show. Defaults to blur when a BlurHash or preview is given, else color, else shimmer. */\n  placeholder?: ProgressiveImagePlaceholder;\n  /** BlurHash string for the blur placeholder, and the source of the main color. Decoded here, no package needed. */\n  blurhash?: string;\n  /** Tiny preview image (a data URL or a 20px wide file) for the blur placeholder. */\n  blurDataURL?: string;\n  /** Main color of the photo, for the color placeholder. */\n  color?: string;\n  /** Length of the develop animation, in milliseconds. Default 700. */\n  duration?: number;\n  /** Native lazy loading. Default \"lazy\". */\n  loading?: \"lazy\" | \"eager\";\n  sizes?: string;\n  srcSet?: string;\n  /** Render the image through another component, such as next/image. */\n  as?: React.ElementType;\n  /** Extra props for the image element, such as `priority`, or `fill` for next/image when only `ratio` is set. */\n  imageProps?: Record<string, unknown>;\n  onLoad?: () => void;\n  onError?: () => void;\n  /** Classes for the frame: radius, width, shadow. */\n  className?: string;\n  /** Classes for the image itself, such as object-position. */\n  imageClassName?: string;\n  style?: React.CSSProperties;\n}\n\ntype Phase = \"waiting\" | \"loaded\" | \"settled\" | \"error\";\n\nconst REDUCED_QUERY = \"(prefers-reduced-motion: reduce)\";\nconst BASE83 = \"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~\";\n/** Side of the decoded BlurHash bitmap. Tiny on purpose: it is blurred and scaled up anyway. */\nconst BLURHASH_SIZE = 32;\nconst SHIMMER_ID = \"wensity-progressive-image\";\nconst SHIMMER_CSS = `\n@keyframes wensity-pi-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }\n`;\n\nfunction ensureShimmer() {\n  if (typeof document === \"undefined\" || document.getElementById(SHIMMER_ID)) return;\n  const style = document.createElement(\"style\");\n  style.id = SHIMMER_ID;\n  style.textContent = SHIMMER_CSS;\n  document.head.appendChild(style);\n}\n\nfunction decode83(text: string) {\n  let value = 0;\n  for (const char of text) {\n    const digit = BASE83.indexOf(char);\n    if (digit < 0) return -1;\n    value = value * 83 + digit;\n  }\n  return value;\n}\n\nfunction toLinear(channel: number) {\n  const v = channel / 255;\n  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;\n}\n\nfunction toSRGB(value: number) {\n  const v = Math.max(0, Math.min(1, value));\n  return Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255);\n}\n\nfunction signedPow(value: number, exponent: number) {\n  return Math.sign(value) * Math.abs(value) ** exponent;\n}\n\ninterface DecodedHash {\n  /** Main color: the average the hash stores first. */\n  color: string;\n  /** Decoded bitmap, ready for a canvas. */\n  pixels: Uint8ClampedArray;\n}\n\n/**\n * BlurHash decoder, written from the published format: a size byte, a\n * quantized maximum, one average color, then cosine components that add up\n * to a soft picture. Returns null for anything malformed.\n */\nfunction decodeBlurhash(hash: string, size: number): DecodedHash | null {\n  if (!hash || hash.length < 6) return null;\n  const sizeFlag = decode83(hash[0]);\n  if (sizeFlag < 0) return null;\n  const numY = Math.floor(sizeFlag / 9) + 1;\n  const numX = (sizeFlag % 9) + 1;\n  if (hash.length !== 4 + 2 * numX * numY) return null;\n  const maxValue = (decode83(hash[1]) + 1) / 166;\n\n  const colors: Array<[number, number, number]> = [];\n  for (let i = 0; i < numX * numY; i++) {\n    if (i === 0) {\n      const value = decode83(hash.slice(2, 6));\n      if (value < 0) return null;\n      colors.push([toLinear(value >> 16), toLinear((value >> 8) & 255), toLinear(value & 255)]);\n    } else {\n      const value = decode83(hash.slice(4 + i * 2, 6 + i * 2));\n      if (value < 0) return null;\n      const r = Math.floor(value / (19 * 19));\n      const g = Math.floor(value / 19) % 19;\n      const b = value % 19;\n      colors.push([\n        signedPow((r - 9) / 9, 2) * maxValue,\n        signedPow((g - 9) / 9, 2) * maxValue,\n        signedPow((b - 9) / 9, 2) * maxValue,\n      ]);\n    }\n  }\n\n  const pixels = new Uint8ClampedArray(size * size * 4);\n  for (let y = 0; y < size; y++) {\n    for (let x = 0; x < size; x++) {\n      let r = 0;\n      let g = 0;\n      let b = 0;\n      for (let j = 0; j < numY; j++) {\n        const by = Math.cos((Math.PI * y * j) / size);\n        for (let i = 0; i < numX; i++) {\n          const basis = Math.cos((Math.PI * x * i) / size) * by;\n          const c = colors[i + j * numX];\n          r += c[0] * basis;\n          g += c[1] * basis;\n          b += c[2] * basis;\n        }\n      }\n      const at = (y * size + x) * 4;\n      pixels[at] = toSRGB(r);\n      pixels[at + 1] = toSRGB(g);\n      pixels[at + 2] = toSRGB(b);\n      pixels[at + 3] = 255;\n    }\n  }\n\n  const [dr, dg, db] = colors[0];\n  return { color: `rgb(${toSRGB(dr)} ${toSRGB(dg)} ${toSRGB(db)})`, pixels };\n}\n\n/** The average color is cheap to read without decoding the whole hash. */\nfunction hashColor(hash: string | undefined) {\n  if (!hash || hash.length < 6) return undefined;\n  const value = decode83(hash.slice(2, 6));\n  if (value < 0) return undefined;\n  return `rgb(${value >> 16} ${(value >> 8) & 255} ${value & 255})`;\n}\n\n/** Reduced motion as a subscription, so server and client render the same markup. */\nfunction subscribeReduced(onChange: () => void) {\n  const query = window.matchMedia(REDUCED_QUERY);\n  query.addEventListener(\"change\", onChange);\n  return () => query.removeEventListener(\"change\", onChange);\n}\n\nfunction useReducedMotion() {\n  return React.useSyncExternalStore(\n    subscribeReduced,\n    () => window.matchMedia(REDUCED_QUERY).matches,\n    () => false,\n  );\n}\n\nexport function ProgressiveImageLoading({\n  src,\n  alt,\n  ratio,\n  width,\n  height,\n  placeholder,\n  blurhash,\n  blurDataURL,\n  color,\n  duration = 700,\n  loading = \"lazy\",\n  sizes,\n  srcSet,\n  as: ImageComponent = \"img\",\n  imageProps,\n  onLoad,\n  onError,\n  className,\n  imageClassName,\n  style,\n}: ProgressiveImageLoadingProps) {\n  const [phase, setPhase] = React.useState<Phase>(\"waiting\");\n  const [instant, setInstant] = React.useState(false);\n  const imageRef = React.useRef<HTMLImageElement | null>(null);\n  const reduced = useReducedMotion();\n\n  const mode: ProgressiveImagePlaceholder =\n    placeholder ?? (blurhash || blurDataURL ? \"blur\" : color ? \"color\" : \"shimmer\");\n  const fill = color ?? hashColor(blurhash);\n  const aspect = ratio ?? (width && height ? width / height : undefined);\n\n  // A new image starts over from the placeholder.\n  const [trackedSrc, setTrackedSrc] = React.useState(src);\n  if (trackedSrc !== src) {\n    setTrackedSrc(src);\n    setPhase(\"waiting\");\n    setInstant(false);\n  }\n\n  // Paint the BlurHash straight onto a tiny canvas as it mounts: no state, no extra render.\n  const paintHash = React.useCallback(\n    (canvas: HTMLCanvasElement | null) => {\n      if (!canvas || !blurhash) return;\n      const decoded = decodeBlurhash(blurhash, BLURHASH_SIZE);\n      const ctx = canvas.getContext(\"2d\");\n      if (!decoded || !ctx) return;\n      const image = ctx.createImageData(BLURHASH_SIZE, BLURHASH_SIZE);\n      image.data.set(decoded.pixels);\n      ctx.putImageData(image, 0, 0);\n    },\n    [blurhash],\n  );\n\n  React.useEffect(() => {\n    if (mode === \"shimmer\") ensureShimmer();\n  }, [mode]);\n\n  // An image already in the cache can finish before React attaches onLoad. Catch\n  // it, and show it at once: animating a photo the reader already has is noise.\n  React.useEffect(() => {\n    const node = imageRef.current;\n    if (!src || !node || !(\"complete\" in node)) return;\n    if (node.complete && node.naturalWidth > 0) {\n      setInstant(true);\n      setPhase(\"settled\");\n    }\n  }, [src]);\n\n  // After the develop animation, drop the placeholder so no halo shows at the edges.\n  React.useEffect(() => {\n    if (phase !== \"loaded\") return;\n    const wait = reduced ? 160 : duration;\n    const timer = window.setTimeout(() => setPhase(\"settled\"), wait + 60);\n    return () => window.clearTimeout(timer);\n  }, [phase, duration, reduced]);\n\n  const handleLoad = () => {\n    setPhase((current) => (current === \"settled\" ? current : \"loaded\"));\n    onLoad?.();\n  };\n\n  const handleError = () => {\n    setPhase(\"error\");\n    onError?.();\n  };\n\n  const shown = phase === \"loaded\" || phase === \"settled\";\n  // Any image component works here, so its props are typed loosely on purpose.\n  const Img = ImageComponent as unknown as React.ComponentType<Record<string, unknown>>;\n  // Intrinsic size reaches the image too: next/image requires it unless it is\n  // told to fill, and it rejects both at once. A plain img just ignores it for\n  // layout, since the frame sizes the image.\n  const intrinsic = imageProps?.fill || !width || !height ? {} : { width, height };\n  const ms = instant ? 0 : reduced ? 160 : duration;\n\n  const imageStyle: React.CSSProperties = {\n    opacity: shown ? 1 : 0,\n    filter: shown || reduced ? \"none\" : \"blur(18px) saturate(1.25)\",\n    transform: shown || reduced ? \"none\" : \"scale(1.04)\",\n    transition: ms\n      ? `opacity ${ms}ms cubic-bezier(0.2, 0.7, 0.2, 1), filter ${ms}ms cubic-bezier(0.2, 0.7, 0.2, 1), transform ${ms * 1.2}ms cubic-bezier(0.2, 0.7, 0.2, 1)`\n      : \"none\",\n  };\n\n  return (\n    <div\n      className={cn(\"relative isolate w-full overflow-hidden bg-neutral-200 dark:bg-neutral-800\", className)}\n      style={{ aspectRatio: aspect, ...style }}\n      aria-busy={!shown && phase !== \"error\" ? true : undefined}\n    >\n      {/* Placeholder, under the image until the image has settled. */}\n      {phase !== \"settled\" && phase !== \"error\" && (\n        <div aria-hidden className=\"absolute inset-0\" style={{ backgroundColor: fill }}>\n          {/* Blurred and overscaled, so the soft edges of the preview never show. */}\n          {mode === \"blur\" && blurDataURL && (\n            <div\n              className=\"absolute -inset-[8%] bg-cover bg-center\"\n              style={{ backgroundImage: `url(${blurDataURL})`, filter: \"blur(24px) saturate(1.15)\" }}\n            />\n          )}\n          {mode === \"blur\" && !blurDataURL && blurhash && (\n            <canvas\n              ref={paintHash}\n              width={BLURHASH_SIZE}\n              height={BLURHASH_SIZE}\n              className=\"absolute -inset-[8%] size-[116%]\"\n              style={{ filter: \"blur(18px) saturate(1.15)\" }}\n            />\n          )}\n          {mode === \"shimmer\" && (\n            <div className=\"absolute inset-0 overflow-hidden\">\n              <div\n                className=\"absolute inset-0 motion-reduce:hidden\"\n                style={{\n                  background:\n                    \"linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.28) 45%, rgba(255,255,255,0.42) 50%, rgba(255,255,255,0.28) 55%, transparent 80%)\",\n                  animation: \"wensity-pi-sweep 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite\",\n                }}\n              />\n            </div>\n          )}\n        </div>\n      )}\n\n      {src && phase !== \"error\" && (\n        <Img\n          ref={imageRef}\n          src={src}\n          alt={alt}\n          sizes={sizes}\n          srcSet={srcSet}\n          loading={loading}\n          decoding=\"async\"\n          onLoad={handleLoad}\n          onError={handleError}\n          className={cn(\"absolute inset-0 size-full object-cover\", imageClassName)}\n          style={imageStyle}\n          {...intrinsic}\n          {...imageProps}\n        />\n      )}\n\n      {phase === \"error\" && (\n        <div\n          role=\"img\"\n          aria-label={alt}\n          className=\"absolute inset-0 flex flex-col items-center justify-center gap-2 bg-neutral-100 px-4 text-center text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400\"\n        >\n          <svg aria-hidden width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.6\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n            <path d=\"M15 8h.01\" />\n            <path d=\"M7 3h11a3 3 0 0 1 3 3v11m-.856 3.099a3 3 0 0 1-2.144.901h-12a3 3 0 0 1-3-3v-12c0-.845.349-1.608.91-2.153\" />\n            <path d=\"M3 16l5-5c.928-.893 2.072-.893 3 0l5 5\" />\n            <path d=\"M16.33 12.338c.574-.054 1.155.166 1.67.662l3 3\" />\n            <path d=\"M3 3l18 18\" />\n          </svg>\n          <span className=\"line-clamp-2 max-w-[24ch] text-xs leading-snug\">{alt}</span>\n        </div>\n      )}\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.875rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
+      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
+      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
+      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
+      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/progressive-image-loading.tsx. For Pro components and updates, use pnpm dlx wensity@latest add progressive-image-loading.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "progressive-image-loading",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/progressive-image-loading",
+      "shadcnUrl": "https://ui.wensity.com/r/progressive-image-loading",
+      "cliInstall": "pnpm dlx wensity@latest add progressive-image-loading"
+    }
+  }
+}
