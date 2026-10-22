@@ -22,7 +22,7 @@
       "path": "registry/wensity/form-field.tsx",
       "type": "registry:component",
       "target": "@components/wensity/form-field.tsx",
-      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Field as BaseField } from \"@base-ui/react/field\";\nimport { cn } from \"@/lib/utils\";\n\nconst elevatedSurfaceClass = cn(\n  \"relative isolate overflow-hidden rounded-[var(--primitive-radius-surface)]\",\n  \"border border-[var(--border)] bg-[var(--primitive-surface-elevated)]\",\n  \"[box-shadow:var(--primitive-shadow-raised)]\",\n);\n\nexport type FormFieldLayout = \"stack\" | \"inline\" | \"split\" | \"card\";\nexport type FormFieldDensity = \"sm\" | \"md\" | \"lg\";\n\nexport interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {\n  id?: string;\n  label?: React.ReactNode;\n  description?: React.ReactNode;\n  error?: React.ReactNode;\n  required?: boolean;\n  optional?: boolean;\n  layout?: FormFieldLayout;\n  density?: FormFieldDensity;\n  children: React.ReactNode;\n  labelClassName?: string;\n  descriptionClassName?: string;\n  errorClassName?: string;\n}\n\nexport interface FormFieldContextValue {\n  controlId: string;\n  descriptionId?: string;\n  errorId?: string;\n  describedBy?: string;\n  invalid: boolean;\n  required?: boolean;\n}\n\nexport interface FormFieldControlProps\n  extends React.HTMLAttributes<HTMLElement> {\n  asChild?: boolean;\n}\n\nexport interface FormFieldLabelProps\n  extends React.LabelHTMLAttributes<HTMLLabelElement> {\n  required?: boolean;\n  optional?: boolean;\n}\n\nexport type FormFieldDescriptionProps = React.HTMLAttributes<HTMLParagraphElement>;\n\nexport type FormFieldErrorProps = React.HTMLAttributes<HTMLParagraphElement>;\n\nexport interface FormSectionProps\n  extends Omit<React.HTMLAttributes<HTMLElement>, \"title\"> {\n  title?: React.ReactNode;\n  description?: React.ReactNode;\n  actions?: React.ReactNode;\n  divided?: boolean;\n}\n\nexport interface FormActionsProps extends React.HTMLAttributes<HTMLDivElement> {\n  align?: \"left\" | \"right\" | \"between\";\n}\n\nconst FormFieldContext = React.createContext<FormFieldContextValue | null>(\n  null,\n);\n\nconst layoutClasses: Record<FormFieldLayout, string> = {\n  stack: \"flex flex-col\",\n  inline:\n    \"grid items-start gap-x-5 sm:grid-cols-[minmax(8rem,0.42fr)_minmax(0,1fr)]\",\n  split:\n    \"grid items-start gap-x-6 sm:grid-cols-[minmax(10rem,0.5fr)_minmax(0,1fr)]\",\n  card: elevatedSurfaceClass,\n};\n\nconst densityGap: Record<FormFieldDensity, string> = {\n  sm: \"gap-1.5\",\n  md: \"gap-1.5\",\n  lg: \"gap-2.5\",\n};\n\nconst cardPadding: Record<FormFieldDensity, string> = {\n  sm: \"p-3.5\",\n  md: \"p-4\",\n  lg: \"p-5\",\n};\n\nconst labelTextClass =\n  \"block text-[13px] font-medium leading-none tracking-[-0.01em] text-[var(--foreground)]\";\n\nconst helperTextClass =\n  \"text-[12px] leading-[1.45] text-[var(--primitive-text-secondary)]\";\n\nconst errorTextClass =\n  \"text-[12px] leading-[1.45] font-medium text-[var(--primitive-destructive)] motion-safe:transition-[opacity,transform] motion-safe:duration-150 motion-safe:ease-[var(--primitive-ease)] motion-reduce:transition-none\";\n\nfunction useFormFieldContext(component: string) {\n  const context = React.useContext(FormFieldContext);\n  if (!context) {\n    throw new Error(`${component} must be used inside FormField.`);\n  }\n  return context;\n}\n\nfunction FieldLabelMarker({\n  required,\n  optional,\n}: {\n  required?: boolean;\n  optional?: boolean;\n}) {\n  if (required) {\n    return (\n      <span\n        aria-hidden=\"true\"\n        className=\"ml-1 font-medium text-[var(--primitive-destructive)]\"\n      >\n        *\n      </span>\n    );\n  }\n\n  if (optional) {\n    return (\n      <span\n        role=\"note\"\n        className=\"ml-2 text-[length:var(--primitive-text-hint)] font-medium text-[var(--primitive-text-secondary)]\"\n      >\n        Optional\n      </span>\n    );\n  }\n\n  return null;\n}\n\nexport function FormField({\n  id,\n  label,\n  description,\n  error,\n  required,\n  optional,\n  layout = \"stack\",\n  density = \"md\",\n  children,\n  className,\n  labelClassName,\n  descriptionClassName,\n  errorClassName,\n  ...props\n}: FormFieldProps) {\n  const reactId = React.useId();\n  const controlId = id ?? `wensity-field-${reactId}`;\n  const descriptionId = description ? `${controlId}-description` : undefined;\n  const errorId = error ? `${controlId}-error` : undefined;\n  const describedBy =\n    [errorId, descriptionId].filter(Boolean).join(\" \") || undefined;\n\n  const context = React.useMemo<FormFieldContextValue>(\n    () => ({\n      controlId,\n      descriptionId,\n      errorId,\n      describedBy,\n      invalid: Boolean(error),\n      required,\n    }),\n    [controlId, describedBy, descriptionId, errorId, error, required],\n  );\n\n  const meta =\n    label || description ? (\n      <div className={cn(\"min-w-0\", layout !== \"stack\" && \"pt-1\")}>\n        {label ? (\n          <FormFieldLabel\n            required={required}\n            optional={optional}\n            className={labelClassName}\n          >\n            {label}\n          </FormFieldLabel>\n        ) : null}\n        {description ? (\n          <FormFieldDescription className={cn(\"mt-1\", descriptionClassName)}>\n            {description}\n          </FormFieldDescription>\n        ) : null}\n      </div>\n    ) : null;\n\n  const control = (\n    <div className=\"min-w-0\">\n      {children}\n      {error ? (\n        <FormFieldError className={cn(\"mt-1\", errorClassName)}>\n          {error}\n        </FormFieldError>\n      ) : null}\n    </div>\n  );\n\n  return (\n    <FormFieldContext.Provider value={context}>\n      <BaseField.Root data-wensity-primitive=\"\"\n        invalid={Boolean(error)}\n        data-slot=\"form-field\"\n        data-layout={layout}\n        data-invalid={error ? \"\" : undefined}\n        className={cn(\n          layoutClasses[layout],\n          densityGap[density],\n          layout === \"card\" && cardPadding[density],\n          className,\n        )}\n        {...props}\n      >\n        {meta}\n        {control}\n      </BaseField.Root>\n    </FormFieldContext.Provider>\n  );\n}\n\nexport function FormFieldControl({\n  asChild = false,\n  className,\n  children,\n  ...props\n}: FormFieldControlProps) {\n  const context = useFormFieldContext(\"FormFieldControl\");\n\n  if (asChild && React.isValidElement(children)) {\n    // Pass the child element as `render` so Base UI runs mergeProps(controlProps, child.props):\n    // child props win and event handlers compose (Radix Slot semantics).\n    return (\n      <BaseField.Control\n        id={context.controlId}\n        className={className}\n        aria-describedby={context.describedBy}\n        aria-invalid={context.invalid || undefined}\n        aria-required={context.required || undefined}\n        render={children}\n        {...props}\n      />\n    );\n  }\n\n  return (\n    <BaseField.Control\n      id={context.controlId}\n      render={(controlProps) => (\n        <div\n          {...controlProps}\n          aria-describedby={\n            (controlProps[\"aria-describedby\"] as string | undefined) ??\n            context.describedBy\n          }\n          aria-invalid={context.invalid || undefined}\n          aria-required={context.required || undefined}\n          className={cn(controlProps.className as string | undefined, className)}\n          {...props}\n        >\n          {children}\n        </div>\n      )}\n    />\n  );\n}\n\nexport function FormFieldLabel({\n  required,\n  optional,\n  className,\n  children,\n  ...props\n}: FormFieldLabelProps) {\n  const context = useFormFieldContext(\"FormFieldLabel\");\n\n  return (\n    <BaseField.Label className={cn(labelTextClass, className)} {...props}>\n      {children}\n      <FieldLabelMarker\n        required={required ?? context.required}\n        optional={optional}\n      />\n    </BaseField.Label>\n  );\n}\n\nexport function FormFieldDescription({\n  className,\n  ...props\n}: FormFieldDescriptionProps) {\n  const context = useFormFieldContext(\"FormFieldDescription\");\n\n  return (\n    <BaseField.Description\n      id={context.descriptionId}\n      className={cn(helperTextClass, className)}\n      {...props}\n    />\n  );\n}\n\nexport function FormFieldError({ className, ...props }: FormFieldErrorProps) {\n  const context = useFormFieldContext(\"FormFieldError\");\n\n  return (\n    <BaseField.Error\n      id={context.errorId}\n      match\n      role=\"alert\"\n      className={cn(errorTextClass, className)}\n      {...props}\n    />\n  );\n}\n\nexport function FormSection({\n  title,\n  description,\n  actions,\n  divided = false,\n  children,\n  className,\n  ...props\n}: FormSectionProps) {\n  return (\n    <section className={cn(elevatedSurfaceClass, className)} {...props}>\n      {title || description || actions ? (\n        <header className=\"flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4\">\n          <div className=\"min-w-0\">\n            {title ? (\n              <h3 className=\"font-[family-name:var(--primitive-font-display)] text-sm font-semibold tracking-[-0.015em] text-[var(--foreground)]\">\n                {title}\n              </h3>\n            ) : null}\n            {description ? (\n              <p className={cn(\"mt-1\", helperTextClass)}>{description}</p>\n            ) : null}\n          </div>\n          {actions ? <div className=\"shrink-0\">{actions}</div> : null}\n        </header>\n      ) : null}\n      <div\n        className={cn(\n          \"p-5\",\n          divided &&\n            \"[&>[data-slot=form-field]]:border-b [&>[data-slot=form-field]]:border-[var(--border)] [&>[data-slot=form-field]]:py-4 [&>[data-slot=form-field]:first-child]:pt-0 [&>[data-slot=form-field]:last-child]:border-b-0 [&>[data-slot=form-field]:last-child]:pb-0\",\n          !divided && \"space-y-4\",\n        )}\n      >\n        {children}\n      </div>\n    </section>\n  );\n}\n\nexport function FormActions({\n  align = \"right\",\n  className,\n  ...props\n}: FormActionsProps) {\n  return (\n    <div\n      className={cn(\n        \"flex flex-wrap items-center gap-2\",\n        align === \"left\" && \"justify-start\",\n        align === \"right\" && \"justify-end\",\n        align === \"between\" && \"justify-between\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Field as BaseField } from \"@base-ui/react/field\";\nimport { cn } from \"@/lib/utils\";\n\n/** Card layouts and sections are painted by data-surface=\"panel\". */\nconst panelShapeClass = \"relative isolate overflow-hidden rounded-[var(--primitive-radius-surface)]\";\n\nexport type FormFieldLayout = \"stack\" | \"inline\" | \"split\" | \"card\";\nexport type FormFieldDensity = \"sm\" | \"md\" | \"lg\";\n\nexport interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {\n  id?: string;\n  label?: React.ReactNode;\n  description?: React.ReactNode;\n  error?: React.ReactNode;\n  required?: boolean;\n  optional?: boolean;\n  layout?: FormFieldLayout;\n  density?: FormFieldDensity;\n  children: React.ReactNode;\n  labelClassName?: string;\n  descriptionClassName?: string;\n  errorClassName?: string;\n}\n\nexport interface FormFieldContextValue {\n  controlId: string;\n  descriptionId?: string;\n  errorId?: string;\n  describedBy?: string;\n  invalid: boolean;\n  required?: boolean;\n}\n\nexport interface FormFieldControlProps\n  extends React.HTMLAttributes<HTMLElement> {\n  asChild?: boolean;\n}\n\nexport interface FormFieldLabelProps\n  extends React.LabelHTMLAttributes<HTMLLabelElement> {\n  required?: boolean;\n  optional?: boolean;\n}\n\nexport type FormFieldDescriptionProps = React.HTMLAttributes<HTMLParagraphElement>;\n\nexport type FormFieldErrorProps = React.HTMLAttributes<HTMLParagraphElement>;\n\nexport interface FormSectionProps\n  extends Omit<React.HTMLAttributes<HTMLElement>, \"title\"> {\n  title?: React.ReactNode;\n  description?: React.ReactNode;\n  actions?: React.ReactNode;\n  divided?: boolean;\n}\n\nexport interface FormActionsProps extends React.HTMLAttributes<HTMLDivElement> {\n  align?: \"left\" | \"right\" | \"between\";\n}\n\nconst FormFieldContext = React.createContext<FormFieldContextValue | null>(\n  null,\n);\n\nconst layoutClasses: Record<FormFieldLayout, string> = {\n  stack: \"flex flex-col\",\n  inline:\n    \"grid items-start gap-x-5 sm:grid-cols-[minmax(8rem,0.42fr)_minmax(0,1fr)]\",\n  split:\n    \"grid items-start gap-x-6 sm:grid-cols-[minmax(10rem,0.5fr)_minmax(0,1fr)]\",\n  card: panelShapeClass,\n};\n\nconst densityGap: Record<FormFieldDensity, string> = {\n  sm: \"gap-1.5\",\n  md: \"gap-2\",\n  lg: \"gap-2.5\",\n};\n\nconst cardPadding: Record<FormFieldDensity, string> = {\n  sm: \"p-3.5\",\n  md: \"p-4\",\n  lg: \"p-5\",\n};\n\nconst labelTextClass =\n  \"block text-[13px] font-medium leading-[1.4] tracking-[-0.01em] text-[var(--foreground)]\";\n\nconst helperTextClass =\n  \"text-[12px] leading-[1.45] text-[var(--primitive-text-secondary)]\";\n\nconst errorTextClass =\n  \"text-[12px] leading-[1.45] font-medium text-[var(--primitive-destructive)] motion-safe:transition-[opacity,transform] motion-safe:duration-[var(--primitive-motion-moderate)] motion-safe:ease-[var(--primitive-ease)] motion-reduce:transition-none\";\n\nfunction useFormFieldContext(component: string) {\n  const context = React.useContext(FormFieldContext);\n  if (!context) {\n    throw new Error(`${component} must be used inside FormField.`);\n  }\n  return context;\n}\n\nfunction FieldLabelMarker({\n  required,\n  optional,\n}: {\n  required?: boolean;\n  optional?: boolean;\n}) {\n  if (required) {\n    return (\n      <span\n        aria-hidden=\"true\"\n        className=\"ml-1 font-medium text-[var(--primitive-destructive)]\"\n      >\n        *\n      </span>\n    );\n  }\n\n  if (optional) {\n    return (\n      <span\n        role=\"note\"\n        className=\"ml-2 text-[length:var(--primitive-text-hint)] font-medium text-[var(--primitive-text-secondary)]\"\n      >\n        Optional\n      </span>\n    );\n  }\n\n  return null;\n}\n\nexport function FormField({\n  id,\n  label,\n  description,\n  error,\n  required,\n  optional,\n  layout = \"stack\",\n  density = \"md\",\n  children,\n  className,\n  labelClassName,\n  descriptionClassName,\n  errorClassName,\n  ...props\n}: FormFieldProps) {\n  const reactId = React.useId();\n  const controlId = id ?? `wensity-field-${reactId}`;\n  const descriptionId = description ? `${controlId}-description` : undefined;\n  const errorId = error ? `${controlId}-error` : undefined;\n  const describedBy =\n    [errorId, descriptionId].filter(Boolean).join(\" \") || undefined;\n\n  const context = React.useMemo<FormFieldContextValue>(\n    () => ({\n      controlId,\n      descriptionId,\n      errorId,\n      describedBy,\n      invalid: Boolean(error),\n      required,\n    }),\n    [controlId, describedBy, descriptionId, errorId, error, required],\n  );\n\n  const meta =\n    label || description ? (\n      <div className={cn(\"min-w-0\", layout !== \"stack\" && \"pt-1\")}>\n        {label ? (\n          <FormFieldLabel\n            required={required}\n            optional={optional}\n            className={labelClassName}\n          >\n            {label}\n          </FormFieldLabel>\n        ) : null}\n        {description ? (\n          <FormFieldDescription className={cn(\"mt-1\", descriptionClassName)}>\n            {description}\n          </FormFieldDescription>\n        ) : null}\n      </div>\n    ) : null;\n\n  const control = (\n    <div className=\"min-w-0\">\n      {children}\n      {error ? (\n        <FormFieldError className={cn(\"mt-1\", errorClassName)}>\n          {error}\n        </FormFieldError>\n      ) : null}\n    </div>\n  );\n\n  return (\n    <FormFieldContext.Provider value={context}>\n      <BaseField.Root data-wensity-primitive=\"\"\n        invalid={Boolean(error)}\n        data-slot=\"form-field\"\n        data-layout={layout}\n        data-invalid={error ? \"\" : undefined}\n        data-surface={layout === \"card\" ? \"panel\" : undefined}\n        className={cn(\n          layoutClasses[layout],\n          densityGap[density],\n          layout === \"card\" && cardPadding[density],\n          className,\n        )}\n        {...props}\n      >\n        {meta}\n        {control}\n      </BaseField.Root>\n    </FormFieldContext.Provider>\n  );\n}\n\nexport function FormFieldControl({\n  asChild = false,\n  className,\n  children,\n  ...props\n}: FormFieldControlProps) {\n  const context = useFormFieldContext(\"FormFieldControl\");\n\n  if (asChild && React.isValidElement(children)) {\n    // Pass the child element as `render` so Base UI runs mergeProps(controlProps, child.props):\n    // child props win and event handlers compose (Radix Slot semantics).\n    return (\n      <BaseField.Control\n        id={context.controlId}\n        className={className}\n        aria-describedby={context.describedBy}\n        aria-invalid={context.invalid || undefined}\n        aria-required={context.required || undefined}\n        render={children}\n        {...props}\n      />\n    );\n  }\n\n  return (\n    <BaseField.Control\n      id={context.controlId}\n      render={(controlProps) => (\n        <div\n          {...controlProps}\n          aria-describedby={\n            (controlProps[\"aria-describedby\"] as string | undefined) ??\n            context.describedBy\n          }\n          aria-invalid={context.invalid || undefined}\n          aria-required={context.required || undefined}\n          className={cn(controlProps.className as string | undefined, className)}\n          {...props}\n        >\n          {children}\n        </div>\n      )}\n    />\n  );\n}\n\nexport function FormFieldLabel({\n  required,\n  optional,\n  className,\n  children,\n  ...props\n}: FormFieldLabelProps) {\n  const context = useFormFieldContext(\"FormFieldLabel\");\n\n  return (\n    <BaseField.Label className={cn(labelTextClass, className)} {...props}>\n      {children}\n      <FieldLabelMarker\n        required={required ?? context.required}\n        optional={optional}\n      />\n    </BaseField.Label>\n  );\n}\n\nexport function FormFieldDescription({\n  className,\n  ...props\n}: FormFieldDescriptionProps) {\n  const context = useFormFieldContext(\"FormFieldDescription\");\n\n  return (\n    <BaseField.Description\n      id={context.descriptionId}\n      className={cn(helperTextClass, className)}\n      {...props}\n    />\n  );\n}\n\nexport function FormFieldError({ className, ...props }: FormFieldErrorProps) {\n  const context = useFormFieldContext(\"FormFieldError\");\n\n  return (\n    <BaseField.Error\n      id={context.errorId}\n      match\n      role=\"alert\"\n      className={cn(errorTextClass, className)}\n      {...props}\n    />\n  );\n}\n\nexport function FormSection({\n  title,\n  description,\n  actions,\n  divided = false,\n  children,\n  className,\n  ...props\n}: FormSectionProps) {\n  return (\n    <section data-surface=\"panel\" className={cn(panelShapeClass, className)} {...props}>\n      {title || description || actions ? (\n        <header data-carve=\"bottom\" className=\"flex items-start justify-between gap-4 px-5 py-4\">\n          <div className=\"min-w-0\">\n            {title ? (\n              <h3 className=\"font-[family-name:var(--primitive-font-display)] text-sm font-semibold tracking-[-0.015em] text-[var(--foreground)]\">\n                {title}\n              </h3>\n            ) : null}\n            {description ? (\n              <p className={cn(\"mt-1\", helperTextClass)}>{description}</p>\n            ) : null}\n          </div>\n          {actions ? <div className=\"shrink-0\">{actions}</div> : null}\n        </header>\n      ) : null}\n      <div\n        className={cn(\n          \"p-5\",\n          divided &&\n            \"[&>[data-slot=form-field]]:border-b [&>[data-slot=form-field]]:border-[var(--border)] [&>[data-slot=form-field]]:py-4 [&>[data-slot=form-field]:first-child]:pt-0 [&>[data-slot=form-field]:last-child]:border-b-0 [&>[data-slot=form-field]:last-child]:pb-0\",\n          !divided && \"space-y-4\",\n        )}\n      >\n        {children}\n      </div>\n    </section>\n  );\n}\n\nexport function FormActions({\n  align = \"right\",\n  className,\n  ...props\n}: FormActionsProps) {\n  return (\n    <div\n      className={cn(\n        \"flex flex-wrap items-center gap-2\",\n        align === \"left\" && \"justify-start\",\n        align === \"right\" && \"justify-end\",\n        align === \"between\" && \"justify-between\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
     }
   ],
   "cssVars": {
@@ -83,6 +83,7 @@
       "radius-primitive-control": "var(--primitive-radius-control)",
       "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
       "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
       "radius-primitive-item": "var(--primitive-radius-item)",
       "font-primitive-sans": "var(--primitive-font-sans)",
       "font-primitive-display": "var(--primitive-font-display)",
@@ -115,7 +116,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -147,19 +148,41 @@
       "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
       "primitive-info-border": "rgba(3, 105, 161, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     },
     "dark": {
@@ -186,7 +209,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -218,23 +241,194 @@
       "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
       "primitive-info-border": "rgba(56, 189, 248, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     }
   },
   "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
     "@layer base": {
       ":where([data-wensity-primitive])": {
         "font-family": "var(--primitive-font-sans)"

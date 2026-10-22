@@ -23,7 +23,7 @@
       "path": "registry/wensity/pagination.tsx",
       "type": "registry:component",
       "target": "@components/wensity/pagination.tsx",
-      "content": "\"use client\";\n\n/**\n * Pagination — custom (Phase 5). Reduced-motion gated page indicator.\n * Active page uses selected-surface + aria-current=\"page\".\n */\n\nimport * as React from \"react\";\nimport { motion, LayoutGroup, useReducedMotion } from \"framer-motion\";\nimport {\n  IconChevronLeft,\n  IconChevronRight,\n  IconChevronsLeft,\n  IconChevronsRight,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type PaginationVariant =\n  | \"default\"\n  | \"compact\"\n  | \"with-first-last\"\n  | \"load-more\";\n\nexport type PaginationSize = \"sm\" | \"md\";\n\nexport interface PaginationProps\n  extends Omit<React.HTMLAttributes<HTMLElement>, \"onChange\"> {\n  variant?: PaginationVariant;\n  size?: PaginationSize;\n  /** Current page (1-indexed). */\n  page: number;\n  /** Total number of pages. */\n  totalPages: number;\n  /** Called when the active page changes. */\n  onPageChange: (page: number) => void;\n  /** Pages shown around the current page (default 1). */\n  siblingCount?: number;\n  /** Whether a load/fetch operation is in progress (load-more). */\n  isLoading?: boolean;\n  /** Whether there are more items to load (load-more). */\n  hasMore?: boolean;\n  /** Callback to load more items (load-more). */\n  onLoadMore?: () => void;\n  /** Number of items currently loaded (load-more display). */\n  loadedCount?: number;\n  /** Total number of items (load-more display). */\n  totalCount?: number;\n}\n\n/* ─── Size maps ─────────────────────────────────────────────── */\n\nconst pageButtonSizes: Record<PaginationSize, string> = {\n  sm: \"size-8 text-xs\",\n  md: \"size-9 text-sm\",\n};\n\nconst navButtonSizes: Record<PaginationSize, string> = {\n  sm: \"h-8 px-1.5 text-xs [&_svg]:size-3.5\",\n  md: \"h-9 px-2 text-sm [&_svg]:size-4\",\n};\n\n/* ─── Shared styles ─────────────────────────────────────────── */\n\nconst navButtonBase = cn(\n  \"relative isolate inline-flex shrink-0 items-center justify-center rounded-[var(--primitive-radius-item)]\",\n  \"font-medium leading-none select-none touch-manipulation outline-none\",\n  \"transition-[color,background-color] duration-[150ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"motion-reduce:transition-none\",\n  \"text-[var(--muted-foreground)]\",\n  \"hover:text-[var(--foreground)] hover:bg-[var(--primitive-surface-hover)]\",\n  \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n  \"disabled:pointer-events-none disabled:opacity-35\",\n  \"[&_svg]:pointer-events-none [&_svg]:shrink-0\",\n);\n\nconst pageButtonBase = cn(navButtonBase, \"tabular-nums\");\n\nfunction LoadingSpinner() {\n  return (\n    <span\n      aria-hidden=\"true\"\n      className=\"size-3.5 shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\"\n    />\n  );\n}\n\n/* ─── Page range calculator ─────────────────────────────────── */\n\nfunction getPageRange(\n  page: number,\n  totalPages: number,\n  siblingCount: number,\n): (number | \"ellipsis-start\" | \"ellipsis-end\")[] {\n  const totalSlots = siblingCount * 2 + 5;\n\n  if (totalPages <= totalSlots) {\n    return Array.from({ length: totalPages }, (_, i) => i + 1);\n  }\n\n  const leftSiblingIndex = Math.max(page - siblingCount, 1);\n  const rightSiblingIndex = Math.min(page + siblingCount, totalPages);\n\n  const showLeftEllipsis = leftSiblingIndex > 2;\n  const showRightEllipsis = rightSiblingIndex < totalPages - 1;\n\n  const items: (number | \"ellipsis-start\" | \"ellipsis-end\")[] = [];\n\n  items.push(1);\n\n  if (showLeftEllipsis) {\n    items.push(\"ellipsis-start\");\n  } else {\n    for (let i = 2; i < leftSiblingIndex; i++) items.push(i);\n  }\n\n  for (let i = leftSiblingIndex; i <= rightSiblingIndex; i++) {\n    if (i !== 1 && i !== totalPages) items.push(i);\n  }\n\n  if (showRightEllipsis) {\n    items.push(\"ellipsis-end\");\n  } else {\n    for (let i = rightSiblingIndex + 1; i < totalPages; i++) items.push(i);\n  }\n\n  if (totalPages > 1) items.push(totalPages);\n\n  return items;\n}\n\n/* ─── <Pagination> ──────────────────────────────────────────── */\n\nexport const Pagination = React.forwardRef<HTMLElement, PaginationProps>(\n  (\n    {\n      variant = \"default\",\n      size = \"md\",\n      page,\n      totalPages,\n      onPageChange,\n      siblingCount = 1,\n      isLoading = false,\n      hasMore = true,\n      onLoadMore,\n      loadedCount,\n      totalCount,\n      className,\n      ...props\n    },\n    ref,\n  ) => {\n    const layoutId = React.useId();\n    const reduceMotion = useReducedMotion();\n    const indicatorTransition = reduceMotion\n      ? { duration: 0 }\n      : { type: \"spring\" as const, duration: 0.26, bounce: 0.08 };\n\n    /* ── Load More variant ─────────────────── */\n    if (variant === \"load-more\") {\n      return (\n        <nav data-wensity-primitive=\"\"\n          ref={ref}\n          aria-label=\"pagination\"\n          className={cn(\"flex flex-col items-center gap-3\", className)}\n          {...props}\n        >\n          {loadedCount != null && totalCount != null && (\n            <p className=\"text-xs font-medium text-[var(--muted-foreground)] tabular-nums\">\n              Showing {loadedCount} of {totalCount}\n            </p>\n          )}\n          {hasMore && (\n            <button\n              type=\"button\"\n              disabled={isLoading}\n              onClick={() => onLoadMore?.()}\n              className={cn(\n                \"relative h-[var(--primitive-control-height-md)] min-w-[140px] overflow-hidden rounded-[var(--primitive-radius-control)] px-4\",\n                \"text-sm font-medium leading-none\",\n                \"border border-[var(--border-strong)]\",\n                \"bg-[var(--background)] text-[var(--foreground)]\",\n                \"transition-[border-color,background-color] duration-[180ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n                \"motion-reduce:transition-none\",\n                \"hover:border-[color-mix(in_srgb,var(--foreground)_20%,transparent)]\",\n                \"hover:bg-[var(--primitive-surface-hover)]\",\n                \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n                \"disabled:opacity-60 disabled:pointer-events-none\",\n                \"outline-none select-none\",\n              )}\n            >\n              <span className=\"relative inline-flex items-center gap-2\">\n                {isLoading ? <LoadingSpinner /> : null}\n                {isLoading ? \"Loading…\" : \"Load more\"}\n              </span>\n            </button>\n          )}\n        </nav>\n      );\n    }\n\n    /* ── Compact variant ───────────────────── */\n    if (variant === \"compact\") {\n      return (\n        <nav\n          data-wensity-primitive=\"\"\n          ref={ref}\n          aria-label=\"pagination\"\n          className={cn(\"flex items-center gap-2\", className)}\n          {...props}\n        >\n          <NavArrow\n            direction=\"prev\"\n            disabled={page <= 1}\n            onClick={() => onPageChange(page - 1)}\n            size={size}\n          />\n          <span className=\"text-sm font-medium tabular-nums text-[var(--muted-foreground)] select-none px-1\">\n            <span className=\"text-[var(--foreground)]\">{page}</span>\n            <span className=\"mx-1 opacity-40\">/</span>\n            {totalPages}\n          </span>\n          <NavArrow\n            direction=\"next\"\n            disabled={page >= totalPages}\n            onClick={() => onPageChange(page + 1)}\n            size={size}\n          />\n        </nav>\n      );\n    }\n\n    /* ── Default & With First/Last ─────────── */\n    const showFirstLast = variant === \"with-first-last\";\n    const pages = getPageRange(page, totalPages, siblingCount);\n\n    return (\n      <nav\n        data-wensity-primitive=\"\"\n        ref={ref}\n        aria-label=\"pagination\"\n        className={cn(\n          \"inline-flex w-full max-w-[360px] items-center justify-between gap-4\",\n          \"rounded-[var(--primitive-radius-surface)] p-1\",\n          \"border border-[var(--border)] bg-[var(--primitive-surface-hover)]\",\n          className,\n        )}\n        {...props}\n      >\n        <div className=\"flex shrink-0 items-center gap-1\">\n          {showFirstLast && (\n            <NavArrow\n              direction=\"first\"\n              disabled={page <= 1}\n              onClick={() => onPageChange(1)}\n              size={size}\n            />\n          )}\n          <NavArrow\n            direction=\"prev\"\n            disabled={page <= 1}\n            onClick={() => onPageChange(page - 1)}\n            size={size}\n          />\n        </div>\n\n        <LayoutGroup id={layoutId}>\n          <div className=\"mx-1 flex min-w-0 flex-1 items-center justify-center gap-0.5\">\n            {pages.map((item) => {\n              if (item === \"ellipsis-start\" || item === \"ellipsis-end\") {\n                return (\n                  <span\n                    key={item}\n                    className={cn(\n                      \"inline-flex select-none items-center justify-center text-[var(--muted-foreground)] opacity-50\",\n                      pageButtonSizes[size],\n                    )}\n                  >\n                    ⋯\n                  </span>\n                );\n              }\n              const isActive = item === page;\n              return (\n                <button\n                  key={item}\n                  type=\"button\"\n                  aria-label={`Page ${item}`}\n                  aria-current={isActive ? \"page\" : undefined}\n                  onClick={() => onPageChange(item)}\n                  className={cn(\n                    pageButtonBase,\n                    pageButtonSizes[size],\n                    isActive\n                      ? \"text-[var(--foreground)]\"\n                      : \"text-[var(--muted-foreground)]\",\n                  )}\n                >\n                  {isActive ? (\n                    <motion.span\n                      layoutId={`page-active-${layoutId}`}\n                      className={cn(\n                        \"absolute inset-0 rounded-[var(--primitive-radius-item)]\",\n                        \"border border-[var(--border)] bg-[var(--primitive-surface-selected)]\",\n                      )}\n                      transition={indicatorTransition}\n                      style={{ zIndex: -1 }}\n                    />\n                  ) : null}\n                  <span className=\"relative z-[1]\">{item}</span>\n                </button>\n              );\n            })}\n          </div>\n        </LayoutGroup>\n\n        <div className=\"flex shrink-0 items-center gap-1\">\n          <NavArrow\n            direction=\"next\"\n            disabled={page >= totalPages}\n            onClick={() => onPageChange(page + 1)}\n            size={size}\n          />\n          {showFirstLast && (\n            <NavArrow\n              direction=\"last\"\n              disabled={page >= totalPages}\n              onClick={() => onPageChange(totalPages)}\n              size={size}\n            />\n          )}\n        </div>\n      </nav>\n    );\n  },\n);\nPagination.displayName = \"Pagination\";\n\n/* ─── Nav arrow button ──────────────────────────────────────── */\n\nfunction NavArrow({\n  direction,\n  disabled,\n  onClick,\n  size,\n}: {\n  direction: \"first\" | \"prev\" | \"next\" | \"last\";\n  disabled: boolean;\n  onClick: () => void;\n  size: PaginationSize;\n}) {\n  const labels: Record<string, string> = {\n    first: \"First page\",\n    prev: \"Previous page\",\n    next: \"Next page\",\n    last: \"Last page\",\n  };\n\n  const icons: Record<string, React.ReactNode> = {\n    first: <IconChevronsLeft />,\n    prev: <IconChevronLeft />,\n    next: <IconChevronRight />,\n    last: <IconChevronsRight />,\n  };\n\n  return (\n    <button\n      type=\"button\"\n      aria-label={labels[direction]}\n      disabled={disabled}\n      onClick={onClick}\n      className={cn(navButtonBase, navButtonSizes[size])}\n    >\n      {icons[direction]}\n    </button>\n  );\n}\n"
+      "content": "\"use client\";\n\n/**\n * Pagination — custom (Phase 5). Reduced-motion gated page indicator.\n * Active page uses selected-surface + aria-current=\"page\".\n */\n\nimport * as React from \"react\";\nimport { motion, LayoutGroup, useReducedMotion } from \"framer-motion\";\nimport {\n  IconChevronLeft,\n  IconChevronRight,\n  IconChevronsLeft,\n  IconChevronsRight,\n} from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\n/** Motion tiers, the same speeds as the --primitive-motion-* tokens. */\nconst SPRING = {\n  fast: { type: \"spring\", duration: 0.08, bounce: 0 },\n  moderate: { type: \"spring\", duration: 0.16, bounce: 0 },\n  slow: { type: \"spring\", duration: 0.24, bounce: 0 },\n} as const;\n\n/* ─── Types ─────────────────────────────────────────────────── */\n\nexport type PaginationVariant =\n  | \"default\"\n  | \"compact\"\n  | \"with-first-last\"\n  | \"load-more\";\n\nexport type PaginationSize = \"sm\" | \"md\";\n\nexport interface PaginationProps\n  extends Omit<React.HTMLAttributes<HTMLElement>, \"onChange\"> {\n  variant?: PaginationVariant;\n  size?: PaginationSize;\n  /** Current page (1-indexed). */\n  page: number;\n  /** Total number of pages. */\n  totalPages: number;\n  /** Called when the active page changes. */\n  onPageChange: (page: number) => void;\n  /** Pages shown around the current page (default 1). */\n  siblingCount?: number;\n  /** Whether a load/fetch operation is in progress (load-more). */\n  isLoading?: boolean;\n  /** Whether there are more items to load (load-more). */\n  hasMore?: boolean;\n  /** Callback to load more items (load-more). */\n  onLoadMore?: () => void;\n  /** Number of items currently loaded (load-more display). */\n  loadedCount?: number;\n  /** Total number of items (load-more display). */\n  totalCount?: number;\n}\n\n/* ─── Size maps ─────────────────────────────────────────────── */\n\nconst pageButtonSizes: Record<PaginationSize, string> = {\n  sm: \"size-8 text-xs\",\n  md: \"size-9 text-sm\",\n};\n\nconst navButtonSizes: Record<PaginationSize, string> = {\n  sm: \"h-8 px-1.5 text-xs [&_svg]:size-3.5\",\n  md: \"h-9 px-2 text-sm [&_svg]:size-4\",\n};\n\n/* ─── Shared styles ─────────────────────────────────────────── */\n\nconst navButtonBase = cn(\n  \"relative isolate inline-flex shrink-0 items-center justify-center rounded-[var(--primitive-radius-item)]\",\n  \"font-medium leading-none select-none touch-manipulation outline-none\",\n  \"transition-[color,background-color] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"motion-reduce:transition-none\",\n  \"text-[var(--muted-foreground)]\",\n  // Text only: the row's glide highlight is the hover background.\n  \"hover:text-[var(--foreground)]\",\n  \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n  \"disabled:pointer-events-none disabled:opacity-35\",\n  \"[&_svg]:pointer-events-none [&_svg]:shrink-0\",\n);\n\nconst pageButtonBase = cn(navButtonBase, \"tabular-nums\");\n\n/* ─── Glide hover ───────────────────────────────────────────── */\n\n/**\n * One hover highlight per list. It glides (fast motion tier) to the item\n * nearest the pointer, stays lit across the gaps between items, fades in where\n * the pointer enters instead of sliding over from its last spot, and a click\n * in a gap goes to the lit item. Items opt in with `data-glide-item`.\n */\ntype GlideRect = {\n  x: number;\n  y: number;\n  w: number;\n  h: number;\n  session: number;\n  visible: boolean;\n};\n\nconst GLIDE_SPRING = { type: \"spring\", duration: 0.08, bounce: 0 } as const;\n\nfunction useGlideHover<T extends HTMLElement = HTMLElement>(\n  axis: \"x\" | \"y\" | \"xy\",\n  {\n    gapClick = true,\n    itemSelector = \"[data-glide-item]\",\n  }: { gapClick?: boolean; itemSelector?: string } = {},\n) {\n  const containerRef = React.useRef<T | null>(null);\n  const activeRef = React.useRef<HTMLElement | null>(null);\n  const sessionRef = React.useRef(0);\n  const [glide, setGlide] = React.useState<GlideRect | null>(null);\n\n  const pick = React.useCallback(\n    (clientX: number, clientY: number) => {\n      const root = containerRef.current;\n      if (!root) return;\n      let best: HTMLElement | null = null;\n      let bestDistance = Infinity;\n      for (const item of root.querySelectorAll<HTMLElement>(itemSelector)) {\n        if (item.matches(':disabled, [data-disabled], [aria-disabled=\"true\"]')) continue;\n        const r = item.getBoundingClientRect();\n        if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {\n          best = item;\n          break;\n        }\n        const dx = axis === \"y\" ? 0 : clientX - (r.left + r.width / 2);\n        const dy = axis === \"x\" ? 0 : clientY - (r.top + r.height / 2);\n        const distance = dx * dx + dy * dy;\n        if (distance < bestDistance) {\n          bestDistance = distance;\n          best = item;\n        }\n      }\n      activeRef.current = best;\n      if (!best) return;\n      const rootRect = root.getBoundingClientRect();\n      const r = best.getBoundingClientRect();\n      const x = r.left - rootRect.left - root.clientLeft + root.scrollLeft;\n      const y = r.top - rootRect.top - root.clientTop + root.scrollTop;\n      const session = sessionRef.current;\n      setGlide((prev) =>\n        prev &&\n        prev.visible &&\n        prev.session === session &&\n        prev.x === x &&\n        prev.y === y &&\n        prev.w === r.width &&\n        prev.h === r.height\n          ? prev\n          : { x, y, w: r.width, h: r.height, session, visible: true },\n      );\n    },\n    [axis, itemSelector],\n  );\n\n  const handlers = {\n    onPointerEnter(event: React.PointerEvent) {\n      if (event.pointerType !== \"mouse\") return;\n      sessionRef.current += 1;\n      pick(event.clientX, event.clientY);\n    },\n    onPointerMove(event: React.PointerEvent) {\n      if (event.pointerType === \"mouse\") pick(event.clientX, event.clientY);\n    },\n    onPointerLeave() {\n      activeRef.current = null;\n      setGlide((prev) => (prev ? { ...prev, visible: false } : prev));\n    },\n    onClick(event: React.MouseEvent) {\n      if (!gapClick) return;\n      if ((event.target as HTMLElement).closest(itemSelector)) return;\n      activeRef.current?.click();\n    },\n  };\n\n  return { containerRef, glide, handlers };\n}\n\nfunction GlideHighlight({\n  glide,\n  className,\n}: {\n  glide: GlideRect | null;\n  className?: string;\n}) {\n  const reduceMotion = useReducedMotion();\n  if (!glide) return null;\n  const box = { x: glide.x, y: glide.y, width: glide.w, height: glide.h };\n  return (\n    <motion.span\n      key={glide.session}\n      aria-hidden=\"true\"\n      data-slot=\"glide-highlight\"\n      className={cn(\n        \"pointer-events-none absolute left-0 top-0 z-0 bg-[var(--primitive-surface-hover)]\",\n        className,\n      )}\n      initial={{ ...box, opacity: 0 }}\n      animate={{ ...box, opacity: glide.visible ? 1 : 0 }}\n      transition={\n        reduceMotion\n          ? { duration: 0, opacity: { duration: 0.08 } }\n          : { ...GLIDE_SPRING, opacity: { duration: glide.visible ? 0.08 : 0.06 } }\n      }\n    />\n  );\n}\n\n/** Hands the caller's ref the same element the glide measures. */\nfunction useGlideRef<T extends HTMLElement>(\n  forwarded: React.ForwardedRef<T>,\n  containerRef: React.RefObject<T | null>,\n) {\n  React.useImperativeHandle(forwarded, () => containerRef.current as T, [containerRef]);\n  return containerRef;\n}\n\nfunction LoadingSpinner() {\n  return (\n    <span\n      aria-hidden=\"true\"\n      className=\"size-3.5 shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\"\n    />\n  );\n}\n\n/* ─── Page range calculator ─────────────────────────────────── */\n\nfunction getPageRange(\n  page: number,\n  totalPages: number,\n  siblingCount: number,\n): (number | \"ellipsis-start\" | \"ellipsis-end\")[] {\n  const totalSlots = siblingCount * 2 + 5;\n\n  if (totalPages <= totalSlots) {\n    return Array.from({ length: totalPages }, (_, i) => i + 1);\n  }\n\n  const leftSiblingIndex = Math.max(page - siblingCount, 1);\n  const rightSiblingIndex = Math.min(page + siblingCount, totalPages);\n\n  const showLeftEllipsis = leftSiblingIndex > 2;\n  const showRightEllipsis = rightSiblingIndex < totalPages - 1;\n\n  const items: (number | \"ellipsis-start\" | \"ellipsis-end\")[] = [];\n\n  items.push(1);\n\n  if (showLeftEllipsis) {\n    items.push(\"ellipsis-start\");\n  } else {\n    for (let i = 2; i < leftSiblingIndex; i++) items.push(i);\n  }\n\n  for (let i = leftSiblingIndex; i <= rightSiblingIndex; i++) {\n    if (i !== 1 && i !== totalPages) items.push(i);\n  }\n\n  if (showRightEllipsis) {\n    items.push(\"ellipsis-end\");\n  } else {\n    for (let i = rightSiblingIndex + 1; i < totalPages; i++) items.push(i);\n  }\n\n  if (totalPages > 1) items.push(totalPages);\n\n  return items;\n}\n\n/* ─── <Pagination> ──────────────────────────────────────────── */\n\nexport const Pagination = React.forwardRef<HTMLElement, PaginationProps>(\n  (\n    {\n      variant = \"default\",\n      size = \"md\",\n      page,\n      totalPages,\n      onPageChange,\n      siblingCount = 1,\n      isLoading = false,\n      hasMore = true,\n      onLoadMore,\n      loadedCount,\n      totalCount,\n      className,\n      ...props\n    },\n    ref,\n  ) => {\n    const layoutId = React.useId();\n    const reduceMotion = useReducedMotion();\n    const indicatorTransition = reduceMotion\n      ? { duration: 0 }\n      : SPRING.moderate;\n    // Called before any variant branch (rules of hooks); only the page row uses it.\n    const glide = useGlideHover<HTMLElement>(\"x\");\n    const rowRef = useGlideRef(ref, glide.containerRef);\n\n    /* ── Load More variant ─────────────────── */\n    if (variant === \"load-more\") {\n      return (\n        <nav data-wensity-primitive=\"\"\n          ref={ref}\n          aria-label=\"pagination\"\n          className={cn(\"flex flex-col items-center gap-3\", className)}\n          {...props}\n        >\n          {loadedCount != null && totalCount != null && (\n            <p className=\"text-xs font-medium text-[var(--muted-foreground)] tabular-nums\">\n              Showing {loadedCount} of {totalCount}\n            </p>\n          )}\n          {hasMore && (\n            <button\n              type=\"button\"\n              disabled={isLoading}\n              onClick={() => onLoadMore?.()}\n              data-surface=\"control\"\n              className={cn(\n                \"relative h-[var(--primitive-control-height-md)] min-w-[140px] overflow-hidden rounded-[var(--primitive-radius-control)] px-4\",\n                \"text-sm font-medium leading-none\",\n                \"text-[var(--foreground)]\",\n                \"transition-[border-color,background-color,box-shadow] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n                \"motion-reduce:transition-none\",\n                \"focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]\",\n                \"disabled:opacity-60 disabled:pointer-events-none\",\n                \"outline-none select-none\",\n              )}\n            >\n              <span className=\"relative inline-flex items-center gap-2\">\n                {isLoading ? <LoadingSpinner /> : null}\n                {isLoading ? \"Loading…\" : \"Load more\"}\n              </span>\n            </button>\n          )}\n        </nav>\n      );\n    }\n\n    /* ── Compact variant ───────────────────── */\n    if (variant === \"compact\") {\n      return (\n        <nav\n          data-wensity-primitive=\"\"\n          ref={ref}\n          aria-label=\"pagination\"\n          className={cn(\"flex items-center gap-2\", className)}\n          {...props}\n        >\n          <NavArrow\n            direction=\"prev\"\n            disabled={page <= 1}\n            onClick={() => onPageChange(page - 1)}\n            size={size}\n          />\n          <span className=\"text-sm font-medium tabular-nums text-[var(--muted-foreground)] select-none px-1\">\n            <span className=\"text-[var(--foreground)]\">{page}</span>\n            <span className=\"mx-1 opacity-40\">/</span>\n            {totalPages}\n          </span>\n          <NavArrow\n            direction=\"next\"\n            disabled={page >= totalPages}\n            onClick={() => onPageChange(page + 1)}\n            size={size}\n          />\n        </nav>\n      );\n    }\n\n    /* ── Default & With First/Last ─────────── */\n    const showFirstLast = variant === \"with-first-last\";\n    const pages = getPageRange(page, totalPages, siblingCount);\n\n    return (\n      <nav\n        data-wensity-primitive=\"\"\n        ref={rowRef}\n        aria-label=\"pagination\"\n        data-surface=\"well\"\n        className={cn(\n          \"relative isolate inline-flex w-full max-w-[360px] items-center justify-between gap-4\",\n          \"rounded-[var(--primitive-radius-control)] p-1\",\n          className,\n        )}\n        {...props}\n        onPointerEnter={(event) => {\n          props.onPointerEnter?.(event);\n          glide.handlers.onPointerEnter(event);\n        }}\n        onPointerMove={(event) => {\n          props.onPointerMove?.(event);\n          glide.handlers.onPointerMove(event);\n        }}\n        onPointerLeave={(event) => {\n          props.onPointerLeave?.(event);\n          glide.handlers.onPointerLeave();\n        }}\n        onClick={(event) => {\n          props.onClick?.(event);\n          glide.handlers.onClick(event);\n        }}\n      >\n        <GlideHighlight glide={glide.glide} className=\"rounded-[var(--primitive-radius-item)]\" />\n        <div className=\"flex shrink-0 items-center gap-1\">\n          {showFirstLast && (\n            <NavArrow\n              direction=\"first\"\n              disabled={page <= 1}\n              onClick={() => onPageChange(1)}\n              size={size}\n            />\n          )}\n          <NavArrow\n            direction=\"prev\"\n            disabled={page <= 1}\n            onClick={() => onPageChange(page - 1)}\n            size={size}\n          />\n        </div>\n\n        <LayoutGroup id={layoutId}>\n          <div className=\"mx-1 flex min-w-0 flex-1 items-center justify-center gap-0.5\">\n            {pages.map((item) => {\n              if (item === \"ellipsis-start\" || item === \"ellipsis-end\") {\n                return (\n                  <span\n                    key={item}\n                    className={cn(\n                      \"inline-flex select-none items-center justify-center text-[var(--muted-foreground)] opacity-50\",\n                      pageButtonSizes[size],\n                    )}\n                  >\n                    ⋯\n                  </span>\n                );\n              }\n              const isActive = item === page;\n              return (\n                <button\n                  key={item}\n                  type=\"button\"\n                  data-glide-item=\"\"\n                  aria-label={`Page ${item}`}\n                  aria-current={isActive ? \"page\" : undefined}\n                  onClick={() => onPageChange(item)}\n                  className={cn(\n                    pageButtonBase,\n                    pageButtonSizes[size],\n                    isActive\n                      ? \"text-[var(--foreground)]\"\n                      : \"text-[var(--muted-foreground)]\",\n                  )}\n                >\n                  {isActive ? (\n                    <motion.span\n                      layoutId={`page-active-${layoutId}`}\n                      data-surface=\"control\"\n                      className=\"absolute inset-0 rounded-[var(--primitive-radius-item)]\"\n                      transition={indicatorTransition}\n                      style={{ zIndex: -1 }}\n                    />\n                  ) : null}\n                  <span className=\"relative z-[1]\">{item}</span>\n                </button>\n              );\n            })}\n          </div>\n        </LayoutGroup>\n\n        <div className=\"flex shrink-0 items-center gap-1\">\n          <NavArrow\n            direction=\"next\"\n            disabled={page >= totalPages}\n            onClick={() => onPageChange(page + 1)}\n            size={size}\n          />\n          {showFirstLast && (\n            <NavArrow\n              direction=\"last\"\n              disabled={page >= totalPages}\n              onClick={() => onPageChange(totalPages)}\n              size={size}\n            />\n          )}\n        </div>\n      </nav>\n    );\n  },\n);\nPagination.displayName = \"Pagination\";\n\n/* ─── Nav arrow button ──────────────────────────────────────── */\n\nfunction NavArrow({\n  direction,\n  disabled,\n  onClick,\n  size,\n}: {\n  direction: \"first\" | \"prev\" | \"next\" | \"last\";\n  disabled: boolean;\n  onClick: () => void;\n  size: PaginationSize;\n}) {\n  const labels: Record<string, string> = {\n    first: \"First page\",\n    prev: \"Previous page\",\n    next: \"Next page\",\n    last: \"Last page\",\n  };\n\n  const icons: Record<string, React.ReactNode> = {\n    first: <IconChevronsLeft />,\n    prev: <IconChevronLeft />,\n    next: <IconChevronRight />,\n    last: <IconChevronsRight />,\n  };\n\n  return (\n    <button\n      type=\"button\"\n      data-glide-item=\"\"\n      aria-label={labels[direction]}\n      disabled={disabled}\n      onClick={onClick}\n      className={cn(navButtonBase, navButtonSizes[size])}\n    >\n      {icons[direction]}\n    </button>\n  );\n}\n"
     }
   ],
   "cssVars": {
@@ -84,6 +84,7 @@
       "radius-primitive-control": "var(--primitive-radius-control)",
       "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
       "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
       "radius-primitive-item": "var(--primitive-radius-item)",
       "font-primitive-sans": "var(--primitive-font-sans)",
       "font-primitive-display": "var(--primitive-font-display)",
@@ -116,7 +117,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -148,19 +149,41 @@
       "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
       "primitive-info-border": "rgba(3, 105, 161, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     },
     "dark": {
@@ -187,7 +210,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -219,23 +242,194 @@
       "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
       "primitive-info-border": "rgba(56, 189, 248, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     }
   },
   "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
     "@layer base": {
       ":where([data-wensity-primitive])": {
         "font-family": "var(--primitive-font-sans)"

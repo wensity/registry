@@ -24,7 +24,7 @@
       "path": "registry/wensity/button-group.tsx",
       "type": "registry:component",
       "target": "@components/wensity/button-group.tsx",
-      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Menu } from \"@base-ui/react/menu\";\nimport { cn } from \"@/lib/utils\";\nimport { Button, buttonVariants, type ButtonProps } from \"@/components/wensity/button\";\n\nexport interface ButtonGroupProps extends React.HTMLAttributes<HTMLDivElement> {\n  orientation?: \"horizontal\" | \"vertical\";\n}\n\nexport function ButtonGroup({\n  className,\n  orientation = \"horizontal\",\n  ...props\n}: ButtonGroupProps) {\n  return (\n    <div\n      role=\"group\"\n      data-orientation={orientation}\n      className={cn(\n        // Shared shell only — hover/press belong on each segment, not the group.\n        \"group/button-group relative inline-flex shrink-0 overflow-hidden rounded-[var(--primitive-radius-control)] border border-[var(--border-strong)] bg-transparent\",\n        orientation === \"horizontal\" ? \"flex-row items-stretch\" : \"flex-col\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nconst groupItemClass =\n  \"rounded-none border-0 shadow-none min-h-9 \" +\n  \"group-data-[orientation=horizontal]/button-group:first:rounded-l-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=horizontal]/button-group:last:rounded-r-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=vertical]/button-group:first:rounded-t-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=vertical]/button-group:last:rounded-b-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"focus-visible:relative focus-visible:z-10 hover:relative hover:z-10\";\n\nconst groupIconItemClass =\n  \"h-9 w-10 min-w-10 shrink-0 px-0 text-[var(--foreground)] \" +\n  \"[&_svg]:!size-4 [&_svg]:!opacity-100 [&_svg]:stroke-current\";\n\nexport type ButtonGroupItemProps = ButtonProps;\n\nexport const ButtonGroupItem = React.forwardRef<\n  HTMLButtonElement,\n  ButtonGroupItemProps\n>(({ className, variant = \"outline\", size, ...props }, ref) => {\n  return (\n    <Button\n      ref={ref}\n      variant={variant}\n      size={size}\n      className={cn(\n        groupItemClass,\n        size === \"icon\" && groupIconItemClass,\n        className,\n      )}\n      {...props}\n    />\n  );\n});\n\nButtonGroupItem.displayName = \"ButtonGroupItem\";\n\nexport interface ButtonGroupSeparatorProps\n  extends React.HTMLAttributes<HTMLDivElement> {\n  orientation?: \"horizontal\" | \"vertical\";\n}\n\nexport function ButtonGroupSeparator({\n  className,\n  orientation = \"vertical\",\n  ...props\n}: ButtonGroupSeparatorProps) {\n  return (\n    <div\n      role=\"separator\"\n      aria-orientation={orientation}\n      className={cn(\n        \"shrink-0 bg-[var(--border-strong)]\",\n        orientation === \"vertical\" ? \"w-px self-stretch\" : \"h-px w-full\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nconst elevatedOverlaySurfaceClass = cn(\n  \"bg-[var(--primitive-surface-overlay)] border border-[var(--border)]\",\n  \"[box-shadow:var(--primitive-shadow-overlay)]\",\n);\n\nexport type ButtonGroupMenuProps = React.ComponentProps<typeof Menu.Root>;\n\nexport function ButtonGroupMenu(props: ButtonGroupMenuProps) {\n  return <Menu.Root modal={false} {...props} />;\n}\n\nconst menuTriggerClass =\n  \"data-[popup-open]:z-20 data-[popup-open]:bg-[var(--primitive-surface-hover)]\";\n\nexport const ButtonGroupMenuTrigger = React.forwardRef<\n  HTMLButtonElement,\n  ButtonGroupItemProps\n>(\n  (\n    {\n      className,\n      variant = \"outline\",\n      size = \"icon\",\n      loading = false,\n      disabled = false,\n      leftIcon,\n      rightIcon,\n      leftIconMotion: _leftIconMotion,\n      rightIconMotion: _rightIconMotion,\n      asChild: _asChild,\n      focusableWhenDisabled: _focusableWhenDisabled,\n      type,\n      children,\n      ...props\n    },\n    ref,\n  ) => {\n    const isDisabled = disabled || loading;\n\n    return (\n      <Menu.Trigger\n        ref={ref}\n        nativeButton\n        disabled={isDisabled}\n        type={type ?? \"button\"}\n        aria-busy={loading ? true : undefined}\n        data-loading={loading ? \"\" : undefined}\n        className={cn(\n          buttonVariants({ variant, size }),\n          groupItemClass,\n          size === \"icon\" && groupIconItemClass,\n          menuTriggerClass,\n          className,\n        )}\n        {...props}\n      >\n        {loading ? (\n          <span\n            aria-hidden=\"true\"\n            className=\"relative z-10 size-3.5 shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\"\n          />\n        ) : null}\n        {!loading && leftIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0\">{leftIcon}</span>\n        ) : null}\n        {size === \"icon\" && !loading && !leftIcon && !rightIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0 items-center justify-center\">\n            {children}\n          </span>\n        ) : (\n          <span className=\"relative z-10 inline-flex items-center gap-2\">\n            {children}\n          </span>\n        )}\n        {!loading && rightIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0\">\n            {rightIcon}\n          </span>\n        ) : null}\n      </Menu.Trigger>\n    );\n  },\n);\n\nButtonGroupMenuTrigger.displayName = \"ButtonGroupMenuTrigger\";\n\nexport interface ButtonGroupMenuContentProps\n  extends Omit<\n    React.ComponentPropsWithoutRef<typeof Menu.Popup>,\n    \"align\" | \"sideOffset\"\n  > {\n  align?: \"start\" | \"center\" | \"end\";\n  sideOffset?: number;\n  side?: \"top\" | \"right\" | \"bottom\" | \"left\";\n  container?: React.ComponentProps<typeof Menu.Portal>[\"container\"];\n}\n\nexport function ButtonGroupMenuContent({\n  className,\n  align = \"end\",\n  sideOffset = 8,\n  side,\n  container,\n  ...props\n}: ButtonGroupMenuContentProps) {\n  return (\n    <Menu.Portal container={container}>\n      <Menu.Positioner\n        align={align}\n        sideOffset={sideOffset}\n        side={side}\n        collisionPadding={12}\n        className=\"z-[var(--primitive-z-popover)] outline-none\"\n      >\n        <Menu.Popup\n          data-wensity-primitive=\"\"\n          className={cn(\n            elevatedOverlaySurfaceClass,\n            \"min-w-[12.5rem] origin-top-right rounded-[var(--primitive-radius-surface)] p-1 outline-none\",\n            \"transition-[opacity,transform] duration-150 ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n            \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n            \"motion-reduce:transition-none\",\n            className,\n          )}\n          {...props}\n        />\n      </Menu.Positioner>\n    </Menu.Portal>\n  );\n}\n\nexport interface ButtonGroupMenuItemProps\n  extends React.ComponentPropsWithoutRef<typeof Menu.Item> {\n  icon?: React.ReactNode;\n  destructive?: boolean;\n  shortcut?: string;\n}\n\nexport const ButtonGroupMenuItem = React.forwardRef<\n  HTMLDivElement,\n  ButtonGroupMenuItemProps\n>(\n  (\n    { className, children, icon, destructive = false, shortcut, ...props },\n    ref,\n  ) => {\n    return (\n      <Menu.Item\n        ref={ref as React.Ref<HTMLElement>}\n        className={cn(\n          \"group/menu-item relative flex cursor-pointer select-none items-center gap-2.5 rounded-[var(--primitive-radius-item)] px-2.5 py-2 text-sm outline-none\",\n          \"transition-colors duration-150\",\n          destructive\n            ? \"text-[var(--primitive-destructive)] data-highlighted:bg-[var(--primitive-destructive-surface)] data-highlighted:text-[var(--primitive-destructive)]\"\n            : \"text-[var(--foreground)] data-highlighted:bg-[var(--primitive-surface-selected)]\",\n          \"data-disabled:pointer-events-none data-disabled:opacity-45\",\n          className,\n        )}\n        {...props}\n      >\n        {icon ? (\n          <span\n            className={cn(\n              \"inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4\",\n              destructive\n                ? \"text-[var(--primitive-destructive)]\"\n                : \"text-[var(--muted-foreground)] group-data-highlighted/menu-item:text-[var(--foreground)]\",\n            )}\n          >\n            {icon}\n          </span>\n        ) : null}\n        <span className=\"min-w-0 flex-1 truncate\">{children}</span>\n        {shortcut ? (\n          <span className=\"ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]\">\n            {shortcut}\n          </span>\n        ) : null}\n      </Menu.Item>\n    );\n  },\n);\n\nButtonGroupMenuItem.displayName = \"ButtonGroupMenuItem\";\n\nexport type ButtonGroupMenuSeparatorProps =\n  React.HTMLAttributes<HTMLDivElement>;\n\nexport function ButtonGroupMenuSeparator({\n  className,\n  ...props\n}: ButtonGroupMenuSeparatorProps) {\n  return (\n    <div\n      role=\"separator\"\n      className={cn(\"my-1 h-px bg-[var(--border)]\", className)}\n      {...props}\n    />\n  );\n}\n\nexport type ButtonGroupMenuLabelProps = React.HTMLAttributes<HTMLDivElement>;\n\nexport function ButtonGroupMenuLabel({\n  className,\n  ...props\n}: ButtonGroupMenuLabelProps) {\n  return (\n    <div\n      className={cn(\n        \"px-2.5 py-1.5 text-[11px] font-medium uppercase text-[var(--muted-foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Menu } from \"@base-ui/react/menu\";\nimport { cn } from \"@/lib/utils\";\nimport { Button, buttonSurface, buttonVariants, type ButtonProps } from \"@/components/wensity/button\";\n\nexport interface ButtonGroupProps extends React.HTMLAttributes<HTMLDivElement> {\n  orientation?: \"horizontal\" | \"vertical\";\n}\n\nexport function ButtonGroup({\n  className,\n  orientation = \"horizontal\",\n  ...props\n}: ButtonGroupProps) {\n  return (\n    <div\n      role=\"group\"\n      data-orientation={orientation}\n      // One raised control holds the segments; hover/press belong to each segment.\n      data-surface=\"control\"\n      className={cn(\n        \"group/button-group relative inline-flex shrink-0 overflow-hidden rounded-[var(--primitive-radius-control)]\",\n        \"[--surface-face:var(--muted)] dark:[--surface-face:var(--primitive-control-face)]\",\n        orientation === \"horizontal\" ? \"flex-row items-stretch\" : \"flex-col\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nconst groupItemClass =\n  // Segments tint when pressed or open instead of shrinking inside the shell.\n  \"rounded-none border-0 active:translate-y-0 min-h-9 \" +\n  \"group-data-[orientation=horizontal]/button-group:first:rounded-l-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=horizontal]/button-group:last:rounded-r-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=vertical]/button-group:first:rounded-t-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"group-data-[orientation=vertical]/button-group:last:rounded-b-[calc(var(--primitive-radius-control)_-_1px)] \" +\n  \"focus-visible:relative focus-visible:z-10 hover:relative hover:z-10\";\n\nconst groupIconItemClass =\n  \"h-9 w-10 min-w-10 shrink-0 px-0 text-[var(--foreground)] \" +\n  \"[&_svg]:!size-4 [&_svg]:!opacity-100 [&_svg]:stroke-current\";\n\nexport type ButtonGroupItemProps = ButtonProps;\n\n/** Neutral segments go flat: the shell is the raised control. Solid ones keep their fill. */\nfunction groupItemSurface(variant: ButtonProps[\"variant\"] = \"outline\") {\n  return variant === \"outline\" || variant === \"secondary\" || variant === \"ghost\"\n    ? \"flat\"\n    : buttonSurface[variant];\n}\n\nexport const ButtonGroupItem = React.forwardRef<\n  HTMLButtonElement,\n  ButtonGroupItemProps\n>(({ className, variant = \"outline\", size, ...props }, ref) => {\n  return (\n    <Button\n      ref={ref}\n      variant={variant}\n      size={size}\n      data-surface={groupItemSurface(variant)}\n      className={cn(\n        groupItemClass,\n        size === \"icon\" && groupIconItemClass,\n        className,\n      )}\n      {...props}\n    />\n  );\n});\n\nButtonGroupItem.displayName = \"ButtonGroupItem\";\n\nexport interface ButtonGroupSeparatorProps\n  extends React.HTMLAttributes<HTMLDivElement> {\n  orientation?: \"horizontal\" | \"vertical\";\n}\n\nexport function ButtonGroupSeparator({\n  className,\n  orientation = \"vertical\",\n  ...props\n}: ButtonGroupSeparatorProps) {\n  return (\n    <div\n      role=\"separator\"\n      aria-orientation={orientation}\n      data-groove={orientation}\n      className={cn(orientation === \"horizontal\" && \"w-full\", className)}\n      {...props}\n    />\n  );\n}\n\nexport type ButtonGroupMenuProps = React.ComponentProps<typeof Menu.Root>;\n\nexport function ButtonGroupMenu(props: ButtonGroupMenuProps) {\n  return <Menu.Root modal={false} {...props} />;\n}\n\nconst menuTriggerClass =\n  \"data-[popup-open]:z-20 data-[popup-open]:[--surface-tint:var(--primitive-tint-press)]\";\n\nexport const ButtonGroupMenuTrigger = React.forwardRef<\n  HTMLButtonElement,\n  ButtonGroupItemProps\n>(\n  (\n    {\n      className,\n      variant = \"outline\",\n      size = \"icon\",\n      loading = false,\n      disabled = false,\n      leftIcon,\n      rightIcon,\n      leftIconMotion: _leftIconMotion,\n      rightIconMotion: _rightIconMotion,\n      asChild: _asChild,\n      focusableWhenDisabled: _focusableWhenDisabled,\n      type,\n      children,\n      ...props\n    },\n    ref,\n  ) => {\n    const isDisabled = disabled || loading;\n\n    return (\n      <Menu.Trigger\n        ref={ref}\n        nativeButton\n        disabled={isDisabled}\n        type={type ?? \"button\"}\n        aria-busy={loading ? true : undefined}\n        data-loading={loading ? \"\" : undefined}\n        data-surface={groupItemSurface(variant)}\n        className={cn(\n          buttonVariants({ variant, size }),\n          groupItemClass,\n          size === \"icon\" && groupIconItemClass,\n          menuTriggerClass,\n          className,\n        )}\n        {...props}\n      >\n        {loading ? (\n          <span\n            aria-hidden=\"true\"\n            className=\"relative z-10 size-3.5 shrink-0 rounded-full border-2 border-current border-r-transparent opacity-80 motion-safe:animate-spin\"\n          />\n        ) : null}\n        {!loading && leftIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0\">{leftIcon}</span>\n        ) : null}\n        {size === \"icon\" && !loading && !leftIcon && !rightIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0 items-center justify-center\">\n            {children}\n          </span>\n        ) : (\n          <span className=\"relative z-10 inline-flex items-center gap-2\">\n            {children}\n          </span>\n        )}\n        {!loading && rightIcon ? (\n          <span className=\"relative z-10 inline-flex shrink-0\">\n            {rightIcon}\n          </span>\n        ) : null}\n      </Menu.Trigger>\n    );\n  },\n);\n\nButtonGroupMenuTrigger.displayName = \"ButtonGroupMenuTrigger\";\n\nexport interface ButtonGroupMenuContentProps\n  extends Omit<\n    React.ComponentPropsWithoutRef<typeof Menu.Popup>,\n    \"align\" | \"sideOffset\"\n  > {\n  align?: \"start\" | \"center\" | \"end\";\n  sideOffset?: number;\n  side?: \"top\" | \"right\" | \"bottom\" | \"left\";\n  container?: React.ComponentProps<typeof Menu.Portal>[\"container\"];\n}\n\nexport function ButtonGroupMenuContent({\n  className,\n  align = \"end\",\n  sideOffset = 8,\n  side,\n  container,\n  ...props\n}: ButtonGroupMenuContentProps) {\n  return (\n    <Menu.Portal container={container}>\n      <Menu.Positioner\n        align={align}\n        sideOffset={sideOffset}\n        side={side}\n        collisionPadding={12}\n        className=\"z-[var(--primitive-z-popover)] outline-none\"\n      >\n        <Menu.Popup\n          data-wensity-primitive=\"\"\n          data-surface=\"overlay\"\n          className={cn(\n            \"min-w-[12.5rem] origin-top-right rounded-[var(--primitive-radius-popup)] p-1 outline-none\",\n            \"transition-[opacity,transform] duration-[var(--primitive-motion-moderate)] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n            \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n            \"motion-reduce:transition-none\",\n            className,\n          )}\n          {...props}\n        />\n      </Menu.Positioner>\n    </Menu.Portal>\n  );\n}\n\nexport interface ButtonGroupMenuItemProps\n  extends React.ComponentPropsWithoutRef<typeof Menu.Item> {\n  icon?: React.ReactNode;\n  destructive?: boolean;\n  shortcut?: string;\n}\n\nexport const ButtonGroupMenuItem = React.forwardRef<\n  HTMLDivElement,\n  ButtonGroupMenuItemProps\n>(\n  (\n    { className, children, icon, destructive = false, shortcut, ...props },\n    ref,\n  ) => {\n    return (\n      <Menu.Item\n        ref={ref as React.Ref<HTMLElement>}\n        className={cn(\n          \"group/menu-item relative flex cursor-pointer select-none items-center gap-2.5 rounded-[var(--primitive-radius-item)] px-2.5 py-2 text-sm outline-none\",\n          destructive\n            ? \"text-[var(--primitive-destructive)] data-highlighted:bg-[var(--primitive-destructive-surface)] data-highlighted:text-[var(--primitive-destructive)]\"\n            : \"text-[var(--foreground)] data-highlighted:bg-[var(--primitive-surface-selected)]\",\n          \"data-disabled:pointer-events-none data-disabled:opacity-45\",\n          className,\n        )}\n        {...props}\n      >\n        {icon ? (\n          <span\n            className={cn(\n              \"inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4\",\n              destructive\n                ? \"text-[var(--primitive-destructive)]\"\n                : \"text-[var(--muted-foreground)]\",\n            )}\n          >\n            {icon}\n          </span>\n        ) : null}\n        <span className=\"min-w-0 flex-1 truncate\">{children}</span>\n        {shortcut ? (\n          <span className=\"ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]\">\n            {shortcut}\n          </span>\n        ) : null}\n      </Menu.Item>\n    );\n  },\n);\n\nButtonGroupMenuItem.displayName = \"ButtonGroupMenuItem\";\n\nexport type ButtonGroupMenuSeparatorProps =\n  React.HTMLAttributes<HTMLDivElement>;\n\nexport function ButtonGroupMenuSeparator({\n  className,\n  ...props\n}: ButtonGroupMenuSeparatorProps) {\n  return (\n    <div\n      role=\"separator\"\n      data-groove=\"horizontal\"\n      className={cn(\"-mx-1 my-1\", className)}\n      {...props}\n    />\n  );\n}\n\nexport type ButtonGroupMenuLabelProps = React.HTMLAttributes<HTMLDivElement>;\n\nexport function ButtonGroupMenuLabel({\n  className,\n  ...props\n}: ButtonGroupMenuLabelProps) {\n  return (\n    <div\n      className={cn(\n        \"px-2.5 py-1.5 text-[11px] font-medium uppercase text-[var(--muted-foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
     }
   ],
   "cssVars": {
@@ -85,6 +85,7 @@
       "radius-primitive-control": "var(--primitive-radius-control)",
       "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
       "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
       "radius-primitive-item": "var(--primitive-radius-item)",
       "font-primitive-sans": "var(--primitive-font-sans)",
       "font-primitive-display": "var(--primitive-font-display)",
@@ -117,7 +118,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -149,19 +150,41 @@
       "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
       "primitive-info-border": "rgba(3, 105, 161, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     },
     "dark": {
@@ -188,7 +211,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -220,23 +243,194 @@
       "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
       "primitive-info-border": "rgba(56, 189, 248, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     }
   },
   "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
     "@layer base": {
       ":where([data-wensity-primitive])": {
         "font-family": "var(--primitive-font-sans)"

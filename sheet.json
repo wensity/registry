@@ -23,7 +23,7 @@
       "path": "registry/wensity/sheet.tsx",
       "type": "registry:component",
       "target": "@components/wensity/sheet.tsx",
-      "content": "\"use client\";\n\n/**\n * Sheet — Base UI Dialog styled as an edge panel (Phase 4B).\n * Focus/dismissal/portal/scroll-lock from Base UI; motion CSS on starting/ending attrs.\n * D-17: asChild → render; persistent → Root disablePointerDismissal.\n */\n\nimport * as React from \"react\";\nimport { Dialog as BaseDialog } from \"@base-ui/react/dialog\";\nimport { IconX } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type SheetSide = \"left\" | \"right\" | \"top\" | \"bottom\";\n\nconst modalSurfaceClass = cn(\n  \"border border-[var(--border)] bg-[var(--primitive-surface-elevated)]\",\n  \"[box-shadow:var(--primitive-shadow-modal)]\",\n  \"isolate overflow-hidden\",\n);\n\nconst backdropClass = cn(\n  \"fixed inset-0 z-[var(--primitive-z-overlay)] bg-[var(--primitive-backdrop)]\",\n  \"transition-opacity duration-[300ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n  \"motion-reduce:transition-none\",\n);\n\nconst sheetMotionBase = cn(\n  \"transition-[opacity,translate] duration-[520ms] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[ending-style]:duration-[260ms]\",\n  \"motion-reduce:transition-none motion-reduce:data-[starting-style]:translate-x-0 motion-reduce:data-[starting-style]:translate-y-0 motion-reduce:data-[ending-style]:translate-x-0 motion-reduce:data-[ending-style]:translate-y-0\",\n);\n\nconst sideMotion: Record<SheetSide, string> = {\n  left: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full\",\n  ),\n  right: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full\",\n  ),\n  top: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:-translate-y-[105%] data-[ending-style]:-translate-y-[105%]\",\n  ),\n  bottom: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:translate-y-[105%] data-[ending-style]:translate-y-[105%]\",\n  ),\n};\n\nconst sideLayout: Record<SheetSide, string> = {\n  left: \"fixed inset-y-0 left-0 z-[var(--primitive-z-overlay)] flex h-full w-[min(100vw,24rem)] flex-col rounded-none\",\n  right:\n    \"fixed inset-y-0 right-0 z-[var(--primitive-z-overlay)] flex h-full w-[min(100vw,24rem)] flex-col rounded-none\",\n  top: \"fixed left-1/2 top-4 z-[var(--primitive-z-overlay)] w-[min(calc(100vw-2rem),26rem)] max-w-full -translate-x-1/2 rounded-[var(--primitive-radius-surface)]\",\n  bottom:\n    \"fixed bottom-4 left-1/2 z-[var(--primitive-z-overlay)] w-[min(calc(100vw-2rem),26rem)] max-w-full -translate-x-1/2 rounded-[var(--primitive-radius-surface)]\",\n};\n\nfunction adaptOpenChange(\n  onOpenChange?: (open: boolean) => void,\n): ((open: boolean, details: unknown) => void) | undefined {\n  if (!onOpenChange) return undefined;\n  return (open) => onOpenChange(open);\n}\n\nfunction hasSheetTitle(children: React.ReactNode): boolean {\n  return React.Children.toArray(children).some((child) => {\n    if (!React.isValidElement(child)) return false;\n    if (child.type === SheetTitle || child.type === BaseDialog.Title) {\n      return true;\n    }\n    return hasSheetTitle(\n      (child.props as { children?: React.ReactNode }).children,\n    );\n  });\n}\n\nexport interface SheetProps\n  extends Omit<\n    React.ComponentPropsWithoutRef<typeof BaseDialog.Root>,\n    \"onOpenChange\"\n  > {\n  onOpenChange?: (open: boolean) => void;\n  /** When true, outside press does not dismiss (disablePointerDismissal). */\n  persistent?: boolean;\n}\n\nexport function Sheet({\n  onOpenChange,\n  modal = true,\n  persistent = false,\n  children,\n  ...props\n}: SheetProps) {\n  return (\n    <BaseDialog.Root\n      modal={modal}\n      disablePointerDismissal={persistent}\n      onOpenChange={adaptOpenChange(onOpenChange)}\n      {...props}\n    >\n      {children}\n    </BaseDialog.Root>\n  );\n}\n\nexport interface SheetTriggerProps\n  extends React.ComponentPropsWithoutRef<typeof BaseDialog.Trigger> {\n  asChild?: boolean;\n}\n\nexport function SheetTrigger({\n  asChild = false,\n  children,\n  ...props\n}: SheetTriggerProps) {\n  if (asChild && React.isValidElement(children)) {\n    const nativeButton =\n      typeof children.type === \"string\" ? children.type === \"button\" : true;\n    return (\n      <BaseDialog.Trigger\n        nativeButton={nativeButton}\n        render={children as React.ReactElement}\n        {...props}\n      />\n    );\n  }\n  return <BaseDialog.Trigger {...props}>{children}</BaseDialog.Trigger>;\n}\n\nexport interface SheetCloseProps\n  extends React.ComponentPropsWithoutRef<typeof BaseDialog.Close> {\n  asChild?: boolean;\n}\n\nexport function SheetClose({\n  asChild = false,\n  children,\n  ...props\n}: SheetCloseProps) {\n  if (asChild && React.isValidElement(children)) {\n    const nativeButton =\n      typeof children.type === \"string\" ? children.type === \"button\" : true;\n    return (\n      <BaseDialog.Close\n        nativeButton={nativeButton}\n        render={children as React.ReactElement}\n        {...props}\n      />\n    );\n  }\n  return <BaseDialog.Close {...props}>{children}</BaseDialog.Close>;\n}\n\nexport type SheetOverlayProps = React.ComponentPropsWithoutRef<typeof BaseDialog.Backdrop>;\n\nexport function SheetOverlay({ className, ...props }: SheetOverlayProps) {\n  return (\n    <BaseDialog.Backdrop className={cn(backdropClass, className)} {...props} />\n  );\n}\n\nexport interface SheetContentProps\n  extends React.ComponentPropsWithoutRef<typeof BaseDialog.Popup> {\n  side?: SheetSide;\n  /** @deprecated Prefer Sheet `persistent` on Root (`disablePointerDismissal`). Ignored on Content. */\n  persistent?: boolean;\n  showClose?: boolean;\n  container?: React.ComponentPropsWithoutRef<\n    typeof BaseDialog.Portal\n  >[\"container\"];\n  accessibilityTitle?: string;\n}\n\nexport function SheetContent({\n  className,\n  children,\n  side = \"right\",\n  showClose = true,\n  container,\n  accessibilityTitle = \"Sheet\",\n  persistent: _persistentIgnored,\n  ...props\n}: SheetContentProps) {\n  const hasProvidedTitle = hasSheetTitle(children);\n\n  return (\n    <BaseDialog.Portal container={container}>\n      <BaseDialog.Backdrop className={backdropClass} />\n      <BaseDialog.Viewport className=\"fixed inset-0 z-[var(--primitive-z-overlay)] outline-none\">\n        <BaseDialog.Popup data-wensity-primitive=\"\"\n          className={cn(\n            sideLayout[side],\n            modalSurfaceClass,\n            sideMotion[side],\n            \"outline-none\",\n            className,\n          )}\n          {...props}\n        >\n          {hasProvidedTitle ? null : (\n            <BaseDialog.Title className=\"sr-only\">\n              {accessibilityTitle}\n            </BaseDialog.Title>\n          )}\n          <div className=\"relative flex h-full min-h-0 flex-col\">\n            {children}\n            {showClose ? (\n              <BaseDialog.Close\n                className={cn(\n                  \"absolute right-3 top-3 z-10 inline-flex size-8 items-center justify-center rounded-[var(--primitive-radius-control-sm)]\",\n                  \"border border-transparent text-[var(--muted-foreground)]\",\n                  \"transition-[background-color,border-color,color] duration-160 ease-[var(--primitive-ease)]\",\n                  \"hover:border-[var(--border)] hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n                  \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                )}\n                aria-label=\"Close\"\n              >\n                <IconX stroke={1.75} className=\"size-4\" />\n              </BaseDialog.Close>\n            ) : null}\n          </div>\n        </BaseDialog.Popup>\n      </BaseDialog.Viewport>\n    </BaseDialog.Portal>\n  );\n}\n\nexport function SheetHeader({\n  className,\n  ...props\n}: React.HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      className={cn(\n        \"border-b border-[var(--border)] px-5 py-4 sm:px-6 sm:py-5\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetBody({\n  className,\n  ...props\n}: React.HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      className={cn(\n        \"min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetFooter({\n  className,\n  ...props\n}: React.HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      className={cn(\n        \"flex flex-col-reverse gap-2 border-t border-[var(--border)] px-5 py-4 sm:flex-row sm:justify-end sm:px-6\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetTitle({\n  className,\n  ...props\n}: React.ComponentPropsWithoutRef<typeof BaseDialog.Title>) {\n  return (\n    <BaseDialog.Title\n      className={cn(\n        \"pr-8 font-[family-name:var(--primitive-font-display)] text-base font-semibold tracking-[-0.015em] text-[var(--foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetDescription({\n  className,\n  ...props\n}: React.ComponentPropsWithoutRef<typeof BaseDialog.Description>) {\n  return (\n    <BaseDialog.Description\n      className={cn(\n        \"mt-1.5 text-[13px] leading-[1.55] text-[var(--muted-foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
+      "content": "\"use client\";\n\n/**\n * Sheet — Base UI Dialog styled as an edge panel (Phase 4B).\n * Focus/dismissal/portal/scroll-lock from Base UI; motion CSS on starting/ending attrs.\n * D-17: asChild → render; persistent → Root disablePointerDismissal.\n */\n\nimport * as React from \"react\";\nimport { Dialog as BaseDialog } from \"@base-ui/react/dialog\";\nimport { IconX } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type SheetSide = \"left\" | \"right\" | \"top\" | \"bottom\";\n\nconst modalSurfaceClass = \"isolate overflow-hidden\";\n\nconst backdropClass = cn(\n  \"fixed inset-0 z-[var(--primitive-z-overlay)] bg-[var(--primitive-backdrop)]\",\n  \"transition-opacity duration-[var(--primitive-motion-slow)] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n  \"motion-reduce:transition-none\",\n);\n\nconst sheetMotionBase = cn(\n  \"transition-[opacity,translate] duration-[var(--primitive-motion-slow)] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[ending-style]:duration-[var(--primitive-motion-slow-exit)]\",\n  \"motion-reduce:transition-none motion-reduce:data-[starting-style]:translate-x-0 motion-reduce:data-[starting-style]:translate-y-0 motion-reduce:data-[ending-style]:translate-x-0 motion-reduce:data-[ending-style]:translate-y-0\",\n);\n\nconst sideMotion: Record<SheetSide, string> = {\n  left: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full\",\n  ),\n  right: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full\",\n  ),\n  top: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:-translate-y-[105%] data-[ending-style]:-translate-y-[105%]\",\n  ),\n  bottom: cn(\n    sheetMotionBase,\n    \"data-[starting-style]:translate-y-[105%] data-[ending-style]:translate-y-[105%]\",\n  ),\n};\n\nconst sideLayout: Record<SheetSide, string> = {\n  left: \"fixed inset-y-0 left-0 z-[var(--primitive-z-overlay)] flex h-full w-[min(100vw,24rem)] flex-col rounded-none\",\n  right:\n    \"fixed inset-y-0 right-0 z-[var(--primitive-z-overlay)] flex h-full w-[min(100vw,24rem)] flex-col rounded-none\",\n  top: \"fixed left-1/2 top-4 z-[var(--primitive-z-overlay)] w-[min(calc(100vw-2rem),26rem)] max-w-full -translate-x-1/2 rounded-[var(--primitive-radius-surface)]\",\n  bottom:\n    \"fixed bottom-4 left-1/2 z-[var(--primitive-z-overlay)] w-[min(calc(100vw-2rem),26rem)] max-w-full -translate-x-1/2 rounded-[var(--primitive-radius-surface)]\",\n};\n\nfunction adaptOpenChange(\n  onOpenChange?: (open: boolean) => void,\n): ((open: boolean, details: unknown) => void) | undefined {\n  if (!onOpenChange) return undefined;\n  return (open) => onOpenChange(open);\n}\n\nfunction hasSheetTitle(children: React.ReactNode): boolean {\n  return React.Children.toArray(children).some((child) => {\n    if (!React.isValidElement(child)) return false;\n    if (child.type === SheetTitle || child.type === BaseDialog.Title) {\n      return true;\n    }\n    return hasSheetTitle(\n      (child.props as { children?: React.ReactNode }).children,\n    );\n  });\n}\n\nexport interface SheetProps\n  extends Omit<\n    React.ComponentPropsWithoutRef<typeof BaseDialog.Root>,\n    \"onOpenChange\"\n  > {\n  onOpenChange?: (open: boolean) => void;\n  /** When true, outside press does not dismiss (disablePointerDismissal). */\n  persistent?: boolean;\n}\n\nexport function Sheet({\n  onOpenChange,\n  modal = true,\n  persistent = false,\n  children,\n  ...props\n}: SheetProps) {\n  return (\n    <BaseDialog.Root\n      modal={modal}\n      disablePointerDismissal={persistent}\n      onOpenChange={adaptOpenChange(onOpenChange)}\n      {...props}\n    >\n      {children}\n    </BaseDialog.Root>\n  );\n}\n\nexport interface SheetTriggerProps\n  extends React.ComponentPropsWithoutRef<typeof BaseDialog.Trigger> {\n  asChild?: boolean;\n}\n\nexport function SheetTrigger({\n  asChild = false,\n  children,\n  ...props\n}: SheetTriggerProps) {\n  if (asChild && React.isValidElement(children)) {\n    const nativeButton =\n      typeof children.type === \"string\" ? children.type === \"button\" : true;\n    return (\n      <BaseDialog.Trigger\n        nativeButton={nativeButton}\n        render={children as React.ReactElement}\n        {...props}\n      />\n    );\n  }\n  return <BaseDialog.Trigger {...props}>{children}</BaseDialog.Trigger>;\n}\n\nexport interface SheetCloseProps\n  extends React.ComponentPropsWithoutRef<typeof BaseDialog.Close> {\n  asChild?: boolean;\n}\n\nexport function SheetClose({\n  asChild = false,\n  children,\n  ...props\n}: SheetCloseProps) {\n  if (asChild && React.isValidElement(children)) {\n    const nativeButton =\n      typeof children.type === \"string\" ? children.type === \"button\" : true;\n    return (\n      <BaseDialog.Close\n        nativeButton={nativeButton}\n        render={children as React.ReactElement}\n        {...props}\n      />\n    );\n  }\n  return <BaseDialog.Close {...props}>{children}</BaseDialog.Close>;\n}\n\nexport type SheetOverlayProps = React.ComponentPropsWithoutRef<typeof BaseDialog.Backdrop>;\n\nexport function SheetOverlay({ className, ...props }: SheetOverlayProps) {\n  return (\n    <BaseDialog.Backdrop className={cn(backdropClass, className)} {...props} />\n  );\n}\n\nexport interface SheetContentProps\n  extends React.ComponentPropsWithoutRef<typeof BaseDialog.Popup> {\n  side?: SheetSide;\n  /** @deprecated Prefer Sheet `persistent` on Root (`disablePointerDismissal`). Ignored on Content. */\n  persistent?: boolean;\n  showClose?: boolean;\n  container?: React.ComponentPropsWithoutRef<\n    typeof BaseDialog.Portal\n  >[\"container\"];\n  accessibilityTitle?: string;\n}\n\nexport function SheetContent({\n  className,\n  children,\n  side = \"right\",\n  showClose = true,\n  container,\n  accessibilityTitle = \"Sheet\",\n  persistent: _persistentIgnored,\n  ...props\n}: SheetContentProps) {\n  const hasProvidedTitle = hasSheetTitle(children);\n\n  return (\n    <BaseDialog.Portal container={container}>\n      <BaseDialog.Backdrop className={backdropClass} />\n      <BaseDialog.Viewport className=\"fixed inset-0 z-[var(--primitive-z-overlay)] outline-none\">\n        <BaseDialog.Popup data-surface=\"modal\" data-wensity-primitive=\"\"\n          className={cn(\n            sideLayout[side],\n            modalSurfaceClass,\n            sideMotion[side],\n            \"outline-none\",\n            className,\n          )}\n          {...props}\n        >\n          {hasProvidedTitle ? null : (\n            <BaseDialog.Title className=\"sr-only\">\n              {accessibilityTitle}\n            </BaseDialog.Title>\n          )}\n          <div className=\"relative flex h-full min-h-0 flex-col\">\n            {children}\n            {showClose ? (\n              <BaseDialog.Close\n                className={cn(\n                  \"absolute right-3 top-3 z-10 inline-flex size-8 items-center justify-center rounded-[var(--primitive-radius-control-sm)]\",\n                  \"border border-transparent text-[var(--muted-foreground)]\",\n                  \"transition-[background-color,border-color,color] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease)]\",\n                  \"hover:border-[var(--border)] hover:bg-[var(--primitive-surface-hover)] hover:text-[var(--foreground)]\",\n                  \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n                )}\n                aria-label=\"Close\"\n              >\n                <IconX stroke={1.75} className=\"size-4\" />\n              </BaseDialog.Close>\n            ) : null}\n          </div>\n        </BaseDialog.Popup>\n      </BaseDialog.Viewport>\n    </BaseDialog.Portal>\n  );\n}\n\nexport function SheetHeader({\n  className,\n  ...props\n}: React.HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      data-carve=\"bottom\"\n      className={cn(\n        \"px-5 py-4 sm:px-6 sm:py-5\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetBody({\n  className,\n  ...props\n}: React.HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      className={cn(\n        \"min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetFooter({\n  className,\n  ...props\n}: React.HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      data-surface=\"footer\"\n      className={cn(\n        \"flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end sm:px-6\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetTitle({\n  className,\n  ...props\n}: React.ComponentPropsWithoutRef<typeof BaseDialog.Title>) {\n  return (\n    <BaseDialog.Title\n      className={cn(\n        \"pr-8 font-[family-name:var(--primitive-font-display)] text-base font-semibold tracking-[-0.015em] text-[var(--foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport function SheetDescription({\n  className,\n  ...props\n}: React.ComponentPropsWithoutRef<typeof BaseDialog.Description>) {\n  return (\n    <BaseDialog.Description\n      className={cn(\n        \"mt-1.5 text-[13px] leading-[1.55] text-[var(--muted-foreground)]\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n"
     }
   ],
   "cssVars": {
@@ -84,6 +84,7 @@
       "radius-primitive-control": "var(--primitive-radius-control)",
       "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
       "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
       "radius-primitive-item": "var(--primitive-radius-item)",
       "font-primitive-sans": "var(--primitive-font-sans)",
       "font-primitive-display": "var(--primitive-font-display)",
@@ -116,7 +117,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -148,19 +149,41 @@
       "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
       "primitive-info-border": "rgba(3, 105, 161, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 48px -24px rgba(0, 0, 0, 0.35)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.08), 0 24px 64px -28px rgba(0, 0, 0, 0.42)",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     },
     "dark": {
@@ -187,7 +210,7 @@
       "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
       "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
       "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
-      "primitive-radius": "0.875rem",
+      "primitive-radius": "0.75rem",
       "primitive-font-sans": "var(--font-sans)",
       "primitive-font-display": "var(--font-display)",
       "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -219,23 +242,194 @@
       "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
       "primitive-info-border": "rgba(56, 189, 248, 0.45)",
       "primitive-radius-control": "var(--primitive-radius)",
-      "primitive-radius-control-sm": "max(0px, calc(var(--primitive-radius) - 4px))",
-      "primitive-radius-surface": "calc(var(--primitive-radius) + min(2px, var(--primitive-radius)))",
-      "primitive-radius-item": "max(0px, calc(var(--primitive-radius-surface) - 6px))",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
       "primitive-control-height-sm": "2rem",
       "primitive-control-height-md": "2.25rem",
       "primitive-control-height-lg": "2.5rem",
-      "primitive-shadow-raised": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6)",
-      "primitive-shadow-overlay": "0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 56px -28px rgba(0, 0, 0, 0.72)",
-      "primitive-shadow-modal": "0 1px 2px rgba(0, 0, 0, 0.45), 0 28px 72px -32px rgba(0, 0, 0, 0.8)",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
       "primitive-z-overlay": "100",
       "primitive-z-popover": "130",
       "primitive-z-toast": "140",
       "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
       "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
     }
   },
   "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
     "@layer base": {
       ":where([data-wensity-primitive])": {
         "font-family": "var(--primitive-font-sans)"
