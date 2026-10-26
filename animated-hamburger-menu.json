@@ -1,0 +1,493 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "animated-hamburger-menu",
+  "type": "registry:block",
+  "title": "Animated Hamburger Menu",
+  "description": "Animated Hamburger Menu is a free React menu button with eight hamburger icon animations, squeeze, pivot, arrow, stagger, duo, split, wipe and loop, that turn three bars into a close X or a back arrow using only CSS transitions, with aria-expanded state, a hover hint, size, thickness and duration props, and reduced motion support.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/animated-hamburger-menu.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/animated-hamburger-menu.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\n\nimport { cn } from \"@/lib/utils\";\n\n/**\n * Animated Hamburger Menu\n *\n * An animated hamburger menu button with eight ways to turn into its open\n * state. Every variant is plain CSS transitions on transforms, widths and\n * SVG dashes, so there is no animation library and nothing runs per frame.\n *\n * The bars are drawn in a 24 unit box and scaled to `size`, so a thicker\n * stroke or a bigger icon keeps the same proportions. Each bar is two nested\n * spans: the outer one moves, the inner one turns or grows. That split is\n * what lets the two stage variants meet in the middle first and rotate\n * second, then play the same steps backwards on close.\n *\n * Hovering a closed icon gives a small hint of what a click will do: bars\n * draw together, even out, part or lean. The hint waits until a toggle has\n * finished, so leaving mid animation never rushes the close.\n *\n * Every curve is timed, never a spring, so nothing overshoots its resting\n * place. With reduced motion the icon switches state without animating.\n *\n * The button reports its state with `aria-expanded`. Point `aria-controls`\n * at the menu it opens.\n */\n\nexport type HamburgerMenuVariant =\n  | \"squeeze\"\n  | \"pivot\"\n  | \"arrow\"\n  | \"stagger\"\n  | \"duo\"\n  | \"split\"\n  | \"wipe\"\n  | \"loop\";\n\nexport interface HamburgerMenuProps\n  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, \"onChange\"> {\n  /** How the bars move into the open state. */\n  variant?: HamburgerMenuVariant;\n  /** Controlled open state. */\n  open?: boolean;\n  /** Initial open state when uncontrolled. */\n  defaultOpen?: boolean;\n  /** Called with the next state on every toggle. */\n  onOpenChange?: (open: boolean) => void;\n  /** Icon size in pixels. The button adds 16px of hit area around it. */\n  size?: number;\n  /** Bar thickness in units of the 24 unit icon box. */\n  thickness?: number;\n  /** Length of one full open or close in milliseconds. */\n  duration?: number;\n  /** Round bar ends. Off gives square ends. */\n  rounded?: boolean;\n}\n\n// Geometry, in units of the 24 unit icon box.\nconst LENGTH = 16;\nconst GAP = 5.5;\n\nconst IN_OUT = \"cubic-bezier(0.65, 0, 0.35, 1)\";\nconst OUT = \"cubic-bezier(0.22, 1, 0.36, 1)\";\nconst HOVER_MS = 240;\n\ntype BarLayer = {\n  transform?: string;\n  transition?: string;\n  width?: number;\n  opacity?: number;\n  origin?: string;\n};\n\ntype Bar = { outer: BarLayer; inner: BarLayer };\n\ntype BarContext = {\n  open: boolean;\n  /** Closed and hovered: show the hint pose. */\n  hint: boolean;\n  /** Duration in ms. */\n  d: number;\n  /** Units to px. */\n  u: (value: number) => number;\n  t: number;\n};\n\nconst tr = (props: string, ms: number, ease = IN_OUT, delay = 0) =>\n  props\n    .split(\" \")\n    .map((prop) => `${prop} ${Math.round(ms)}ms ${ease} ${Math.round(Math.max(0, delay))}ms`)\n    .join(\", \");\n\nconst move = (x: number, y: number, u: BarContext[\"u\"]) => `translate3d(${u(x)}px, ${u(y)}px, 0)`;\n\n/**\n * Two stage timing. The second stage starts before the first one ends, so\n * the bars never stop dead in the middle. Returns [duration, first delay,\n * second delay] for the current direction.\n */\nfunction stages(open: boolean, d: number) {\n  const run = d * 0.58;\n  const lag = d - run;\n  return { run, move: open ? 0 : lag, turn: open ? lag : 0 };\n}\n\n/** Two stage close mark: the bars meet in the middle, then rotate. */\nfunction squeeze({ open, hint, d, u }: BarContext): Bar[] {\n  const s = stages(open, d);\n  const gap = hint ? GAP - 1.25 : GAP;\n  const side = (dir: 1 | -1): Bar => ({\n    outer: { transform: move(0, open ? 0 : dir * gap, u), transition: tr(\"transform\", s.run, IN_OUT, s.move) },\n    inner: { transform: `rotate(${open ? dir * -45 : 0}deg)`, transition: tr(\"transform\", s.run, IN_OUT, s.turn) },\n  });\n  return [\n    side(-1),\n    {\n      outer: {},\n      inner: {\n        opacity: open ? 0 : 1,\n        transition: `opacity ${Math.round(d * 0.12)}ms linear ${Math.round(open ? s.run * 0.8 : s.run * 0.75)}ms`,\n      },\n    },\n    side(1),\n  ];\n}\n\n/** Bars swing on their left ends into a cross; the middle bar slides away. */\nfunction pivot({ open, hint, d, u, t }: BarContext): Bar[] {\n  // The bars turn about their left cap. Pick the pivot height so they cross\n  // at their midpoints, then shift the whole cross back to the center.\n  const reach = (LENGTH - t) / 2;\n  const lift = reach * Math.SQRT1_2;\n  const shift = LENGTH / 2 - t / 2 - lift;\n  const origin = `${u(t / 2)}px 50%`;\n  const side = (dir: 1 | -1): Bar => ({\n    outer: { transform: move(open ? shift : 0, dir * (open ? lift : GAP), u), transition: tr(\"transform\", d) },\n    inner: {\n      transform: `rotate(${open ? dir * -45 : hint ? dir * -6 : 0}deg)`,\n      transition: tr(\"transform\", d),\n      origin,\n    },\n  });\n  return [\n    side(-1),\n    {\n      outer: { transform: move(open ? LENGTH * 0.6 : 0, 0, u), transition: tr(\"transform\", d * 0.7, OUT) },\n      inner: {\n        width: open ? LENGTH : hint ? LENGTH * 0.7 : LENGTH,\n        opacity: open ? 0 : 1,\n        transition: `${tr(\"width\", d * 0.7, OUT)}, ${tr(\"opacity\", d * 0.45, IN_OUT, open ? 0 : d * 0.25)}`,\n      },\n    },\n    side(1),\n  ];\n}\n\n/** Top and bottom bars fold into the head of a back arrow. */\nfunction arrow({ open, hint, d, u, t }: BarContext): Bar[] {\n  const head = LENGTH * 0.56;\n  const origin = `${u(t / 2)}px 50%`;\n  const side = (dir: 1 | -1): Bar => ({\n    outer: { transform: move(0, open ? 0 : dir * (hint ? GAP - 0.75 : GAP), u), transition: tr(\"transform\", d) },\n    inner: {\n      transform: `rotate(${open ? dir * 45 : 0}deg)`,\n      width: open ? head : hint ? LENGTH * 0.78 : LENGTH,\n      transition: tr(\"transform width\", d),\n      origin,\n    },\n  });\n  return [side(-1), { outer: {}, inner: {} }, side(1)];\n}\n\n/** Three bars of falling length grow out and cross, one after the other. */\nfunction stagger({ open, hint, d, u }: BarContext): Bar[] {\n  const run = d * 0.82;\n  const lag = d - run;\n  const side = (dir: 1 | -1, rest: number, delay: number): Bar => ({\n    outer: { transform: move(0, open ? 0 : dir * GAP, u), transition: tr(\"transform\", run, IN_OUT, delay) },\n    inner: {\n      transform: `rotate(${open ? dir * -45 : 0}deg)`,\n      width: open ? LENGTH : rest,\n      transition: tr(\"transform width\", run, IN_OUT, delay),\n    },\n  });\n  return [\n    side(-1, LENGTH, open ? 0 : lag),\n    {\n      outer: {},\n      inner: {\n        width: open ? 0 : LENGTH * (hint ? 0.86 : 0.66),\n        opacity: open ? 0 : 1,\n        transition: `${tr(\"width\", run * 0.6, IN_OUT, open ? 0 : lag)}, ${tr(\"opacity\", run * 0.3, IN_OUT, open ? run * 0.3 : lag)}`,\n      },\n    },\n    side(1, LENGTH * (hint ? 0.72 : 0.4), open ? lag : 0),\n  ];\n}\n\n/** Two bars, the lower one shorter: they meet, even out, then cross. */\nfunction duo({ open, hint, d, u }: BarContext): Bar[] {\n  const s = stages(open, d);\n  const gap = 3.75;\n  const short = LENGTH * (hint ? 1 : 0.6);\n  const top: Bar = {\n    outer: { transform: move(0, open ? 0 : -gap, u), transition: tr(\"transform\", s.run, IN_OUT, s.move) },\n    inner: { transform: `rotate(${open ? 45 : 0}deg)`, transition: tr(\"transform\", s.run, IN_OUT, s.turn) },\n  };\n  // The short bar keeps its right end still while it grows: translate and\n  // width share one curve, so the edge stays put on every frame.\n  const bottom: Bar = {\n    outer: {\n      transform: move(open ? 0 : LENGTH - short, open ? 0 : gap, u),\n      width: open ? LENGTH : short,\n      transition: tr(\"transform width\", s.run, IN_OUT, s.move),\n    },\n    inner: { transform: `rotate(${open ? -45 : 0}deg)`, transition: tr(\"transform\", s.run, IN_OUT, s.turn) },\n  };\n  return [top, bottom];\n}\n\n/** Each bar breaks at its middle and the four halves fold into a cross. */\nfunction split({ open, hint, d, u, t }: BarContext): Bar[] {\n  const width = LENGTH / 2 + t / 2;\n  const restX = LENGTH / 2 - width / 2;\n  const part = hint ? 1.1 : 0;\n  const arm = ((width - t) / 2) * Math.SQRT1_2;\n  const run = d * 0.86;\n  const lag = d - run;\n  // A half sits left aligned in the full bar box, so its own center starts\n  // at -restX; every translate adds restX back to place it from the middle.\n  const half = (sx: 1 | -1, sy: 1 | -1, delay: number): Bar => ({\n    outer: {\n      transform: move(sx * (open ? arm : restX + part) + restX, sy * (open ? arm : GAP), u),\n      width,\n      transition: tr(\"transform\", run, IN_OUT, delay),\n    },\n    inner: { transform: `rotate(${open ? sx * sy * 45 : 0}deg)`, transition: tr(\"transform\", run, IN_OUT, delay) },\n  });\n  const topDelay = open ? 0 : lag;\n  const bottomDelay = open ? lag : 0;\n  return [\n    half(-1, -1, topDelay),\n    half(1, -1, topDelay),\n    {\n      outer: {},\n      inner: {\n        transform: `scaleX(${open ? 0 : 1})`,\n        opacity: open ? 0 : 1,\n        transition: tr(\"transform opacity\", run * 0.55, IN_OUT, open ? 0 : run * 0.4),\n      },\n    },\n    half(-1, 1, bottomDelay),\n    half(1, 1, bottomDelay),\n  ];\n}\n\n/** The bars slide out in a cascade, then the cross draws in stroke by stroke. */\nfunction wipe({ open, hint, d, u }: BarContext): Bar[] {\n  const out = d * 0.42;\n  const step = d * 0.07;\n  const draw = d * 0.38;\n  const bar = (i: number): Bar => {\n    // Opening leaves top first; closing returns bottom first, after the\n    // cross has cleared.\n    const delay = open ? i * step : d - out - (2 - i) * step;\n    const lean = hint ? 1.5 + i * 0.6 : 0;\n    return {\n      outer: {\n        transform: move(open ? LENGTH * 0.75 : lean, (i - 1) * GAP, u),\n        transition: tr(\"transform\", out, open ? \"cubic-bezier(0.5, 0, 0.75, 0)\" : OUT, delay),\n      },\n      inner: {\n        opacity: open ? 0 : 1,\n        transition: tr(\"opacity\", out * 0.7, IN_OUT, open ? delay + out * 0.3 : delay),\n      },\n    };\n  };\n  const stroke = (dir: 1 | -1, i: number): Bar => {\n    const delay = open ? d - draw - (1 - i) * step * 1.5 : i * step * 1.5;\n    return {\n      outer: { transform: `rotate(${dir * 45}deg)` },\n      inner: {\n        width: open ? LENGTH : 0,\n        transition: tr(\"width\", draw, open ? OUT : \"cubic-bezier(0.5, 0, 0.75, 0)\", open ? delay : (1 - i) * step * 1.5),\n      },\n    };\n  };\n  return [bar(0), bar(1), bar(2), stroke(1, 0), stroke(-1, 1)];\n}\n\nconst VARIANTS: Record<Exclude<HamburgerMenuVariant, \"loop\">, (ctx: BarContext) => Bar[]> = {\n  squeeze,\n  pivot,\n  arrow,\n  stagger,\n  duo,\n  split,\n  wipe,\n};\n\n// Loop: SVG paths whose visible dash travels from the bar, around a curve,\n// onto a diagonal of the cross. Drawn with cap centers at 5 and 19 so the\n// bars match the span variants.\nconst LOOP_TOP = { y: 12 - GAP, c1: [24, 12 - GAP], c2: [22, 22], end: [17, 17], to: [7, 7] } as const;\nconst LOOP_BOTTOM = { y: 12 + GAP, c1: [24, 12 + GAP], c2: [22, 2], end: [17, 7], to: [7, 17] } as const;\nconst LOOP_BAR = 14;\nconst LOOP_DIAGONAL = Math.hypot(10, 10);\n\nfunction bezierLength(p0: readonly number[], p1: readonly number[], p2: readonly number[], p3: readonly number[]) {\n  let total = 0;\n  let px = p0[0];\n  let py = p0[1];\n  for (let i = 1; i <= 64; i++) {\n    const s = i / 64;\n    const m = 1 - s;\n    const x = m * m * m * p0[0] + 3 * m * m * s * p1[0] + 3 * m * s * s * p2[0] + s * s * s * p3[0];\n    const y = m * m * m * p0[1] + 3 * m * m * s * p1[1] + 3 * m * s * s * p2[1] + s * s * s * p3[1];\n    total += Math.hypot(x - px, y - py);\n    px = x;\n    py = y;\n  }\n  return total;\n}\n\nconst LOOP_CURVE = bezierLength([19, LOOP_TOP.y], LOOP_TOP.c1, LOOP_TOP.c2, LOOP_TOP.end);\nconst LOOP_TOTAL = LOOP_BAR + LOOP_CURVE + LOOP_DIAGONAL;\n\nconst loopPath = (p: typeof LOOP_TOP | typeof LOOP_BOTTOM) =>\n  `M5 ${p.y} H19 C ${p.c1.join(\" \")}, ${p.c2.join(\" \")}, ${p.end.join(\" \")} L ${p.to.join(\" \")}`;\n\nfunction useReducedMotion() {\n  return React.useSyncExternalStore(\n    (onChange) => {\n      const query = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n      query.addEventListener(\"change\", onChange);\n      return () => query.removeEventListener(\"change\", onChange);\n    },\n    () => window.matchMedia(\"(prefers-reduced-motion: reduce)\").matches,\n    () => false,\n  );\n}\n\n/** Only the keys a layer sets, so an unset width never wipes a base width. */\nfunction layerStyle(layer: BarLayer, u: BarContext[\"u\"], transition: string | undefined): React.CSSProperties {\n  const style: React.CSSProperties = {};\n  if (layer.transform !== undefined) style.transform = layer.transform;\n  if (layer.width !== undefined) style.width = u(layer.width);\n  if (layer.opacity !== undefined) style.opacity = layer.opacity;\n  if (layer.origin !== undefined) style.transformOrigin = layer.origin;\n  if (transition !== undefined) style.transition = transition;\n  return style;\n}\n\nconst HOVER_TRANSITION = tr(\"transform width opacity\", HOVER_MS, OUT);\n\nexport function HamburgerMenu({\n  variant = \"squeeze\",\n  open: openProp,\n  defaultOpen = false,\n  onOpenChange,\n  size = 24,\n  thickness = 2,\n  duration = 420,\n  rounded = true,\n  className,\n  style,\n  onClick,\n  onPointerEnter,\n  onPointerLeave,\n  type = \"button\",\n  \"aria-label\": ariaLabel = \"Menu\",\n  ...props\n}: HamburgerMenuProps) {\n  const [uncontrolled, setUncontrolled] = React.useState(defaultOpen);\n  const controlled = openProp !== undefined;\n  const open = controlled ? openProp : uncontrolled;\n  const still = useReducedMotion();\n\n  const [hovered, setHovered] = React.useState(false);\n\n  const k = size / 24;\n  const u = (value: number) => Math.round(value * k * 1000) / 1000;\n  const t = thickness;\n  const d = Math.max(0, duration);\n\n  // True while an open or close plays. The hover hint waits for it, and\n  // hover changes use their own short timing only once it has settled. It\n  // has to flip on the same render as `open`, or the toggle itself would\n  // pick up the hover timing, so the change is noted during render.\n  const [settle, setSettle] = React.useState({ open, active: false });\n  if (settle.open !== open) setSettle({ open, active: true });\n  const settling = settle.open !== open || settle.active;\n\n  React.useEffect(() => {\n    if (!settle.active) return;\n    const id = window.setTimeout(() => setSettle((s) => ({ ...s, active: false })), d * 1.25 + 40);\n    return () => window.clearTimeout(id);\n  }, [settle, d]);\n\n  const hint = hovered && !open && !settling;\n  const hoverMode = !settling;\n\n  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {\n    onClick?.(event);\n    if (event.defaultPrevented) return;\n    const next = !open;\n    if (!controlled) setUncontrolled(next);\n    onOpenChange?.(next);\n  };\n\n  const transitionFor = (layer: BarLayer) => {\n    if (still) return \"none\";\n    if (hoverMode) return layer.transition === undefined ? undefined : HOVER_TRANSITION;\n    return layer.transition;\n  };\n\n  let glyph: React.ReactNode;\n\n  if (variant === \"loop\") {\n    const run = d * 1.2;\n    const dashTransition = still\n      ? \"none\"\n      : hoverMode\n        ? tr(\"stroke-dasharray stroke-dashoffset\", HOVER_MS, OUT)\n        : tr(\"stroke-dasharray stroke-dashoffset\", run);\n    const reach = hint ? LOOP_BAR + 2.5 : LOOP_BAR;\n    const travel = (path: string, key: string) => (\n      <path\n        key={key}\n        d={path}\n        style={{\n          strokeDasharray: `${open ? LOOP_DIAGONAL : reach} ${LOOP_TOTAL}`,\n          strokeDashoffset: open ? -(LOOP_BAR + LOOP_CURVE) : 0,\n          transition: dashTransition,\n        }}\n      />\n    );\n    glyph = (\n      <svg\n        aria-hidden\n        width={size}\n        height={size}\n        viewBox=\"0 0 24 24\"\n        fill=\"none\"\n        stroke=\"currentColor\"\n        strokeWidth={t}\n        strokeLinecap={rounded ? \"round\" : \"butt\"}\n        className=\"overflow-visible\"\n      >\n        {travel(loopPath(LOOP_TOP), \"top\")}\n        <path\n          d=\"M5 12 H19\"\n          style={{\n            strokeDasharray: `${LOOP_BAR} ${LOOP_BAR * 3}`,\n            strokeDashoffset: open ? -LOOP_BAR : hint ? -2.5 : 0,\n            opacity: open ? 0 : 1,\n            transition: still\n              ? \"none\"\n              : hoverMode\n                ? tr(\"stroke-dashoffset opacity\", HOVER_MS, OUT)\n                : `${tr(\"stroke-dashoffset\", run * 0.5, IN_OUT, open ? 0 : run * 0.5)}, ${tr(\"opacity\", run * 0.2, IN_OUT, open ? run * 0.3 : run * 0.5)}`,\n          }}\n        />\n        {travel(loopPath(LOOP_BOTTOM), \"bottom\")}\n      </svg>\n    );\n  } else {\n    const bars = VARIANTS[variant]({ open, hint, d, u, t });\n    const radius = rounded ? 9999 : 0;\n    glyph = (\n      <span aria-hidden className=\"relative block\" style={{ width: size, height: size }}>\n        {bars.map((bar, i) => (\n          <span\n            key={`${variant}-${i}`}\n            className=\"absolute left-1/2 top-1/2 block\"\n            style={{\n              width: u(LENGTH),\n              height: u(t),\n              marginLeft: -u(LENGTH) / 2,\n              marginTop: -u(t) / 2,\n              ...layerStyle(bar.outer, u, transitionFor(bar.outer)),\n            }}\n          >\n            <span\n              className=\"block h-full w-full bg-current\"\n              style={{ borderRadius: radius, ...layerStyle(bar.inner, u, transitionFor(bar.inner)) }}\n            />\n          </span>\n        ))}\n      </span>\n    );\n  }\n\n  return (\n    <button\n      type={type}\n      aria-label={ariaLabel}\n      aria-expanded={open}\n      onClick={handleClick}\n      onPointerEnter={(event) => {\n        onPointerEnter?.(event);\n        if (event.pointerType === \"mouse\") setHovered(true);\n      }}\n      onPointerLeave={(event) => {\n        onPointerLeave?.(event);\n        setHovered(false);\n      }}\n      className={cn(\n        \"relative inline-flex shrink-0 cursor-pointer select-none items-center justify-center rounded-[10px] text-current outline-none transition-colors duration-150 [-webkit-tap-highlight-color:transparent]\",\n        \"hover:bg-black/[0.05] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current dark:hover:bg-white/[0.07]\",\n        \"disabled:cursor-not-allowed disabled:opacity-50\",\n        className,\n      )}\n      style={{ width: size + 16, height: size + 16, ...style }}\n      {...props}\n    >\n      {glyph}\n    </button>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/animated-hamburger-menu.tsx. For Pro components and updates, use pnpm dlx wensity@latest add animated-hamburger-menu.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "animated-hamburger-menu",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/animated-hamburger-menu",
+      "shadcnUrl": "https://ui.wensity.com/r/animated-hamburger-menu",
+      "cliInstall": "pnpm dlx wensity@latest add animated-hamburger-menu"
+    }
+  }
+}
