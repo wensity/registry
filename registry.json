@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 97,
+  "count": 98,
   "items": [
     {
       "name": "font-inter",
@@ -395,6 +395,24 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/animated-hamburger-menu",
         "cliInstall": "pnpm dlx wensity@latest add animated-hamburger-menu"
+      }
+    },
+    {
+      "name": "star-rating",
+      "type": "registry:block",
+      "title": "Star Rating",
+      "description": "React star rating with half stars, drag to rate, and cut stars that catch the light.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/star-rating.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/star-rating",
+        "cliInstall": "pnpm dlx wensity@latest add star-rating"
       }
     },
     {

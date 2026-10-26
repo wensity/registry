@@ -1,0 +1,493 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "star-rating",
+  "type": "registry:block",
+  "title": "Star Rating",
+  "description": "Star Rating is a free React star rating input for Next.js and Tailwind CSS with half stars, hover preview, drag to rate on touch screens, full keyboard control, a hidden form input and a read only mode for any fraction, drawn either as faceted cut stars lit by a light that follows the pointer or as classic rounded stars, in gold, silver, chili, rose and violet.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/star-rating.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/star-rating.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\n\nimport { cn } from \"@/lib/utils\";\n\n/**\n * Star Rating\n *\n * A star rating input in two styles. `classic` is a soft rounded star with\n * a flat fill and a quiet top light, for product pages and forms that want\n * the familiar look. `cut`, the default, draws cut stars: every star is ten flat facets\n * around a raised center, shaded by one light source. At rest the light sits\n * top left. While the pointer is over the row the light follows it, so each\n * star turns its facets toward the cursor like a small gem being tilted.\n * Picking a rating swings the light once across the lit stars.\n *\n * The fill is one continuous level that glides along the row, so moving from\n * one star to five passes through every star in between. Each star is drawn\n * twice, an empty cut in the surface and a lit copy clipped to the level,\n * which is what makes half stars and read only fractions exact.\n *\n * Hovering below the current rating keeps a faint tint on the stars you\n * would remove. Dragging across the row rates on touch screens while\n * vertical scrolling still works.\n *\n * One requestAnimationFrame loop owns the level, the light and the glint,\n * writes straight to the DOM and stops as soon as everything settles, so\n * pointer moves never re-render the stars. Every curve is timed or a plain\n * ease toward the pointer, never a spring, so nothing overshoots. With\n * reduced motion the level jumps and the light stays put.\n *\n * Interactive ratings are a slider for assistive tech: arrow keys step by the\n * precision, Home and End jump to the ends, number keys pick a rating. Read\n * only ratings are an image labelled \"Rated 4.7 out of 5\".\n */\n\nexport type StarRatingTone = \"gold\" | \"silver\" | \"chili\" | \"rose\" | \"violet\";\n\nexport type StarRatingVariant = \"cut\" | \"classic\";\n\nexport interface StarRatingProps\n  extends Omit<React.HTMLAttributes<HTMLDivElement>, \"onChange\" | \"defaultValue\"> {\n  /** Controlled rating. */\n  value?: number;\n  /** Initial rating when uncontrolled. */\n  defaultValue?: number;\n  /** Called with the new rating each time one is picked. */\n  onValueChange?: (value: number) => void;\n  /** Called with the rating under the pointer, or null when it leaves. */\n  onHoverChange?: (value: number | null) => void;\n  /** Number of stars. */\n  max?: number;\n  /** Smallest step: 1 for whole stars, 0.5 for half stars. */\n  precision?: 0.5 | 1;\n  /** Star size in pixels. */\n  size?: number;\n  /** Space between stars in pixels. Defaults to a fifth of the size. */\n  gap?: number;\n  /** `cut` draws faceted stars lit by a light that follows the pointer. `classic` draws soft rounded stars. */\n  variant?: StarRatingVariant;\n  /** Material of the lit stars. */\n  tone?: StarRatingTone;\n  /** Show the rating without letting anyone change it. Any fraction works. */\n  readOnly?: boolean;\n  disabled?: boolean;\n  /** Picking the current rating again clears it to 0. */\n  allowClear?: boolean;\n  /** Form field name. Renders a hidden input with the rating. */\n  name?: string;\n  /** Spoken value for each whole rating, from 1 star up. */\n  labels?: string[];\n}\n\ntype Tone = { base: string; hi: string; lo: string; edge: string; shadow: string };\n\nconst TONES: Record<StarRatingTone, Tone> = {\n  gold: { base: \"#F5B21C\", hi: \"#FFF3C4\", lo: \"#A8590A\", edge: \"#8C4A07\", shadow: \"rgba(140, 74, 7, 0.32)\" },\n  silver: { base: \"#C3C7D0\", hi: \"#FFFFFF\", lo: \"#5F6474\", edge: \"#525766\", shadow: \"rgba(30, 34, 48, 0.3)\" },\n  chili: { base: \"#EE5229\", hi: \"#FFD0BF\", lo: \"#952107\", edge: \"#7E1B05\", shadow: \"rgba(126, 27, 5, 0.32)\" },\n  rose: { base: \"#EF467A\", hi: \"#FFD3E1\", lo: \"#931342\", edge: \"#7A0F37\", shadow: \"rgba(122, 15, 55, 0.3)\" },\n  violet: { base: \"#8D5BF6\", hi: \"#E7DDFF\", lo: \"#4519A0\", edge: \"#39148A\", shadow: \"rgba(57, 20, 138, 0.32)\" },\n};\n\nconst EASE_OUT = \"cubic-bezier(0.23, 1, 0.32, 1)\";\n\n/** Room left around each star for its shadow, as a share of the star box. */\nconst BLEED = 25;\n\ntype Vec = { x: number; y: number; z: number };\n\nconst clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));\n\nconst norm = (v: Vec): Vec => {\n  const l = Math.hypot(v.x, v.y, v.z) || 1;\n  return { x: v.x / l, y: v.y / l, z: v.z / l };\n};\n\n/**\n * Star geometry in a 24 unit box: five tips, five inner corners and a raised\n * center. Each tip owns two facets, one on either side of its ridge. Screen\n * axes, so y points down and a light with negative y comes from above.\n */\nconst GEOMETRY = (() => {\n  const c = { x: 12, y: 12.75 };\n  const outer = 11.4;\n  const inner = outer * 0.46;\n  const height = 3.6;\n  const at = (r: number, deg: number) => ({\n    x: c.x + r * Math.cos((deg * Math.PI) / 180),\n    y: c.y + r * Math.sin((deg * Math.PI) / 180),\n  });\n  const tips = Array.from({ length: 5 }, (_, i) => at(outer, -90 + i * 72));\n  const dips = Array.from({ length: 5 }, (_, i) => at(inner, -54 + i * 72));\n  const f = (n: number) => n.toFixed(3);\n\n  const outline =\n    tips.map((t, i) => `${i === 0 ? \"M\" : \"L\"}${f(t.x)} ${f(t.y)}L${f(dips[i].x)} ${f(dips[i].y)}`).join(\"\") + \"Z\";\n\n  const facets: { d: string; n: Vec }[] = [];\n  tips.forEach((tip, i) => {\n    const before = dips[(i + 4) % 5];\n    const after = dips[i];\n    for (const [a, b] of [\n      [before, tip],\n      [tip, after],\n    ]) {\n      // Plane through the raised center and two corners on the ground.\n      const u = { x: a.x - c.x, y: a.y - c.y, z: -height };\n      const v = { x: b.x - c.x, y: b.y - c.y, z: -height };\n      let n = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x };\n      if (n.z < 0) n = { x: -n.x, y: -n.y, z: -n.z };\n      facets.push({\n        d: `M${f(c.x)} ${f(c.y)}L${f(a.x)} ${f(a.y)}L${f(b.x)} ${f(b.y)}Z`,\n        n: norm(n),\n      });\n    }\n  });\n  return { outline, facets };\n})();\n\n/**\n * The classic star: rounded tips and softened inner corners. Every corner is\n * replaced by a short quadratic curve that uses the corner as its control.\n */\nconst ROUND_PATH = (() => {\n  const cx = 12;\n  const cy = 12.7;\n  const outer = 11.2;\n  const inner = outer * 0.5;\n  const points = Array.from({ length: 10 }, (_, i) => {\n    const r = i % 2 === 0 ? outer : inner;\n    const a = -Math.PI / 2 + (i * Math.PI) / 5;\n    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), tip: i % 2 === 0 };\n  });\n  const toward = (from: (typeof points)[number], to: (typeof points)[number], d: number) => {\n    const len = Math.hypot(to.x - from.x, to.y - from.y);\n    return { x: from.x + ((to.x - from.x) / len) * d, y: from.y + ((to.y - from.y) / len) * d };\n  };\n  const f = (n: number) => n.toFixed(3);\n  let d = \"\";\n  points.forEach((p, i) => {\n    const prev = points[(i + points.length - 1) % points.length];\n    const next = points[(i + 1) % points.length];\n    const round = p.tip ? 2.4 : 1.3;\n    const a = toward(p, prev, round);\n    const b = toward(p, next, round);\n    d += `${i === 0 ? \"M\" : \"L\"}${f(a.x)} ${f(a.y)}Q${f(p.x)} ${f(p.y)} ${f(b.x)} ${f(b.y)}`;\n  });\n  return `${d}Z`;\n})();\n\nconst REST_LIGHT = norm({ x: -0.55, y: -0.85, z: 1 });\n\n/** Highlight and shadow strength of each facet under a light. */\nfunction shade(light: Vec, gain = 1) {\n  const dots = GEOMETRY.facets.map(({ n }) => n.x * light.x + n.y * light.y + n.z * light.z);\n  const mean = dots.reduce((sum, d) => sum + d, 0) / dots.length;\n  return dots.map((d) => {\n    const s = (d - mean) * 2.4 * gain;\n    return { hi: clamp(s, 0, 1), lo: clamp(-s, 0, 1) };\n  });\n}\n\nconst REST_SHADE = shade(REST_LIGHT);\n\n/** Clip for star `index` at `level`. The lit side keeps room for its shadow. */\nfunction clipFor(level: number, index: number, rtl: boolean) {\n  const f = clamp(level - index, 0, 1);\n  if (f <= 0) return \"inset(0 100% 0 0)\";\n  const cut = f >= 1 ? -BLEED : (1 - f) * 100;\n  return rtl\n    ? `inset(-${BLEED}% -${BLEED}% -${BLEED}% ${cut}%)`\n    : `inset(-${BLEED}% ${cut}% -${BLEED}% -${BLEED}%)`;\n}\n\nfunction usePrefersReducedMotion() {\n  const [reduced, setReduced] = React.useState(false);\n  React.useEffect(() => {\n    const query = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n    const update = () => setReduced(query.matches);\n    update();\n    query.addEventListener(\"change\", update);\n    return () => query.removeEventListener(\"change\", update);\n  }, []);\n  return reduced;\n}\n\ntype Facets = { hi: (SVGPathElement | null)[]; lo: (SVGPathElement | null)[] };\n\n/** Ten facets, each a highlight and a shadow path over the star's base. */\nfunction FacetPaths({\n  register,\n  hi,\n  lo,\n  hiClassName,\n  loClassName,\n}: {\n  register: Facets;\n  hi: string;\n  lo: string;\n  hiClassName?: string;\n  loClassName?: string;\n}) {\n  return (\n    <>\n      <g className={hiClassName}>\n        {GEOMETRY.facets.map((facet, i) => (\n          <path\n            key={i}\n            ref={(el) => {\n              register.hi[i] = el;\n            }}\n            d={facet.d}\n            fill={hi}\n            fillOpacity={REST_SHADE[i].hi}\n          />\n        ))}\n      </g>\n      <g className={loClassName}>\n        {GEOMETRY.facets.map((facet, i) => (\n          <path\n            key={i}\n            ref={(el) => {\n              register.lo[i] = el;\n            }}\n            d={facet.d}\n            fill={lo}\n            fillOpacity={REST_SHADE[i].lo}\n          />\n        ))}\n      </g>\n    </>\n  );\n}\n\ntype StarParts = {\n  box: HTMLSpanElement | null;\n  press: HTMLSpanElement | null;\n  pop: HTMLSpanElement | null;\n  fill: HTMLSpanElement | null;\n  ghost: HTMLSpanElement | null;\n  empty: Facets;\n  lit: Facets;\n  light: Vec;\n  glint: number | null;\n};\n\nconst newParts = (): StarParts => ({\n  box: null,\n  press: null,\n  pop: null,\n  fill: null,\n  ghost: null,\n  empty: { hi: [], lo: [] },\n  lit: { hi: [], lo: [] },\n  light: REST_LIGHT,\n  glint: null,\n});\n\nconst GLINT_MS = 720;\nconst GLINT_STAGGER = 55;\n\nexport function StarRating({\n  value: valueProp,\n  defaultValue = 0,\n  onValueChange,\n  onHoverChange,\n  max = 5,\n  precision = 1,\n  size = 28,\n  gap,\n  variant = \"cut\",\n  tone = \"gold\",\n  readOnly = false,\n  disabled = false,\n  allowClear = true,\n  name,\n  labels,\n  className,\n  style,\n  onKeyDown,\n  ...rest\n}: StarRatingProps) {\n  const colors = TONES[tone];\n  const cut = variant === \"cut\";\n  const gradientId = `${React.useId().replace(/:/g, \"\")}-light`;\n  const cutRef = React.useRef(cut);\n  React.useEffect(() => {\n    cutRef.current = cut;\n  }, [cut]);\n  const reduced = usePrefersReducedMotion();\n  const interactive = !readOnly && !disabled;\n  const spacing = gap ?? Math.round(size / 5);\n\n  const [uncontrolled, setUncontrolled] = React.useState(defaultValue);\n  const value = clamp(valueProp ?? uncontrolled, 0, max);\n  const [hover, setHover] = React.useState<number | null>(null);\n  const shown = hover ?? value;\n\n  const rootRef = React.useRef<HTMLDivElement>(null);\n  const partsRef = React.useRef<StarParts[]>([]);\n  const parts = (i: number) => (partsRef.current[i] ??= newParts());\n\n  const rtlRef = React.useRef(false);\n  const pointerRef = React.useRef<{ x: number; y: number } | null>(null);\n  const levelRef = React.useRef({ now: value, from: value, to: value, start: 0, duration: 0 });\n  const frameRef = React.useRef(0);\n  const reducedRef = React.useRef(reduced);\n  React.useEffect(() => {\n    reducedRef.current = reduced;\n  }, [reduced]);\n  // The clip each star renders with on the server and first paint. After\n  // that the loop owns the clip paths, so these never change.\n  const [initialLevel] = React.useState(value);\n\n  const paintFacets = (facets: Facets, light: Vec, gain: number) => {\n    const s = shade(light, gain);\n    for (let i = 0; i < s.length; i++) {\n      facets.hi[i]?.setAttribute(\"fill-opacity\", s[i].hi.toFixed(3));\n      facets.lo[i]?.setAttribute(\"fill-opacity\", s[i].lo.toFixed(3));\n    }\n  };\n\n  const tickRef = React.useRef<() => void>(() => {});\n  const tick = React.useCallback(() => {\n    frameRef.current = 0;\n    const now = performance.now();\n    const still = reducedRef.current;\n    let busy = false;\n\n    // Level.\n    const level = levelRef.current;\n    if (level.now !== level.to) {\n      const t = still || level.duration <= 0 ? 1 : clamp((now - level.start) / level.duration, 0, 1);\n      level.now = t >= 1 ? level.to : level.from + (level.to - level.from) * (1 - Math.pow(1 - t, 3));\n      if (t < 1) busy = true;\n    }\n\n    const pointer = pointerRef.current;\n    for (let i = 0; i < max; i++) {\n      const p = partsRef.current[i];\n      if (!p) continue;\n      if (p.fill) p.fill.style.clipPath = clipFor(level.now, i, rtlRef.current);\n\n      // Light: toward the pointer while it is over the row, else rest.\n      let target = REST_LIGHT;\n      if (!cutRef.current) continue;\n      if (pointer && p.box && !still) {\n        const r = p.box.getBoundingClientRect();\n        const dx = (pointer.x - (r.left + r.width / 2)) / r.width;\n        const dy = (pointer.y - (r.top + r.height / 2)) / r.height;\n        target = norm({ x: clamp(dx, -2.5, 2.5) * 0.9, y: clamp(dy, -2.5, 2.5) * 0.9 - 0.35, z: 1 });\n      }\n      const dist = Math.hypot(target.x - p.light.x, target.y - p.light.y, target.z - p.light.z);\n      if (dist > 0.002) {\n        const k = 0.16;\n        p.light = norm({\n          x: p.light.x + (target.x - p.light.x) * k,\n          y: p.light.y + (target.y - p.light.y) * k,\n          z: p.light.z + (target.z - p.light.z) * k,\n        });\n        busy = true;\n      } else {\n        p.light = target;\n      }\n\n      // Glint: the light swings from left to right across the star once.\n      let light = p.light;\n      let gain = 1;\n      if (p.glint !== null) {\n        const t = (now - p.glint) / GLINT_MS;\n        if (t >= 1) {\n          p.glint = null;\n        } else {\n          busy = true;\n          if (t > 0) {\n            const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;\n            const w = Math.sin(Math.PI * t);\n            const swing = norm({ x: -1.4 + 2.8 * e, y: -0.7, z: 0.8 });\n            light = norm({\n              x: light.x * (1 - w) + swing.x * w,\n              y: light.y * (1 - w) + swing.y * w,\n              z: light.z * (1 - w) + swing.z * w,\n            });\n            gain = 1 + 0.45 * w;\n          }\n        }\n      }\n\n      paintFacets(p.empty, light, 1);\n      paintFacets(p.lit, light, gain);\n    }\n\n    if (busy) frameRef.current = requestAnimationFrame(tickRef.current);\n  }, [max]);\n\n  React.useEffect(() => {\n    tickRef.current = tick;\n  }, [tick]);\n\n  const kick = React.useCallback(() => {\n    if (!frameRef.current) frameRef.current = requestAnimationFrame(() => tickRef.current());\n  }, []);\n\n  React.useEffect(\n    () => () => {\n      cancelAnimationFrame(frameRef.current);\n      // Clear the id too: a cancelled frame left here would read as a loop\n      // still running, and nothing could restart it after a remount.\n      frameRef.current = 0;\n    },\n    [],\n  );\n\n  React.useEffect(() => {\n    if (rootRef.current) rtlRef.current = getComputedStyle(rootRef.current).direction === \"rtl\";\n    kick();\n  }, [kick]);\n\n  // Glide the level to whatever is shown: the hover preview, or the rating.\n  React.useEffect(() => {\n    const level = levelRef.current;\n    if (level.to === shown) return;\n    level.from = level.now;\n    level.to = shown;\n    level.start = performance.now();\n    level.duration = clamp(130 + Math.abs(shown - level.now) * 45, 130, 320);\n    kick();\n  }, [shown, kick]);\n\n  // The faint tint that marks the current rating while you hover lower.\n  React.useEffect(() => {\n    partsRef.current.forEach((p, i) => {\n      if (p?.ghost) p.ghost.style.clipPath = clipFor(value, i, rtlRef.current);\n    });\n  }, [value]);\n\n  const glint = React.useCallback(\n    (next: number) => {\n      if (reducedRef.current || next <= 0) return;\n      if (!cutRef.current) {\n        // Classic: a small lift that runs along the lit stars.\n        for (let i = 0; i < Math.ceil(next); i++) {\n          partsRef.current[i]?.pop?.animate(\n            [{ transform: \"scale(1)\" }, { transform: \"scale(1.08)\", offset: 0.4 }, { transform: \"scale(1)\" }],\n            { duration: 320, delay: i * 35, easing: \"cubic-bezier(0.65, 0, 0.35, 1)\" },\n          );\n        }\n        return;\n      }\n      const start = performance.now();\n      for (let i = 0; i < Math.ceil(next); i++) parts(i).glint = start + i * GLINT_STAGGER;\n      kick();\n    },\n    [kick],\n  );\n\n  const commit = React.useCallback(\n    (next: number, withGlint: boolean) => {\n      const rounded = clamp(Math.round(next / precision) * precision, 0, max);\n      if (valueProp === undefined) setUncontrolled(rounded);\n      onValueChange?.(rounded);\n      if (withGlint) glint(rounded);\n    },\n    [precision, max, valueProp, onValueChange, glint],\n  );\n\n  const hoverRef = React.useRef<number | null>(null);\n  const changeHover = React.useCallback(\n    (next: number | null) => {\n      if (hoverRef.current === next) return;\n      hoverRef.current = next;\n      setHover(next);\n      onHoverChange?.(next);\n    },\n    [onHoverChange],\n  );\n\n  /** Rating under a pointer x. Left of the first star is 0. */\n  const valueAt = (clientX: number) => {\n    const rtl = rtlRef.current;\n    for (let i = 0; i < max; i++) {\n      const el = partsRef.current[i]?.box;\n      if (!el) continue;\n      const rect = el.getBoundingClientRect();\n      const edge = rtl ? rect.left - spacing / 2 : rect.right + spacing / 2;\n      if (i === max - 1 || (rtl ? clientX >= edge : clientX <= edge)) {\n        const into = rtl ? (rect.right - clientX) / rect.width : (clientX - rect.left) / rect.width;\n        if (i === 0 && into < 0) return 0;\n        const raw = i + clamp(into, 0, 1);\n        return clamp(Math.ceil(raw / precision - 1e-6) * precision, precision, max);\n      }\n    }\n    return max;\n  };\n\n  const press = React.useRef<{ id: number; start: number; moved: boolean; star: number } | null>(null);\n\n  const pressStar = (index: number, down: boolean) => {\n    if (reducedRef.current) return;\n    partsRef.current[index]?.press?.animate([{ transform: down ? \"scale(0.9)\" : \"scale(1)\" }], {\n      duration: down ? 120 : 260,\n      easing: EASE_OUT,\n      fill: \"forwards\",\n    });\n  };\n\n  const track = (event: React.PointerEvent) => {\n    pointerRef.current = { x: event.clientX, y: event.clientY };\n    kick();\n  };\n\n  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {\n    if (!interactive || event.button !== 0 || press.current) return;\n    event.currentTarget.setPointerCapture(event.pointerId);\n    track(event);\n    const next = valueAt(event.clientX);\n    const star = Math.max(0, Math.ceil(next) - 1);\n    press.current = { id: event.pointerId, start: event.clientX, moved: false, star };\n    pressStar(star, true);\n    changeHover(next);\n  };\n\n  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {\n    if (!interactive) return;\n    const p = press.current;\n    if (p) {\n      if (p.id !== event.pointerId) return;\n      track(event);\n      if (Math.abs(event.clientX - p.start) > 4) p.moved = true;\n      const next = valueAt(event.clientX);\n      const star = Math.max(0, Math.ceil(next) - 1);\n      if (star !== p.star) {\n        pressStar(p.star, false);\n        pressStar(star, true);\n        p.star = star;\n      }\n      changeHover(next);\n      return;\n    }\n    if (event.pointerType === \"mouse\" || event.pointerType === \"pen\") {\n      track(event);\n      changeHover(valueAt(event.clientX));\n    }\n  };\n\n  const endPress = (event: React.PointerEvent<HTMLDivElement>, cancelled: boolean) => {\n    const p = press.current;\n    if (!p || p.id !== event.pointerId) return;\n    press.current = null;\n    pressStar(p.star, false);\n    if (event.currentTarget.hasPointerCapture(event.pointerId)) {\n      event.currentTarget.releasePointerCapture(event.pointerId);\n    }\n    const rect = rootRef.current?.getBoundingClientRect();\n    const inside =\n      !!rect &&\n      event.clientX >= rect.left &&\n      event.clientX <= rect.right &&\n      event.clientY >= rect.top &&\n      event.clientY <= rect.bottom;\n    const keepHover = event.pointerType !== \"touch\" && inside;\n    if (!keepHover) pointerRef.current = null;\n    if (cancelled) {\n      changeHover(null);\n      kick();\n      return;\n    }\n    const next = valueAt(event.clientX);\n    const clear = allowClear && !p.moved && next === value;\n    commit(clear ? 0 : next, !clear);\n    changeHover(keepHover && !clear ? next : null);\n    kick();\n  };\n\n  const onPointerLeave = () => {\n    if (press.current) return;\n    pointerRef.current = null;\n    changeHover(null);\n    kick();\n  };\n\n  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {\n    onKeyDown?.(event);\n    if (!interactive || event.defaultPrevented) return;\n    const rtl = rtlRef.current;\n    let next: number | null = null;\n    switch (event.key) {\n      case \"ArrowRight\":\n        next = value + (rtl ? -precision : precision);\n        break;\n      case \"ArrowLeft\":\n        next = value + (rtl ? precision : -precision);\n        break;\n      case \"ArrowUp\":\n        next = value + precision;\n        break;\n      case \"ArrowDown\":\n        next = value - precision;\n        break;\n      case \"Home\":\n        next = 0;\n        break;\n      case \"End\":\n        next = max;\n        break;\n      default:\n        if (/^[0-9]$/.test(event.key) && Number(event.key) <= max) next = Number(event.key);\n    }\n    if (next === null) return;\n    event.preventDefault();\n    next = clamp(next, 0, max);\n    changeHover(null);\n    if (next !== value) commit(next, false);\n  };\n\n  const format = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\\.0$/, \"\"));\n  const spoken = (n: number) => {\n    const word = labels?.[Math.ceil(n) - 1];\n    const count = `${format(n)} out of ${max} stars`;\n    return word && n > 0 ? `${word}, ${count}` : count;\n  };\n\n  const a11y: React.HTMLAttributes<HTMLDivElement> = readOnly\n    ? { role: \"img\", \"aria-label\": `Rated ${format(value)} out of ${max}` }\n    : {\n        role: \"slider\",\n        tabIndex: disabled ? undefined : 0,\n        \"aria-label\": \"Rating\",\n        \"aria-disabled\": disabled || undefined,\n        \"aria-valuemin\": 0,\n        \"aria-valuemax\": max,\n        \"aria-valuenow\": value,\n        \"aria-valuetext\": spoken(value),\n      };\n\n  const ghostVisible = hover !== null && hover < value;\n  const softShadow = `drop-shadow(0 ${(size / 40).toFixed(2)}px ${(size / 26).toFixed(2)}px ${colors.shadow})`;\n  const shadow = `drop-shadow(0 ${(size / 30).toFixed(2)}px ${(size / 18).toFixed(2)}px ${colors.shadow})`;\n\n  return (\n    <div\n      ref={rootRef}\n      {...a11y}\n      {...rest}\n      onPointerDown={onPointerDown}\n      onPointerMove={onPointerMove}\n      onPointerUp={(e) => endPress(e, false)}\n      onPointerCancel={(e) => endPress(e, true)}\n      onPointerLeave={onPointerLeave}\n      onKeyDown={handleKeyDown}\n      className={cn(\n        \"relative inline-flex select-none items-center rounded-[10px] outline-none\",\n        \"focus-visible:outline-2 focus-visible:outline-offset-[6px] focus-visible:outline-neutral-900/40 dark:focus-visible:outline-white/40\",\n        interactive && \"cursor-pointer touch-pan-y\",\n        disabled && \"cursor-not-allowed opacity-45\",\n        className,\n      )}\n      style={{ gap: spacing, WebkitTapHighlightColor: \"transparent\", ...style }}\n    >\n      {cut ? null : (\n        <svg width=\"0\" height=\"0\" className=\"absolute\" aria-hidden focusable=\"false\">\n          {/* A quiet top light and a little depth at the base, no gloss. */}\n          <linearGradient id={gradientId} x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">\n            <stop offset=\"0\" stopColor={colors.hi} stopOpacity=\"0.38\" />\n            <stop offset=\"0.5\" stopColor={colors.hi} stopOpacity=\"0\" />\n            <stop offset=\"0.5\" stopColor={colors.lo} stopOpacity=\"0\" />\n            <stop offset=\"1\" stopColor={colors.lo} stopOpacity=\"0.22\" />\n          </linearGradient>\n        </svg>\n      )}\n      {Array.from({ length: max }, (_, i) => (\n        <span\n          key={i}\n          ref={(el) => {\n            parts(i).box = el;\n          }}\n          className=\"relative block shrink-0\"\n          style={{ width: size, height: size }}\n        >\n          <span\n            ref={(el) => {\n              parts(i).press = el;\n            }}\n            className=\"absolute inset-0 block\"\n          >\n            <span\n              ref={(el) => {\n                parts(i).pop = el;\n              }}\n              className=\"absolute inset-0 block\"\n            >\n              {cut ? (\n                <svg viewBox=\"0 0 24 24\" className=\"absolute inset-0 size-full overflow-visible\" aria-hidden>\n                  {/* Empty: the same cut, pressed into the surface. */}\n                  <path\n                    d={GEOMETRY.outline}\n                    className=\"fill-neutral-200 stroke-neutral-300/70 dark:fill-white/[0.075] dark:stroke-white/[0.06]\"\n                    strokeWidth={0.5}\n                    strokeLinejoin=\"round\"\n                  />\n                  <FacetPaths\n                    register={parts(i).empty}\n                    hi=\"#fff\"\n                    lo=\"#000\"\n                    hiClassName=\"opacity-90 dark:opacity-[0.14]\"\n                    loClassName=\"opacity-[0.1] dark:opacity-60\"\n                  />\n                </svg>\n              ) : (\n                <svg viewBox=\"0 0 24 24\" className=\"absolute inset-0 size-full overflow-visible\" aria-hidden>\n                  <path d={ROUND_PATH} className=\"fill-neutral-200 dark:fill-white/[0.09]\" />\n                </svg>\n              )}\n\n              {/* The rating you would lose, while hovering lower. */}\n              <span\n                ref={(el) => {\n                  parts(i).ghost = el;\n                }}\n                className=\"absolute inset-0 block\"\n                style={{\n                  clipPath: clipFor(initialLevel, i, false),\n                  opacity: ghostVisible ? 0.3 : 0,\n                  transition: reduced ? undefined : `opacity 160ms ${EASE_OUT}`,\n                }}\n              >\n                <svg viewBox=\"0 0 24 24\" className=\"absolute inset-0 size-full overflow-visible\" aria-hidden>\n                  {cut ? (\n                    <path d={GEOMETRY.outline} fill={colors.base} stroke={colors.base} strokeWidth={0.5} strokeLinejoin=\"round\" />\n                  ) : (\n                    <path d={ROUND_PATH} fill={colors.base} />\n                  )}\n                </svg>\n              </span>\n\n              {/* Lit: clipped to the level. */}\n              <span\n                ref={(el) => {\n                  parts(i).fill = el;\n                }}\n                className=\"absolute inset-0 block\"\n                style={{ clipPath: clipFor(initialLevel, i, false), filter: cut ? shadow : softShadow }}\n              >\n                {cut ? (\n                  <svg viewBox=\"0 0 24 24\" className=\"absolute inset-0 size-full overflow-visible\" aria-hidden>\n                    <path d={GEOMETRY.outline} fill={colors.base} />\n                    <FacetPaths register={parts(i).lit} hi={colors.hi} lo={colors.lo} loClassName=\"opacity-80\" />\n                    <path\n                      d={GEOMETRY.outline}\n                      fill=\"none\"\n                      stroke={colors.edge}\n                      strokeOpacity={0.45}\n                      strokeWidth={0.5}\n                      strokeLinejoin=\"round\"\n                    />\n                  </svg>\n                ) : (\n                  <svg viewBox=\"0 0 24 24\" className=\"absolute inset-0 size-full overflow-visible\" aria-hidden>\n                    <path d={ROUND_PATH} fill={colors.base} />\n                    <path d={ROUND_PATH} fill={`url(#${gradientId})`} />\n                  </svg>\n                )}\n              </span>\n            </span>\n          </span>\n        </span>\n      ))}\n\n      {name ? <input type=\"hidden\" name={name} value={value} disabled={disabled} /> : null}\n    </div>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/star-rating.tsx. For Pro components and updates, use pnpm dlx wensity@latest add star-rating.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "star-rating",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/star-rating",
+      "shadcnUrl": "https://ui.wensity.com/r/star-rating",
+      "cliInstall": "pnpm dlx wensity@latest add star-rating"
+    }
+  }
+}
