@@ -77,7 +77,7 @@ those for you at add time.
 
 ## What is in here
 
-97 registry items across six groups.
+98 registry items across six groups.
 
 ### Agentic AI Interfaces
 
@@ -142,6 +142,7 @@ Small, high-polish interaction details.
 | [`before-after-card`](https://ui.wensity.com/components/before-after-card) | Before After Card | Drag the handle to wipe between before and after images with absolutely zero lag. | `npx shadcn@latest add @wensity/before-after-card` |
 | [`progressive-image-loading`](https://ui.wensity.com/components/progressive-image-loading) | Progressive Image Loading | Holds the image's space with a BlurHash, preview, color, or shimmer placeholder, then develops in from blur. | `npx shadcn@latest add @wensity/progressive-image-loading` |
 | [`animated-hamburger-menu`](https://ui.wensity.com/components/animated-hamburger-menu) | Animated Hamburger Menu | Eight animated hamburger menu icons that morph into a close X or back arrow in CSS. | `npx shadcn@latest add @wensity/animated-hamburger-menu` |
+| [`star-rating`](https://ui.wensity.com/components/star-rating) | Star Rating | React star rating with half stars, drag to rate, and cut stars that catch the light. | `npx shadcn@latest add @wensity/star-rating` |
 
 ### Heavy SaaS Blocks
 
