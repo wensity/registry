@@ -77,7 +77,7 @@ those for you at add time.
 
 ## What is in here
 
-95 registry items across six groups.
+96 registry items across six groups.
 
 ### Agentic AI Interfaces
 
@@ -110,6 +110,7 @@ Headline and word-level motion, from shimmer and glitch to scribble and morph.
 | [`text-path`](https://ui.wensity.com/components/text-path) | Text Path | SVG text riding a curved wave, arc, or circle path on a seamless, light loop. | `npx shadcn@latest add @wensity/text-path` |
 | [`text-highlight`](https://ui.wensity.com/components/text-highlight) | Text Highlight | A hand-placed highlighter band that sweeps in behind your text and tracks wrapping. | `npx shadcn@latest add @wensity/text-highlight` |
 | [`text-scribble`](https://ui.wensity.com/components/text-scribble) | Text Scribble | Hand-drawn scribble, underline, strike, circle, and box marks that draw themselves onto text. | `npx shadcn@latest add @wensity/text-scribble` |
+| [`count-up-animation`](https://ui.wensity.com/components/count-up-animation) | Count Up Animation | A count up animation for React: every digit rolls into place, in any number format. | `npx shadcn@latest add @wensity/count-up-animation` |
 | [`text-chroma-reveal`](https://ui.wensity.com/components/text-chroma-reveal) | Text Chroma Reveal | A chromatic ribbon sweep that paints each of your headlines cleanly into view. | `npx shadcn@latest add @wensity/text-chroma-reveal` |
 | [`text-spectrum`](https://ui.wensity.com/components/text-spectrum) | Text Spectrum | An animated multi-stop color wash that drifts endlessly through headlines. | `npx shadcn@latest add @wensity/text-spectrum` |
 | [`text-ripple`](https://ui.wensity.com/components/text-ripple) | Text Ripple | A 3D character ripple with a traveling color crest, CSS-only and GPU-light. | `npx shadcn@latest add @wensity/text-ripple` |
