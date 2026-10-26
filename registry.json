@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 95,
+  "count": 96,
   "items": [
     {
       "name": "font-inter",
@@ -754,6 +754,26 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/underline-animation",
         "cliInstall": "pnpm dlx wensity@latest add underline-animation"
+      }
+    },
+    {
+      "name": "count-up-animation",
+      "type": "registry:block",
+      "title": "Count Up Animation",
+      "description": "A count up animation for React: every digit rolls into place, in any number format.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/count-up-animation.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/count-up-animation",
+        "cliInstall": "pnpm dlx wensity@latest add count-up-animation"
       }
     },
     {

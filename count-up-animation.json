@@ -1,0 +1,494 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "count-up-animation",
+  "type": "registry:block",
+  "title": "Count Up Animation",
+  "description": "Count Up Animation is a free React number ticker that rolls each digit to its new value when it scrolls into view or when the value changes, with a roll and a count style, Intl.NumberFormat formatting for currency, percent, compact numbers and any locale, and the final figure kept in the HTML.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/count-up-animation.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/count-up-animation.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport {\n  animate,\n  cancelFrame,\n  frame,\n  motionValue,\n  useInView,\n  useReducedMotion,\n  type AnimationPlaybackControlsWithThen,\n  type MotionValue,\n} from \"framer-motion\";\nimport { cn } from \"@/lib/utils\";\n\nexport type NumberTickerVariant = \"count\" | \"roll\";\n\nexport interface NumberTickerProps\n  extends Omit<React.ComponentPropsWithoutRef<\"span\">, \"children\" | \"prefix\"> {\n  /** The number to show. Changing it animates from whatever is on screen. */\n  value: number;\n  /** Where the first run starts. Default: `0`. */\n  from?: number;\n  /**\n   * `roll` turns each digit straight to its new value.\n   * `count` spins the digits like a counter, low digits turning most.\n   * Default: `\"roll\"`.\n   */\n  variant?: NumberTickerVariant;\n  /** Run length in seconds. Default: `1` for roll, `2.2` for count. */\n  duration?: number;\n  /** Seconds to wait before the first run. Default: `0`. */\n  delay?: number;\n  /** Start when scrolled into view, or as soon as it mounts. Default: `\"view\"`. */\n  trigger?: \"view\" | \"mount\";\n  /** Locale(s) passed to `Intl.NumberFormat`. Default: the browser locale. */\n  locales?: string | string[];\n  /** `Intl.NumberFormat` options: currency, percent, compact, decimals. */\n  format?: Intl.NumberFormatOptions;\n  /** Text before the number, such as `\"+\"`. */\n  prefix?: string;\n  /** Text after the number, such as `\"+\"` or `\" users\"`. */\n  suffix?: string;\n  /** Called when a run settles. */\n  onComplete?: () => void;\n}\n\n/* ────────────────────────────────────────────────────────────────────────\n * Layout: what Intl says the target looks like, split into the parts that\n * turn (digits) and the parts that stay put (currency, %, K, separators).\n * ──────────────────────────────────────────────────────────────────────── */\n\ninterface Layout {\n  lead: string;\n  trail: string;\n  /** Fraction digits shown. */\n  fd: number;\n  decimal: string;\n  group: string;\n  /** Raw value × scale = the number Intl prints (100 for %, 1/1000 for K). */\n  scale: number;\n  /** Localised digit glyphs 0-9. */\n  digits: string[];\n  /** Places k with a group separator right of column k, per integer length. */\n  separators: (length: number) => ReadonlySet<number>;\n  text: string;\n}\n\nconst MAX_PLACES = 21;\nconst STRIP = 11; // 0-9 plus a trailing 0 so 9 turns into 0\n/**\n * Extra full turns a low digit makes in count mode, so it reads as counting.\n * Kept to one: more makes digits strobe instead of roll.\n */\nconst MAX_TURNS = 1;\n/**\n * Timed curves, not springs: a spring's tail keeps a digit creeping the last\n * few pixels long after it looks done. Both land at zero speed, exactly on\n * the digit, at the stated duration.\n */\nconst ROLL_EASE = [0.3, 0.5, 0.2, 1] as const;\nconst COUNT_EASE = [0.33, 0.2, 0.3, 1] as const;\nconst PRESENCE = { type: \"spring\", bounce: 0, visualDuration: 0.42 } as const;\n\n/*\n * Each digit turns inside its own line, faded at the top and bottom, so a\n * digit slides out through a soft edge and the neighbours never show. The\n * line is taller than the text (taken back with negative margins) to leave\n * room for that fade, and the fade is fitted to the font's real ink so it\n * runs as long as possible without dimming a digit at rest. Horizontal\n * padding, also taken back, keeps wide glyphs and tight tracking unclipped.\n */\nconst LINE = 1.5;\nconst LINE_TRIM = `${-(LINE - 1.15) / 2}em`;\nconst PAD_X = \"0.3em\";\nconst FALLBACK_MASK =\n  \"linear-gradient(to bottom, transparent 0, #000 0.38em, #000 calc(100% - 0.3em), transparent 100%)\";\n\nlet measureContext: CanvasRenderingContext2D | null | undefined;\n\n/** A mask whose fades end exactly where the digits' ink begins. */\nfunction inkMask(row: HTMLElement): string | null {\n  if (measureContext === undefined) {\n    measureContext = document.createElement(\"canvas\").getContext(\"2d\");\n  }\n  const ctx = measureContext;\n  if (!ctx) return null;\n  const cs = getComputedStyle(row);\n  const size = parseFloat(cs.fontSize);\n  const line = parseFloat(cs.lineHeight);\n  if (!size || !Number.isFinite(line)) return null;\n  ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;\n  const m = ctx.measureText(\"0123456789\");\n  if (!m.fontBoundingBoxAscent) return null;\n  const baseline = (line - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2 + m.fontBoundingBoxAscent;\n  const margin = size * 0.025;\n  const top = Math.max(1, baseline - m.actualBoundingBoxAscent - margin);\n  const bottom = Math.min(line - 1, baseline + m.actualBoundingBoxDescent + margin);\n  if (bottom <= top) return null;\n  // Smoothstep stops, so the fade has no visible start or end line.\n  const steps = [0, 0.2, 0.4, 0.6, 0.8, 1];\n  const ease = (f: number) => f * f * (3 - 2 * f);\n  const stops = [\n    ...steps.map((f) => `rgba(0,0,0,${ease(f).toFixed(3)}) ${(top * f).toFixed(2)}px`),\n    ...steps.map((f) => `rgba(0,0,0,${ease(1 - f).toFixed(3)}) ${(bottom + (line - bottom) * f).toFixed(2)}px`),\n  ];\n  return `linear-gradient(to bottom, ${stops.join(\", \")})`;\n}\n\nfunction makeFormatter(\n  locales: string | string[] | undefined,\n  options: Intl.NumberFormatOptions,\n) {\n  try {\n    return new Intl.NumberFormat(locales, options);\n  } catch {\n    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });\n  }\n}\n\nfunction readParts(formatter: Intl.NumberFormat, n: number) {\n  let int = \"\";\n  let frac = \"\";\n  let lead = \"\";\n  let trail = \"\";\n  let decimal = \".\";\n  let seenNumber = false;\n  for (const part of formatter.formatToParts(n)) {\n    switch (part.type) {\n      case \"integer\":\n        int += part.value;\n        seenNumber = true;\n        break;\n      case \"fraction\":\n        frac += part.value;\n        break;\n      case \"decimal\":\n        decimal = part.value;\n        break;\n      case \"group\":\n      case \"minusSign\":\n      case \"plusSign\":\n        break;\n      default:\n        if (seenNumber) trail += part.value;\n        else lead += part.value;\n    }\n  }\n  return { int, frac, lead, trail, decimal };\n}\n\nfunction buildLayout(\n  value: number,\n  locales: string | string[] | undefined,\n  format: Intl.NumberFormatOptions | undefined,\n  prefix: string,\n  suffix: string,\n): Layout {\n  const options = format ?? {};\n  const full = makeFormatter(locales, options);\n  const latn = makeFormatter(locales, { ...options, numberingSystem: \"latn\" });\n  const abs = Number.isFinite(value) ? Math.abs(value) : 0;\n\n  const target = readParts(latn, abs);\n  const shown = Number(`${target.int || \"0\"}.${target.frac || \"0\"}`);\n  let scale = 1;\n  if (abs > 0 && shown > 0) {\n    scale = shown / abs;\n  } else {\n    const one = readParts(latn, 1);\n    scale = Number(`${one.int || \"1\"}.${one.frac || \"0\"}`) || 1;\n  }\n\n  const resolved = full.resolvedOptions() as Intl.ResolvedNumberFormatOptions & {\n    useGrouping?: unknown;\n  };\n  const plain = makeFormatter(locales, {\n    numberingSystem: \"latn\",\n    maximumFractionDigits: 0,\n    useGrouping: resolved.useGrouping as Intl.NumberFormatOptions[\"useGrouping\"],\n  });\n  const groupPart = makeFormatter(locales, { numberingSystem: \"latn\" })\n    .formatToParts(1234567)\n    .find((part) => part.type === \"group\");\n\n  const digitFormatter = makeFormatter(locales, {\n    numberingSystem: resolved.numberingSystem,\n    useGrouping: false,\n    maximumFractionDigits: 0,\n  });\n  const digits = Array.from({ length: 10 }, (_, d) => digitFormatter.format(d));\n\n  const cache = new Map<number, ReadonlySet<number>>();\n  const separators = (length: number) => {\n    const n = Math.min(Math.max(1, length), MAX_PLACES);\n    const hit = cache.get(n);\n    if (hit) return hit;\n    const chunks = plain\n      .formatToParts(10 ** (n - 1))\n      .filter((part) => part.type === \"integer\")\n      .map((part) => part.value.length);\n    const set = new Set<number>();\n    let acc = 0;\n    for (let i = chunks.length - 1; i > 0; i -= 1) {\n      acc += chunks[i] ?? 0;\n      set.add(acc);\n    }\n    cache.set(n, set);\n    return set;\n  };\n\n  return {\n    lead: prefix + target.lead,\n    trail: target.trail + suffix,\n    fd: target.frac.length,\n    decimal: target.decimal,\n    group: groupPart?.value ?? \",\",\n    scale,\n    digits,\n    separators,\n    text: `${prefix}${full.format(Number.isFinite(value) ? value : 0)}${suffix}`,\n  };\n}\n\n/** Every shown digit as one integer, without the decimal point. */\nfunction scaledInt(raw: number, layout: Layout) {\n  return Math.round(Math.abs(raw) * layout.scale * 10 ** layout.fd);\n}\n\n/** How many integer digits a scaled integer has. */\nfunction lengthOf(n: number, fd: number) {\n  return Math.min(MAX_PLACES, String(Math.floor(n / 10 ** fd)).length);\n}\n\nfunction digitAt(n: number, idx: number) {\n  return Math.floor(n / 10 ** idx) % 10;\n}\n\n/** Width of the digit at a (possibly fractional) turn position. */\nfunction glyphWidth(metrics: Metrics, turns: number) {\n  const pos = wrap(turns);\n  const low = Math.floor(pos);\n  const w0 = metrics.digits[low % 10] ?? 0;\n  const w1 = metrics.digits[(low + 1) % 10] ?? 0;\n  return w0 + (w1 - w0) * (pos - low);\n}\n\nfunction smooth(x: number) {\n  const t = Math.min(1, Math.max(0, x));\n  return t * t * (3 - 2 * t);\n}\n\nfunction wrap(turns: number) {\n  return ((turns % 10) + 10) % 10;\n}\n\n/** Column `idx` (0 = lowest shown place) is part of the number. */\nfunction placeShows(n: number, idx: number, fd: number) {\n  return idx <= fd || n >= 10 ** idx;\n}\n\ninterface Slot {\n  presence: MotionValue<number>;\n  on: boolean;\n}\n\ninterface Column {\n  turns: MotionValue<number>;\n  /** Where the current run started and ends, in unwrapped turns. */\n  start: number;\n  target: number;\n  /** How much of the number this column was (0-1) when the run started. */\n  startShown: number;\n  /** Whether it is part of the number when the run ends. */\n  targetOn: boolean;\n  /** How much of the number it is right now, 0 to 1. */\n  shown: number;\n}\n\ninterface Metrics {\n  digits: number[];\n  group: number;\n  minus: number;\n  font: number;\n}\n\n/**\n * NumberTicker\n *\n * A number that spins up like a counter (`count`) or turns each digit\n * straight to its new value (`roll`). Formatting comes from\n * `Intl.NumberFormat`, so currency, percent, compact and locale grouping\n * all work. Each column is as wide as the digit it shows, so proportional\n * fonts keep their natural spacing, and digits that appear or disappear\n * (999 to 1,000) open their width instead of jumping. The finished value is\n * always in the DOM for screen readers and crawlers.\n */\nexport function NumberTicker({ variant = \"roll\", ...props }: NumberTickerProps) {\n  return <NumberTickerEngine key={variant} variant={variant} {...props} />;\n}\n\nfunction NumberTickerEngine({\n  value,\n  from = 0,\n  variant = \"roll\",\n  duration,\n  delay = 0,\n  trigger = \"view\",\n  locales,\n  format,\n  prefix = \"\",\n  suffix = \"\",\n  onComplete,\n  className,\n  style,\n  ...rest\n}: NumberTickerProps) {\n  const rootRef = React.useRef<HTMLSpanElement>(null);\n  const rowRef = React.useRef<HTMLSpanElement>(null);\n  const measureRef = React.useRef<HTMLSpanElement>(null);\n  const inView = useInView(rootRef, { once: true, amount: 0.5 });\n  const reduceMotion = useReducedMotion();\n  const started = trigger === \"mount\" || inView;\n\n  const safeValue = Number.isFinite(value) ? value : 0;\n  const safeFrom = Number.isFinite(from) ? from : 0;\n  const formatKey = JSON.stringify(format ?? null);\n  const localeKey = JSON.stringify(locales ?? null);\n  const layout = React.useMemo(\n    () => buildLayout(safeValue, locales, format, prefix, suffix),\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n    [safeValue, localeKey, formatKey, prefix, suffix],\n  );\n  // What the first paint shows. Fixed after mount, so React never rewrites\n  // inline styles that the motion loop owns.\n  const [first] = React.useState(() => ({\n    n: scaledInt(safeFrom, layout),\n    fd: layout.fd,\n    negative: safeFrom < 0,\n  }));\n\n  // Columns never unmount: a shrinking number folds them to zero width.\n  const needed = Math.max(\n    lengthOf(scaledInt(safeFrom, layout), layout.fd),\n    lengthOf(scaledInt(safeValue, layout), layout.fd),\n  );\n  const [maxPlaces, setMaxPlaces] = React.useState(needed);\n  if (needed > maxPlaces) setMaxPlaces(needed);\n  const places = Math.max(maxPlaces, needed);\n  const columnCount = places + layout.fd;\n\n  // Live copies for the motion loop, which runs outside render.\n  const layoutRef = React.useRef(layout);\n  const placesRef = React.useRef(places);\n  const onCompleteRef = React.useRef(onComplete);\n  const instantRef = React.useRef(false);\n  React.useLayoutEffect(() => {\n    layoutRef.current = layout;\n    placesRef.current = places;\n    onCompleteRef.current = onComplete;\n    instantRef.current = Boolean(reduceMotion);\n  });\n\n  // The number on screen as a scaled integer: `from` until the first run.\n  const shownRef = React.useRef(first.n);\n\n  const separatorPlaces = React.useMemo(() => {\n    const all = new Set<number>();\n    for (let n = 1; n <= places; n += 1) {\n      for (const k of layout.separators(n)) all.add(k);\n    }\n    return all;\n  }, [layout, places]);\n\n  /* ── Motion state, kept outside React ─────────────────────────────── */\n\n  const metricsRef = React.useRef<Metrics | null>(null);\n  const columnsRef = React.useRef(new Map<number, Column>());\n  const signRef = React.useRef<Slot | null>(null);\n  const paintRef = React.useRef<() => void>(() => {});\n  const scheduledRef = React.useRef(false);\n\n  // One paint per frame, however many motion values changed.\n  const process = React.useCallback(() => {\n    scheduledRef.current = false;\n    paintRef.current();\n  }, []);\n  const schedule = React.useCallback(() => {\n    if (scheduledRef.current) return;\n    scheduledRef.current = true;\n    frame.render(process);\n  }, [process]);\n\n  const makeSlot = React.useCallback(\n    (on: boolean): Slot => {\n      const presence = motionValue(on ? 1 : 0);\n      presence.on(\"change\", schedule);\n      return { presence, on };\n    },\n    [schedule],\n  );\n\n  const getColumn = React.useCallback(\n    (idx: number) => {\n      let col = columnsRef.current.get(idx);\n      if (!col) {\n        const n = shownRef.current ?? 0;\n        const digit = digitAt(n, idx);\n        const on = placeShows(n, idx, layoutRef.current.fd);\n        const turns = motionValue(digit);\n        turns.on(\"change\", schedule);\n        col = {\n          turns,\n          start: digit,\n          target: digit,\n          startShown: on ? 1 : 0,\n          targetOn: on,\n          shown: on ? 1 : 0,\n        };\n        columnsRef.current.set(idx, col);\n      }\n      return col;\n    },\n    [schedule],\n  );\n\n  const toggle = React.useCallback((slot: Slot, on: boolean) => {\n    if (slot.on === on) return;\n    slot.on = on;\n    if (instantRef.current) {\n      slot.presence.stop();\n      slot.presence.set(on ? 1 : 0);\n    } else {\n      animate(slot.presence, on ? 1 : 0, PRESENCE);\n    }\n  }, []);\n\n  const paint = () => {\n    const row = rowRef.current;\n    const metrics = metricsRef.current;\n    if (!row || !metrics) return;\n    const L = layoutRef.current;\n\n    // How much each column belongs to the number, top down. Opening and\n    // closing ride on the column's own roll, so the number widens as a\n    // leading digit rolls in, narrows as one rolls away to 0, and every\n    // width change lands exactly when the digits do. A column is never less\n    // shown than the one on its left, so no gap and no stray leading 0.\n    let higher = 0;\n    let length = 1;\n    for (let idx = placesRef.current + L.fd - 1; idx >= 0; idx -= 1) {\n      const col = getColumn(idx);\n      const now = col.turns.get();\n      const span = col.target - col.start;\n      const moved = Math.abs(now - col.start);\n      const target = col.targetOn ? 1 : 0;\n      let own: number;\n      if (idx <= L.fd) own = 1;\n      else if (col.startShown === target) own = target;\n      else if (Math.abs(span) < 1e-6) own = 0;\n      else if (target === 1) own = col.startShown + (1 - col.startShown) * smooth(moved / Math.min(0.7, Math.abs(span)));\n      else own = col.startShown * (1 - smooth(moved / Math.abs(span)));\n      col.shown = Math.max(own, higher);\n      higher = col.shown;\n      if (col.shown > 0.001) length = Math.max(length, idx - L.fd + 1);\n    }\n    const groups = L.separators(length);\n\n    for (const el of row.querySelectorAll<HTMLElement>(\"[data-ticker-col]\")) {\n      const col = columnsRef.current.get(Number(el.dataset.idx));\n      const strip = el.firstElementChild?.nextElementSibling as HTMLElement | null;\n      if (!col || !strip) continue;\n      const now = col.turns.get();\n      // Width travels from the start digit's to the end digit's along the\n      // roll itself, ignoring the digits passing by, so the number never\n      // shakes sideways mid-roll.\n      const span = col.target - col.start;\n      const progress = Math.abs(span) > 1e-6 ? Math.min(1, Math.max(0, (now - col.start) / span)) : 1;\n      const from = glyphWidth(metrics, col.start);\n      const width = from + (glyphWidth(metrics, col.target) - from) * progress;\n      el.style.width = `${width * col.shown}px`;\n      // Fade in only once there is room, so an opening digit never sits\n      // over its neighbours.\n      el.style.opacity = String(smooth((col.shown - 0.25) / 0.6));\n      strip.style.transform = `translate3d(0, ${(-wrap(now) * 100) / STRIP}%, 0)`;\n    }\n\n    for (const el of row.querySelectorAll<HTMLElement>(\"[data-ticker-sep]\")) {\n      const place = Number(el.dataset.place);\n      const shown = groups.has(place) ? (columnsRef.current.get(place + L.fd)?.shown ?? 0) : 0;\n      el.style.width = `${metrics.group * shown}px`;\n      el.style.opacity = String(smooth((shown - 0.3) / 0.7));\n    }\n    const signEl = row.querySelector<HTMLElement>(\"[data-ticker-sign]\");\n    if (signEl && signRef.current) {\n      const p = signRef.current.presence.get();\n      signEl.style.width = `${metrics.minus * p}px`;\n      signEl.style.opacity = String(p);\n    }\n  };\n\n  React.useLayoutEffect(() => {\n    paintRef.current = paint;\n  });\n\n  /* ── Measuring: real glyph widths, so proportional digits stay put ── */\n\n  React.useLayoutEffect(() => {\n    const box = measureRef.current;\n    if (!box) return;\n    const read = () => {\n      const widths = Array.from(box.children, (s) => s.getBoundingClientRect().width);\n      const digits = widths.slice(0, 10);\n      metricsRef.current = {\n        digits,\n        group: widths[10] ?? 0,\n        minus: widths[11] ?? 0,\n        font: parseFloat(getComputedStyle(box).fontSize) || 16,\n      };\n      const row = rowRef.current;\n      const mask = row ? inkMask(row) : null;\n      if (row && mask) row.style.setProperty(\"--ticker-mask\", mask);\n      paintRef.current();\n    };\n    read();\n    const observer = new ResizeObserver(read);\n    observer.observe(box);\n    let alive = true;\n    document.fonts?.ready.then(() => {\n      if (alive) read();\n    });\n    return () => {\n      alive = false;\n      observer.disconnect();\n    };\n  }, [layout]);\n\n  // New columns get state before they paint.\n  React.useLayoutEffect(() => {\n    for (let idx = 0; idx < columnCount; idx += 1) getColumn(idx);\n    if (!signRef.current) signRef.current = makeSlot(first.negative);\n    paintRef.current();\n  });\n\n  /* ── Runs ─────────────────────────────────────────────────────────── */\n\n  const firstRunRef = React.useRef(true);\n  const runLength = Math.max(0.05, duration ?? (variant === \"roll\" ? 1 : 2.2));\n\n  React.useEffect(() => {\n    if (!started) return;\n    const wait = firstRunRef.current ? Math.max(0, delay) : 0;\n    firstRunRef.current = false;\n\n    const L = layoutRef.current;\n    const n = scaledInt(safeValue, L);\n    const previous = shownRef.current ?? 0;\n    shownRef.current = n;\n    const up = n >= previous;\n    const change = Math.abs(n - previous);\n    const count = placesRef.current + L.fd;\n\n    if (signRef.current) toggle(signRef.current, safeValue < 0 && n > 0);\n\n    const running: AnimationPlaybackControlsWithThen[] = [];\n    const moving: Column[] = [];\n    for (let idx = 0; idx < count; idx += 1) {\n      const col = getColumn(idx);\n      const digit = digitAt(n, idx);\n      // Count restarts from what is on screen; roll keeps its digit path.\n      const base = variant === \"count\" ? col.turns.get() : col.target;\n      const here = wrap(base);\n      let step = up ? (digit - here + 10) % 10 : -((here - digit + 10) % 10);\n      if (Math.abs(step) < 1e-6 || Math.abs(Math.abs(step) - 10) < 1e-6) step = 0;\n      if (variant === \"count\") {\n        const laps = Math.min(MAX_TURNS, Math.floor(change / 10 ** idx / 10));\n        step += (up ? 10 : -10) * laps;\n      }\n      col.start = col.turns.get();\n      col.target = base + step;\n      col.startShown = col.shown;\n      col.targetOn = placeShows(n, idx, L.fd);\n\n      if (reduceMotion) {\n        col.turns.stop();\n        col.turns.set(col.target);\n        col.start = col.target;\n        col.startShown = col.targetOn ? 1 : 0;\n        continue;\n      }\n      if (Math.abs(col.turns.get() - col.target) < 1e-6) continue;\n      moving.push(col);\n    }\n\n    if (variant === \"count\") {\n      // One wave: every digit turns at the same speed, so the row reads as a\n      // single motion. Digits with further to go start first (the low ones),\n      // shorter trips join later, and everything lands together.\n      const distance = (col: Column) => Math.abs(col.target - col.turns.get());\n      const longest = Math.max(1, ...moving.map(distance));\n      for (const col of moving) {\n        const share = Math.max(0.4, distance(col) / longest);\n        running.push(\n          animate(col.turns, col.target, {\n            duration: runLength * share,\n            delay: wait + runLength * (1 - share),\n            ease: COUNT_EASE,\n          }),\n        );\n      }\n    } else {\n      for (const col of moving) {\n        running.push(\n          animate(col.turns, col.target, {\n            duration: runLength,\n            delay: wait,\n            ease: ROLL_EASE,\n          }),\n        );\n      }\n    }\n    schedule();\n\n    let cancelled = false;\n    const finish = () => {\n      if (!cancelled) onCompleteRef.current?.();\n    };\n    if (running.length === 0) finish();\n    else Promise.all(running.map((c) => new Promise<void>((r) => c.then(r)))).then(finish);\n    return () => {\n      cancelled = true;\n    };\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [started, safeValue, layout, variant, runLength, reduceMotion]);\n\n  React.useEffect(\n    () => () => {\n      cancelFrame(process);\n      for (const col of columnsRef.current.values()) col.turns.stop();\n      signRef.current?.presence.stop();\n    },\n    [process],\n  );\n\n  /* ── Markup ───────────────────────────────────────────────────────── */\n\n  const firstGroups = layout.separators(lengthOf(first.n, first.fd));\n\n  const slots: React.ReactNode[] = [];\n  for (let place = places - 1; place >= -layout.fd; place -= 1) {\n    const idx = place + layout.fd;\n    const on = placeShows(first.n, idx, first.fd);\n    const digit = digitAt(first.n, idx);\n    slots.push(\n      <span\n        key={`c${place}`}\n        data-ticker-col=\"\"\n        data-idx={idx}\n        className=\"relative inline-block box-content text-center\"\n        style={{\n          paddingInline: PAD_X,\n          marginInline: `-${PAD_X}`,\n          maskImage: `var(--ticker-mask, ${FALLBACK_MASK})`,\n          WebkitMaskImage: `var(--ticker-mask, ${FALLBACK_MASK})`,\n          ...(on ? null : { width: 0, opacity: 0 }),\n        }}\n      >\n        {/* In-flow glyph: gives the column its baseline and first width. */}\n        <span className=\"invisible\">{layout.digits[digit]}</span>\n        <span\n          data-ticker-strip=\"\"\n          className=\"absolute flex flex-col items-center will-change-transform\"\n          style={{\n            top: 0,\n            left: PAD_X,\n            right: PAD_X,\n            transform: `translate3d(0, ${(-digit * 100) / STRIP}%, 0)`,\n          }}\n        >\n          {Array.from({ length: STRIP }, (_, i) => (\n            <span key={i} className=\"block\">\n              {layout.digits[i % 10]}\n            </span>\n          ))}\n        </span>\n      </span>,\n    );\n    if (place > 0 && separatorPlaces.has(place)) {\n      const sepOn = firstGroups.has(place) && on;\n      slots.push(\n        <span\n          key={`s${place}`}\n          data-ticker-sep=\"\"\n          data-place={place}\n          className=\"inline-block whitespace-pre\"\n          style={sepOn ? undefined : { width: 0, opacity: 0 }}\n        >\n          {layout.group}\n        </span>,\n      );\n    }\n    if (place === 0 && layout.fd > 0) {\n      slots.push(\n        <span key=\"decimal\" className=\"whitespace-pre\">\n          {layout.decimal}\n        </span>,\n      );\n    }\n  }\n\n  return (\n    <span\n      ref={rootRef}\n      className={cn(\"relative inline-block whitespace-nowrap\", className)}\n      style={style}\n      {...rest}\n    >\n      <span className=\"sr-only\">{layout.text}</span>\n      <span\n        ref={rowRef}\n        aria-hidden=\"true\"\n        className=\"inline-flex items-baseline\"\n        style={{ lineHeight: LINE, marginBlock: LINE_TRIM }}\n      >\n        <span\n          data-ticker-sign=\"\"\n          className=\"inline-block\"\n          style={first.negative ? undefined : { width: 0, opacity: 0 }}\n        >\n          −\n        </span>\n        {layout.lead ? <span className=\"whitespace-pre\">{layout.lead}</span> : null}\n        {slots}\n        {layout.trail ? <span className=\"whitespace-pre\">{layout.trail}</span> : null}\n      </span>\n      <span\n        ref={measureRef}\n        aria-hidden=\"true\"\n        className=\"pointer-events-none invisible absolute left-0 top-0 whitespace-pre\"\n      >\n        {layout.digits.map((d, i) => (\n          <span key={i} className=\"inline-block\">\n            {d}\n          </span>\n        ))}\n        <span className=\"inline-block\">{layout.group}</span>\n        <span className=\"inline-block\">−</span>\n      </span>\n    </span>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/count-up-animation.tsx. For Pro components and updates, use pnpm dlx wensity@latest add count-up-animation.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "count-up-animation",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/count-up-animation",
+      "shadcnUrl": "https://ui.wensity.com/r/count-up-animation",
+      "cliInstall": "pnpm dlx wensity@latest add count-up-animation"
+    }
+  }
+}
