@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 99,
+  "count": 100,
   "items": [
     {
       "name": "font-inter",
@@ -810,6 +810,24 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/count-up-animation",
         "cliInstall": "pnpm dlx wensity@latest add count-up-animation"
+      }
+    },
+    {
+      "name": "text-scramble",
+      "type": "registry:block",
+      "title": "Text Scramble",
+      "description": "A text scramble effect that decodes words from random characters on view or hover.",
+      "categories": [
+        "Text Animations",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/text-scramble.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/text-scramble",
+        "cliInstall": "pnpm dlx wensity@latest add text-scramble"
       }
     },
     {

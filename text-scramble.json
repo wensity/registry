@@ -1,0 +1,493 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-scramble",
+  "type": "registry:block",
+  "title": "Text Scramble",
+  "description": "Text Scramble is a free React text scramble effect that decodes words out of random characters on load, when scrolled into view or on hover, with preset or custom character sets, four reveal orders and no layout shift.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/text-scramble.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/text-scramble.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type TextScrambleTrigger = \"mount\" | \"view\" | \"hover\";\n\nexport type TextScrambleCharset =\n  | \"alphanumeric\"\n  | \"letters\"\n  | \"uppercase\"\n  | \"lowercase\"\n  | \"numbers\"\n  | \"binary\"\n  | \"hex\"\n  | \"symbols\";\n\nexport type TextScrambleReveal = \"start\" | \"end\" | \"center\" | \"random\";\n\nexport interface TextScrambleHandle {\n  /** Scramble the text again and decode it, from wherever it is now. */\n  play: () => void;\n}\n\nexport interface TextScrambleProps\n  extends Omit<React.HTMLAttributes<HTMLElement>, \"children\"> {\n  /** The text to show. Changing it decodes into the new text. */\n  text: string;\n  /** Tag rendered as the outer element. Default: `\"span\"`. */\n  as?: keyof React.JSX.IntrinsicElements;\n  /**\n   * When to decode. `\"mount\"` runs on load, `\"view\"` when it scrolls into\n   * view, `\"hover\"` on pointer enter and keyboard focus. Pass an array to\n   * combine them. Default: `\"view\"`.\n   */\n  trigger?: TextScrambleTrigger | TextScrambleTrigger[];\n  /** A preset, or any string of your own characters. Default: `\"alphanumeric\"`. */\n  characters?: TextScrambleCharset | (string & {});\n  /** Seconds until the last character locks in. Default: 0.9 */\n  duration?: number;\n  /** Milliseconds between random glyph swaps. Lower flickers faster. Default: 50 */\n  speed?: number;\n  /** Seconds before the first load or in-view run. Default: 0 */\n  delay?: number;\n  /** Which characters lock in first. Default: `\"start\"`. */\n  reveal?: TextScrambleReveal;\n  /** Random letters follow the case of the letter they stand in for. Default: true */\n  matchCase?: boolean;\n  /** Characters that never scramble. Spaces never do. */\n  keep?: string;\n  /** With `trigger=\"view\"`, decode only the first time. Default: true */\n  once?: boolean;\n  /** Colour of characters still scrambling. Default: the text colour. */\n  scrambleColor?: string;\n  /** Opacity of characters still scrambling, 0 to 1. Default: 0.45 */\n  scrambleOpacity?: number;\n  /** Called each time a run finishes. */\n  onComplete?: () => void;\n  /** Imperative handle with `play()`, for replays from your own controls. */\n  controlRef?: React.Ref<TextScrambleHandle>;\n  className?: string;\n}\n\nconst CHARSETS: Record<TextScrambleCharset, string> = {\n  alphanumeric: \"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\",\n  letters: \"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\",\n  uppercase: \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\n  lowercase: \"abcdefghijklmnopqrstuvwxyz\",\n  numbers: \"0123456789\",\n  binary: \"01\",\n  hex: \"0123456789ABCDEF\",\n  symbols: \"!<>_\\\\/[]{}=+*^?#%&$@~\",\n};\n\nconst DEFAULT_KEEP = \".,:;!?'\\\"()-/&’\";\n\n/** Hover and focus listen on the nearest interactive parent, so a link works. */\nconst INTERACTIVE = \"a,button,summary,label,[role='button'],[role='link'],[role='menuitem'],[tabindex]:not([tabindex='-1'])\";\n\nconst CELL_CLASS =\n  \"inline-grid before:invisible before:content-[attr(data-c)] before:[grid-area:1/1] after:content-[attr(data-g)] after:[grid-area:1/1] after:justify-self-center after:transition-opacity after:duration-150 after:ease-out data-[s]:after:text-[color:var(--ts-c,currentColor)] data-[s]:after:opacity-[var(--ts-o,0.45)]\";\n\nconst useIsoLayoutEffect =\n  typeof window === \"undefined\" ? React.useEffect : React.useLayoutEffect;\n\nfunction resolvePool(characters: string): string[] {\n  const source = characters in CHARSETS ? CHARSETS[characters as TextScrambleCharset] : characters;\n  const pool = Array.from(new Set(Array.from(source).filter((ch) => ch.trim() !== \"\")));\n  return pool.length ? pool : Array.from(CHARSETS.alphanumeric);\n}\n\nfunction isLetter(ch: string) {\n  return ch.toLowerCase() !== ch.toUpperCase();\n}\n\nfunction applyCase(glyph: string, source: string, matchCase: boolean) {\n  if (!matchCase || !isLetter(source) || !isLetter(glyph)) return glyph;\n  return source === source.toUpperCase() ? glyph.toUpperCase() : glyph.toLowerCase();\n}\n\nfunction pickGlyph(list: string[], previous: string) {\n  let index = Math.floor(Math.random() * list.length);\n  if (list.length > 1 && list[index] === previous) index = (index + 1) % list.length;\n  return list[index];\n}\n\nlet measureCanvas: CanvasRenderingContext2D | null | undefined;\n\nfunction measureContext() {\n  if (measureCanvas === undefined) {\n    measureCanvas =\n      typeof document === \"undefined\" ? null : document.createElement(\"canvas\").getContext(\"2d\");\n  }\n  return measureCanvas;\n}\n\ntype Fitter = (source: string) => string[];\n\n/**\n * Random glyphs for each slot, no wider than 1.25x the letter they stand in\n * for, so a W never spills over the letters beside an i. Too few fit: the\n * narrowest third of the pool.\n */\nfunction createFitter(font: string, pool: string[], matchCase: boolean): Fitter {\n  const ctx = measureContext();\n  const widths = new Map<string, number>();\n  const width = (glyph: string) => {\n    let w = widths.get(glyph);\n    if (w === undefined && ctx) {\n      ctx.font = font;\n      w = ctx.measureText(glyph).width;\n      widths.set(glyph, w);\n    }\n    return w ?? 0;\n  };\n  const lists = new Map<string, string[]>();\n  return (source) => {\n    const cached = lists.get(source);\n    if (cached) return cached;\n    const cased = Array.from(new Set(pool.map((glyph) => applyCase(glyph, source, matchCase))));\n    let list = cased;\n    if (ctx && cased.length > 1) {\n      const limit = width(source) * 1.25;\n      const fit = cased.filter((glyph) => width(glyph) <= limit);\n      list =\n        fit.length >= 2\n          ? fit\n          : [...cased]\n              .sort((a, b) => width(a) - width(b))\n              .slice(0, Math.max(2, Math.ceil(cased.length / 3)));\n    }\n    lists.set(source, list);\n    return list;\n  };\n}\n\nfunction fontOf(el: HTMLElement) {\n  const cs = getComputedStyle(el);\n  return `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;\n}\n\n/** Rank 0 locks first. */\nfunction revealRanks(count: number, reveal: TextScrambleReveal): number[] {\n  const ranks = Array.from({ length: count }, (_, i) => i);\n  if (reveal === \"end\") return ranks.map((i) => count - 1 - i);\n  if (reveal === \"center\") return ranks.map((i) => Math.abs(i - (count - 1) / 2));\n  if (reveal === \"random\") {\n    for (let i = count - 1; i > 0; i -= 1) {\n      const j = Math.floor(Math.random() * (i + 1));\n      [ranks[i], ranks[j]] = [ranks[j], ranks[i]];\n    }\n  }\n  return ranks;\n}\n\n/**\n * TextScramble\n *\n * Decodes text out of random characters, one glyph at a time. Each glyph\n * sits in a cell sized by its final character, so nothing shifts while the\n * random glyphs flicker, even in a proportional font.\n *\n * - Glyphs are drawn from data attributes on every frame: no React render\n *   per tick, and the real text exists once in the DOM (screen-reader copy).\n * - Server HTML shows the final text. Load and in-view runs scramble it\n *   before first paint, so there is no flash of the real words.\n * - `prefers-reduced-motion` shows the text as is and skips every run.\n */\nexport function TextScramble({\n  text,\n  as = \"span\",\n  trigger = \"view\",\n  characters = \"alphanumeric\",\n  duration = 0.9,\n  speed = 50,\n  delay = 0,\n  reveal = \"start\",\n  matchCase = true,\n  keep = DEFAULT_KEEP,\n  once = true,\n  scrambleColor,\n  scrambleOpacity,\n  onComplete,\n  controlRef,\n  className,\n  style,\n  ...rest\n}: TextScrambleProps) {\n  const rootRef = React.useRef<HTMLElement | null>(null);\n  const frameRef = React.useRef(0);\n  const timerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);\n  const reducedRef = React.useRef(false);\n  const playedRef = React.useRef(false);\n  const runningRef = React.useRef(false);\n  const fitterRef = React.useRef<{ key: string; fit: Fitter } | null>(null);\n\n  const pool = React.useMemo(() => resolvePool(characters), [characters]);\n  const triggers = Array.isArray(trigger) ? trigger : [trigger];\n  const triggerKey = [...triggers].sort().join(\",\");\n  const entrance = triggers.includes(\"mount\") || triggers.includes(\"view\");\n\n  const optionsRef = React.useRef({ pool, duration, speed, reveal, matchCase, keep, onComplete });\n  optionsRef.current = { pool, duration, speed, reveal, matchCase, keep, onComplete };\n\n  const cells = React.useCallback(\n    () => Array.from(rootRef.current?.querySelectorAll<HTMLElement>(\"[data-c]\") ?? []),\n    [],\n  );\n\n  const fitter = React.useCallback((): Fitter => {\n    const root = rootRef.current;\n    const { pool: glyphs, matchCase: match } = optionsRef.current;\n    const font = root ? fontOf(root) : \"\";\n    const key = `${font}|${match}|${glyphs.join(\"\")}`;\n    if (fitterRef.current?.key !== key) {\n      fitterRef.current = { key, fit: createFitter(font, glyphs, match) };\n    }\n    return fitterRef.current.fit;\n  }, []);\n\n  const stop = React.useCallback(() => {\n    cancelAnimationFrame(frameRef.current);\n    clearTimeout(timerRef.current);\n    frameRef.current = 0;\n    runningRef.current = false;\n  }, []);\n\n  const settle = React.useCallback(() => {\n    stop();\n    for (const cell of cells()) {\n      cell.dataset.g = cell.dataset.c;\n      delete cell.dataset.s;\n    }\n  }, [cells, stop]);\n\n  const scramble = React.useCallback(() => {\n    if (reducedRef.current) return;\n    const { keep: kept } = optionsRef.current;\n    const fit = fitter();\n    for (const cell of cells()) {\n      const source = cell.dataset.c ?? \"\";\n      if (kept.includes(source)) continue;\n      cell.dataset.g = pickGlyph(fit(source), cell.dataset.g ?? \"\");\n      cell.dataset.s = \"\";\n    }\n  }, [cells, fitter]);\n\n  const play = React.useCallback(\n    (delayMs = 0) => {\n      stop();\n      if (reducedRef.current) {\n        settle();\n        return;\n      }\n      playedRef.current = true;\n      runningRef.current = true;\n\n      const opts = optionsRef.current;\n      const active = cells().filter((cell) => !opts.keep.includes(cell.dataset.c ?? \"\"));\n      if (active.length === 0) {\n        opts.onComplete?.();\n        return;\n      }\n      scramble();\n      const fit = fitter();\n\n      const total = Math.max(0.1, opts.duration) * 1000;\n      const lead = Math.min(total * 0.3, 320);\n      const ranks = revealRanks(active.length, opts.reveal);\n      const maxRank = Math.max(...ranks) || 1;\n      const lockAt = ranks.map((rank) =>\n        active.length === 1 ? total : lead + (rank / maxRank) * (total - lead),\n      );\n      const swapEvery = Math.max(16, opts.speed);\n      const lastSwap = new Float64Array(active.length);\n      const done = new Uint8Array(active.length);\n      let left = active.length;\n      let start = -1;\n\n      const tick = (now: number) => {\n        if (start < 0) start = now;\n        const elapsed = now - start;\n        for (let k = 0; k < active.length; k += 1) {\n          if (done[k]) continue;\n          const cell = active[k];\n          if (elapsed >= lockAt[k]) {\n            cell.dataset.g = cell.dataset.c;\n            delete cell.dataset.s;\n            done[k] = 1;\n            left -= 1;\n          } else if (now - lastSwap[k] >= swapEvery) {\n            cell.dataset.g = pickGlyph(fit(cell.dataset.c ?? \"\"), cell.dataset.g ?? \"\");\n            lastSwap[k] = now;\n          }\n        }\n        if (left > 0) {\n          frameRef.current = requestAnimationFrame(tick);\n        } else {\n          frameRef.current = 0;\n          runningRef.current = false;\n          optionsRef.current.onComplete?.();\n        }\n      };\n\n      const begin = () => {\n        frameRef.current = requestAnimationFrame(tick);\n      };\n      if (delayMs > 0) timerRef.current = setTimeout(begin, delayMs);\n      else begin();\n    },\n    [cells, fitter, scramble, settle, stop],\n  );\n\n  React.useImperativeHandle(controlRef, () => ({ play: () => play(0) }), [play]);\n\n  useIsoLayoutEffect(() => {\n    const root = rootRef.current;\n    if (!root) return;\n    const active = new Set(triggerKey.split(\",\"));\n    const cleanups: Array<() => void> = [];\n\n    const motion = window.matchMedia(\"(prefers-reduced-motion: reduce)\");\n    reducedRef.current = motion.matches;\n    const onMotion = () => {\n      reducedRef.current = motion.matches;\n      if (motion.matches) settle();\n    };\n    motion.addEventListener(\"change\", onMotion);\n    cleanups.push(() => motion.removeEventListener(\"change\", onMotion));\n\n    const wantsEntrance = active.has(\"mount\") || active.has(\"view\");\n    if (wantsEntrance && !playedRef.current) scramble();\n\n    if (active.has(\"mount\")) {\n      play(delay * 1000);\n    } else if (active.has(\"view\")) {\n      const io = new IntersectionObserver(\n        (entries) => {\n          for (const entry of entries) {\n            if (entry.isIntersecting) {\n              play(playedRef.current ? 0 : delay * 1000);\n              if (once) io.disconnect();\n            } else if (!once && playedRef.current) {\n              stop();\n              scramble();\n            }\n          }\n        },\n        { threshold: 0.35 },\n      );\n      io.observe(root);\n      cleanups.push(() => io.disconnect());\n    }\n\n    if (active.has(\"hover\")) {\n      const target = (root.closest(INTERACTIVE) as HTMLElement | null) ?? root;\n      const onEnter = (event: PointerEvent) => {\n        // A hover never restarts a run in progress, so pointer jitter\n        // over the text cannot keep it scrambled.\n        if (event.pointerType !== \"touch\" && !runningRef.current) play();\n      };\n      const onFocus = (event: FocusEvent) => {\n        const el = event.target as Element | null;\n        if (el?.matches?.(\":focus-visible\")) play();\n      };\n      target.addEventListener(\"pointerenter\", onEnter);\n      target.addEventListener(\"focusin\", onFocus);\n      cleanups.push(() => {\n        target.removeEventListener(\"pointerenter\", onEnter);\n        target.removeEventListener(\"focusin\", onFocus);\n      });\n    }\n\n    return () => {\n      for (const cleanup of cleanups) cleanup();\n      stop();\n    };\n  }, [triggerKey, once, delay, play, scramble, settle, stop]);\n\n  // A new text decodes into place. Before the first entrance run it just\n  // waits, scrambled, for that run.\n  const firstTextRef = React.useRef(true);\n  useIsoLayoutEffect(() => {\n    if (firstTextRef.current) {\n      firstTextRef.current = false;\n      return;\n    }\n    if (entrance && !playedRef.current) scramble();\n    else play();\n    // Only a new text should start this run, not a new callback.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [text]);\n\n  const tokens = React.useMemo(() => text.split(/(\\s+)/).filter(Boolean), [text]);\n\n  const vars: Record<string, string | number> = {};\n  if (scrambleColor) vars[\"--ts-c\"] = scrambleColor;\n  if (scrambleOpacity !== undefined) vars[\"--ts-o\"] = Math.min(1, Math.max(0, scrambleOpacity));\n\n  const Tag = as as unknown as React.ComponentType<\n    React.HTMLAttributes<HTMLElement> & { ref?: React.RefCallback<HTMLElement | null> }\n  >;\n\n  return (\n    <Tag\n      {...rest}\n      ref={(node) => {\n        rootRef.current = node;\n      }}\n      className={cn(\"relative\", className)}\n      style={{ ...vars, ...style } as React.CSSProperties}\n    >\n      <span className=\"sr-only\">{text}</span>\n      <span aria-hidden=\"true\">\n        {tokens.map((token, i) =>\n          /^\\s+$/.test(token) ? (\n            \" \"\n          ) : (\n            <span\n              key={i}\n              className={token.length > 20 ? undefined : \"inline-block whitespace-nowrap\"}\n            >\n              {Array.from(token).map((ch, j) => (\n                <span key={j} data-c={ch} data-g={ch} className={CELL_CLASS} />\n              ))}\n            </span>\n          ),\n        )}\n      </span>\n    </Tag>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/text-scramble.tsx. For Pro components and updates, use pnpm dlx wensity@latest add text-scramble.",
+  "categories": [
+    "Text Animations",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "text-scramble",
+      "access": "free",
+      "category": "Text Animations",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/text-scramble",
+      "shadcnUrl": "https://ui.wensity.com/r/text-scramble",
+      "cliInstall": "pnpm dlx wensity@latest add text-scramble"
+    }
+  }
+}
