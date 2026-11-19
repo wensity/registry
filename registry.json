@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 100,
+  "count": 101,
   "items": [
     {
       "name": "font-inter",
@@ -413,6 +413,24 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/star-rating",
         "cliInstall": "pnpm dlx wensity@latest add star-rating"
+      }
+    },
+    {
+      "name": "copy-button",
+      "type": "registry:block",
+      "title": "Copy Button",
+      "description": "React copy to clipboard button whose icon morphs into a check as it turns green.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/copy-button.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/copy-button",
+        "cliInstall": "pnpm dlx wensity@latest add copy-button"
       }
     },
     {

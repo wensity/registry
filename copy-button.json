@@ -1,0 +1,493 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "copy-button",
+  "type": "registry:block",
+  "title": "Copy Button",
+  "description": "Copy Button is a free React copy to clipboard button for Next.js and Tailwind CSS whose copy icon morphs into a check while a green layer spreads from the point you pressed, with a red cross for failed copies, a string or async function as the value, icon and label variants, solid and ghost looks, three sizes and five tones.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/copy-button.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/copy-button.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\n\nimport { cn } from \"@/lib/utils\";\n\n/**\n * Copy Button\n *\n * A copy to clipboard button whose icon morphs into a check. On a\n * successful copy the back sheet tucks into the front one, the front sheet\n * folds away and a check draws itself in its place, while the button turns\n * into a solid green button that spreads out from the exact point that was\n * pressed. After `timeout` the check undraws and the sheets come back.\n *\n * The surface is built like a physical part: a vertical gradient body, a lit\n * top edge and a darker ring drawn with inset shadows, and a soft shadow\n * under it. The success colour is a full material layer of its own, revealed\n * by a growing clip circle, so its gradient and lit edge stay exact while it\n * spreads. Hover dims the face toward the bottom, press sinks it.\n *\n * A failed copy (blocked clipboard, a `value` function that throws) turns\n * red and draws a cross with a short shake, so a broken copy never pretends\n * to work.\n *\n * Everything is CSS driven by `data-state`, so nothing runs per frame and a\n * second press mid animation simply retargets. The label variant stacks its\n * words in one grid cell, so the width never changes as \"Copy\" becomes\n * \"Copied\". Screen readers hear the result through a polite live region.\n * With reduced motion the icons swap with a short fade and the colour\n * appears without spreading.\n */\n\nexport type CopyButtonVariant = \"icon\" | \"label\";\nexport type CopyButtonAppearance = \"solid\" | \"ghost\";\nexport type CopyButtonSize = \"sm\" | \"md\" | \"lg\";\nexport type CopyButtonTone = \"green\" | \"blue\" | \"violet\" | \"amber\" | \"mono\";\nexport type CopyButtonState = \"idle\" | \"copied\" | \"error\";\n\nexport interface CopyButtonProps\n  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, \"value\" | \"onCopy\" | \"onError\" | \"children\"> {\n  /** Text to copy, or a function that returns it (sync or async). */\n  value: string | (() => string | Promise<string>);\n  /** Icon only, or icon with a label that rolls to \"Copied\" once copied. */\n  variant?: CopyButtonVariant;\n  /** Solid is a raised button that fills with the tone. Ghost is bare and only its icon and label take the tone. */\n  appearance?: CopyButtonAppearance;\n  size?: CopyButtonSize;\n  /** Colour the button turns once the copy lands. */\n  tone?: CopyButtonTone;\n  /** How long the check stays, in milliseconds. */\n  timeout?: number;\n  /** Spread the success colour from the point that was pressed. */\n  sweep?: boolean;\n  /** Words for the label variant, the aria-label and the live region. */\n  labels?: { copy?: string; copied?: string; failed?: string };\n  /** Called with the copied text. */\n  onCopied?: (text: string) => void;\n  /** Called when the copy fails. */\n  onCopyError?: (error: unknown) => void;\n  /** Called every time the visible state changes. */\n  onStateChange?: (state: CopyButtonState) => void;\n}\n\n/** Each role is [light, dark]. */\ntype ToneMaterial = {\n  /** Body gradient of the filled button. */\n  body: [string, string];\n  /** Lit top edge and ring of the filled button. */\n  edge: [string, string];\n  /** Icon and label on the filled button. */\n  ink: [string, string];\n  /** Icon and label colour for the ghost appearance. */\n  on: [string, string];\n};\n\nconst lit = \"inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 0 rgba(0,0,0,0.12), inset 0 0 0 1px rgba(0,0,0,0.1)\";\nconst litDark = \"inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.06)\";\nconst grad = (a: string, b: string, c: string) => `linear-gradient(180deg, ${a} 0%, ${b} 48%, ${c} 100%)`;\nconst tinted = (light: string, dark: string, on: [string, string]): ToneMaterial => ({\n  body: [light, dark],\n  edge: [lit, litDark],\n  ink: [\"#ffffff\", \"#ffffff\"],\n  on,\n});\n\nconst TONES: Record<CopyButtonTone | \"error\", ToneMaterial> = {\n  green: tinted(grad(\"#4ade80\", \"#22c55e\", \"#16a34a\"), grad(\"#4ade80\", \"#22c55e\", \"#15803d\"), [\"#16a34a\", \"#4ade80\"]),\n  blue: tinted(grad(\"#60a5fa\", \"#3b82f6\", \"#2563eb\"), grad(\"#60a5fa\", \"#3b82f6\", \"#1d4ed8\"), [\"#2563eb\", \"#60a5fa\"]),\n  violet: tinted(grad(\"#a78bfa\", \"#8b5cf6\", \"#7c3aed\"), grad(\"#a78bfa\", \"#8b5cf6\", \"#6d28d9\"), [\"#7c3aed\", \"#a78bfa\"]),\n  amber: {\n    body: [grad(\"#fcd34d\", \"#fbbf24\", \"#f59e0b\"), grad(\"#fcd34d\", \"#fbbf24\", \"#d97706\")],\n    edge: [\n      \"inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.1), inset 0 0 0 1px rgba(146,64,14,0.18)\",\n      \"inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.08)\",\n    ],\n    ink: [\"#451a03\", \"#451a03\"],\n    on: [\"#d97706\", \"#fbbf24\"],\n  },\n  error: tinted(grad(\"#f87171\", \"#ef4444\", \"#dc2626\"), grad(\"#f87171\", \"#ef4444\", \"#b91c1c\"), [\"#dc2626\", \"#f87171\"]),\n  mono: {\n    body: [grad(\"#52525b\", \"#27272a\", \"#18181b\"), grad(\"#ffffff\", \"#f4f4f5\", \"#d4d4d8\")],\n    edge: [\n      \"inset 0 1px 0 rgba(255,255,255,0.18), inset 0 0 0 1px rgba(0,0,0,0.6)\",\n      \"inset 0 1px 0 #ffffff, inset 0 -1px 0 rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.35)\",\n    ],\n    ink: [\"#ffffff\", \"#0a0a0a\"],\n    on: [\"#0a0a0a\", \"#fafafa\"],\n  },\n};\n\nconst SIZES: Record<CopyButtonSize, { box: number; icon: number; stroke: number; text: string; pad: string; radius: number }> = {\n  sm: { box: 28, icon: 14, stroke: 1.75, text: \"text-[12.5px]\", pad: \"pl-2 pr-2.5 gap-1.5\", radius: 8 },\n  md: { box: 34, icon: 16, stroke: 1.75, text: \"text-[13.5px]\", pad: \"pl-2.5 pr-3 gap-1.5\", radius: 10 },\n  lg: { box: 42, icon: 18, stroke: 1.6, text: \"text-[15px]\", pad: \"pl-3.5 pr-4 gap-2\", radius: 12 },\n};\n\nconst OUT = \"cubic-bezier(0.22, 1, 0.36, 1)\";\nconst IN_OUT = \"cubic-bezier(0.65, 0, 0.35, 1)\";\n\n// Choreography lives here, keyed on data-state, so a second press simply\n// retargets the running transitions. The doubled class beats hover utilities.\nconst CSS = `\n.wcb .wcb-i *{transform-box:fill-box;transform-origin:center}\n.wcb .wcb-back{transition:transform 240ms ${OUT} 70ms,opacity 160ms linear 70ms}\n.wcb .wcb-front{transition:transform 240ms ${OUT} 40ms,opacity 160ms linear 40ms}\n.wcb .wcb-draw{stroke-dasharray:1;stroke-dashoffset:1;opacity:0;transition:stroke-dashoffset 150ms ${IN_OUT},opacity 90ms linear 70ms,transform 150ms ${IN_OUT}}\n.wcb .wcb-check{transform:scale(.86)}\n.wcb.wcb:not([data-state=idle]) .wcb-back{transform:translate(-3px,-3px) scale(.7);opacity:0;transition:transform 180ms ${IN_OUT},opacity 110ms linear}\n.wcb.wcb:not([data-state=idle]) .wcb-front{transform:scale(.45) rotate(-14deg);opacity:0;transition:transform 200ms ${IN_OUT},opacity 130ms linear 40ms}\n.wcb.wcb[data-state=copied] .wcb-check{stroke-dashoffset:0;opacity:1;transform:scale(1);transition:stroke-dashoffset 300ms ${OUT} 110ms,opacity 60ms linear 110ms,transform 320ms ${OUT} 100ms}\n.wcb.wcb[data-state=error] .wcb-x{stroke-dashoffset:0;opacity:1;transition:stroke-dashoffset 180ms ${OUT} 110ms,opacity 60ms linear 110ms}\n.wcb.wcb[data-state=error] .wcb-x2{transition-delay:190ms}\n.wcb.wcb[data-state=error] .wcb-i{animation:wcb-shake 340ms ${IN_OUT} 160ms}\n.wcb .wcb-lab{transition:transform 260ms ${OUT},opacity 180ms linear}\n.wcb .wcb-lab-copied,.wcb .wcb-lab-failed{transform:translateY(80%);opacity:0}\n.wcb.wcb:not([data-state=idle]) .wcb-lab-copy{transform:translateY(-80%);opacity:0}\n.wcb.wcb[data-state=copied] .wcb-lab-copied,.wcb.wcb[data-state=error] .wcb-lab-failed{transform:none;opacity:1;transition-delay:60ms}\n.wcb.wcb[data-appearance=solid]:not([data-state=idle]){color:var(--wcb-ink);text-shadow:0 1px 0 rgba(0,0,0,.1)}\n.wcb.wcb[data-appearance=ghost]:not([data-state=idle]){color:var(--wcb-on)}\n.wcb .wcb-fill{opacity:0;background:var(--wcb-body);box-shadow:var(--wcb-edge);transition:opacity 260ms linear}\n.wcb[data-appearance=ghost] .wcb-fill{display:none}\n.wcb.wcb:not([data-state=idle]) .wcb-fill{opacity:1;transition:opacity 60ms linear;animation:wcb-sweep 380ms ${OUT} both}\n.wcb[data-sweep=false] .wcb-fill{animation:none!important}\n@keyframes wcb-sweep{from{clip-path:circle(0px at var(--wcb-x) var(--wcb-y))}to{clip-path:circle(var(--wcb-r) at var(--wcb-x) var(--wcb-y))}}\n@keyframes wcb-shake{0%,100%{transform:none}25%{transform:translateX(-1.5px)}50%{transform:translateX(1.5px)}75%{transform:translateX(-1px)}}\n@media (prefers-reduced-motion:reduce){\n.wcb .wcb-i *,.wcb .wcb-lab{transition-property:opacity,stroke-dashoffset!important;transition-duration:120ms!important;transition-delay:0ms!important;transform:none!important}\n.wcb .wcb-draw{stroke-dashoffset:0}\n.wcb .wcb-fill{animation:none!important}\n.wcb.wcb .wcb-i{animation:none!important}\n}\n`;\n\nasync function writeClipboard(text: string) {\n  if (typeof navigator !== \"undefined\" && navigator.clipboard?.writeText && window.isSecureContext) {\n    await navigator.clipboard.writeText(text);\n    return;\n  }\n  // Fallback for http pages and older browsers.\n  const area = document.createElement(\"textarea\");\n  area.value = text;\n  area.setAttribute(\"readonly\", \"\");\n  area.style.position = \"fixed\";\n  area.style.opacity = \"0\";\n  area.style.pointerEvents = \"none\";\n  document.body.appendChild(area);\n  area.select();\n  const ok = document.execCommand(\"copy\");\n  document.body.removeChild(area);\n  if (!ok) throw new Error(\"Copy command was rejected\");\n}\n\ntype Sweep = { x: number; y: number; r: number; key: number };\n\nexport const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(function CopyButton(\n  {\n    value,\n    variant = \"icon\",\n    appearance = \"solid\",\n    size = \"md\",\n    tone = \"green\",\n    timeout = 1600,\n    sweep = true,\n    labels,\n    onCopied,\n    onCopyError,\n    onStateChange,\n    onClick,\n    className,\n    style,\n    disabled,\n    type = \"button\",\n    \"aria-label\": ariaLabel,\n    ...rest\n  },\n  ref,\n) {\n  const [state, setState] = React.useState<CopyButtonState>(\"idle\");\n  const [spread, setSpread] = React.useState<Sweep>({ x: 0, y: 0, r: 0, key: 0 });\n  const stateRef = React.useRef<CopyButtonState>(\"idle\");\n  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);\n  const run = React.useRef(0);\n\n  const words = {\n    copy: labels?.copy ?? \"Copy\",\n    copied: labels?.copied ?? \"Copied\",\n    failed: labels?.failed ?? \"Failed\",\n  };\n\n  React.useEffect(\n    () => () => {\n      if (timer.current) clearTimeout(timer.current);\n    },\n    [],\n  );\n\n  const show = React.useCallback(\n    (next: CopyButtonState) => {\n      stateRef.current = next;\n      setState(next);\n      onStateChange?.(next);\n    },\n    [onStateChange],\n  );\n\n  const handleClick = async (event: React.MouseEvent<HTMLButtonElement>) => {\n    onClick?.(event);\n    if (event.defaultPrevented || disabled) return;\n\n    // Spread from the press point, or from the centre for keyboard presses.\n    const rect = event.currentTarget.getBoundingClientRect();\n    const fromPointer = event.detail > 0 && event.clientX !== 0;\n    const x = fromPointer ? event.clientX - rect.left : rect.width / 2;\n    const y = fromPointer ? event.clientY - rect.top : rect.height / 2;\n    const r = Math.ceil(Math.hypot(Math.max(x, rect.width - x), Math.max(y, rect.height - y)));\n\n    const id = ++run.current;\n    if (timer.current) clearTimeout(timer.current);\n\n    let result: CopyButtonState = \"copied\";\n    try {\n      const text = typeof value === \"function\" ? await value() : value;\n      await writeClipboard(text);\n      if (id !== run.current) return;\n      onCopied?.(text);\n    } catch (error) {\n      if (id !== run.current) return;\n      result = \"error\";\n      onCopyError?.(error);\n    }\n\n    // Only a press from rest spreads again; a press while lit stays lit.\n    if (stateRef.current === \"idle\") setSpread((prev) => ({ x, y, r, key: prev.key + 1 }));\n    show(result);\n    timer.current = setTimeout(\n      () => {\n        timer.current = null;\n        show(\"idle\");\n      },\n      result === \"error\" ? Math.max(timeout, 1800) : timeout,\n    );\n  };\n\n  const s = SIZES[size];\n  const m = TONES[state === \"error\" ? \"error\" : tone];\n  const label = state === \"copied\" ? words.copied : state === \"error\" ? words.failed : words.copy;\n  const isIcon = variant === \"icon\";\n  const isSolid = appearance === \"solid\";\n\n  const vars = {\n    \"--wcb-body-l\": m.body[0],\n    \"--wcb-body-d\": m.body[1],\n    \"--wcb-edge-l\": m.edge[0],\n    \"--wcb-edge-d\": m.edge[1],\n    \"--wcb-ink-l\": m.ink[0],\n    \"--wcb-ink-d\": m.ink[1],\n    \"--wcb-on-l\": m.on[0],\n    \"--wcb-on-d\": m.on[1],\n    borderRadius: s.radius,\n    height: s.box,\n    ...(isIcon ? { width: s.box } : {}),\n  } as React.CSSProperties;\n\n  return (\n    <button\n      ref={ref}\n      type={type}\n      disabled={disabled}\n      data-state={state}\n      data-appearance={appearance}\n      data-sweep={sweep ? \"true\" : \"false\"}\n      aria-label={isIcon ? (ariaLabel ? (state === \"idle\" ? ariaLabel : `${ariaLabel}, ${label}`) : label) : ariaLabel}\n      onClick={handleClick}\n      className={cn(\n        \"wcb group/copy relative isolate inline-flex shrink-0 select-none items-center justify-center overflow-hidden border-0 font-sans font-medium tracking-[-0.01em]\",\n        \"[--wcb-body:var(--wcb-body-l)] [--wcb-edge:var(--wcb-edge-l)] [--wcb-ink:var(--wcb-ink-l)] [--wcb-on:var(--wcb-on-l)]\",\n        \"dark:[--wcb-body:var(--wcb-body-d)] dark:[--wcb-edge:var(--wcb-edge-d)] dark:[--wcb-ink:var(--wcb-ink-d)] dark:[--wcb-on:var(--wcb-on-d)]\",\n        \"outline-none transition-[background-color,color,box-shadow] duration-150 ease-out\",\n        \"focus-visible:ring-2 focus-visible:ring-neutral-900/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white\",\n        \"dark:focus-visible:ring-white/70 dark:focus-visible:ring-offset-[#0a0a0b]\",\n        \"disabled:pointer-events-none disabled:opacity-45\",\n        isSolid\n          ? cn(\n              \"bg-[linear-gradient(180deg,#ffffff_0%,#f4f4f5_100%)] text-neutral-700\",\n              \"shadow-[inset_0_0_0_1px_rgba(0,0,0,0.09),0_1px_2px_rgba(0,0,0,0.06)]\",\n              \"hover:text-neutral-950\",\n              \"active:shadow-[inset_0_1px_3px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(0,0,0,0.09)]\",\n              \"dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.085)_0%,rgba(255,255,255,0.03)_100%)] dark:text-neutral-300\",\n              \"dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),inset_0_0_0_1px_rgba(255,255,255,0.07),0_0_0_1px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.5),0_8px_20px_-10px_rgba(0,0,0,0.8)]\",\n              \"dark:hover:text-white\",\n              \"dark:active:shadow-[inset_0_2px_5px_rgba(0,0,0,0.65),inset_0_0_0_1px_rgba(255,255,255,0.05),0_0_0_1px_rgba(0,0,0,0.5)]\",\n            )\n          : cn(\n              \"bg-transparent text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200/70\",\n              \"dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-100 dark:active:bg-white/[0.09]\",\n            ),\n        !isIcon && s.pad,\n        s.text,\n        className,\n      )}\n      style={{ ...vars, ...style }}\n      {...rest}\n    >\n      <style>{CSS}</style>\n\n      {isSolid && (\n        <span\n          aria-hidden\n          className={cn(\n            \"pointer-events-none absolute inset-0 -z-10 rounded-[inherit] opacity-0 transition-opacity duration-150 group-hover/copy:opacity-100\",\n            \"bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(0,0,0,0.04)_100%)]\",\n            \"dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.015)_100%)]\",\n          )}\n        />\n      )}\n\n      {isSolid && (\n        <span\n          key={spread.key}\n          aria-hidden\n          className=\"wcb-fill pointer-events-none absolute inset-0 -z-10 rounded-[inherit]\"\n          style={\n            {\n              \"--wcb-x\": `${spread.x}px`,\n              \"--wcb-y\": `${spread.y}px`,\n              \"--wcb-r\": `${spread.r}px`,\n            } as React.CSSProperties\n          }\n        />\n      )}\n\n      <svg\n        aria-hidden\n        className=\"wcb-i shrink-0 overflow-visible\"\n        width={s.icon}\n        height={s.icon}\n        viewBox=\"0 0 24 24\"\n        fill=\"none\"\n        stroke=\"currentColor\"\n        strokeWidth={s.stroke}\n        strokeLinecap=\"round\"\n        strokeLinejoin=\"round\"\n      >\n        <path className=\"wcb-back\" d=\"M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2\" />\n        <rect className=\"wcb-front\" x=\"8\" y=\"8\" width=\"12\" height=\"12\" rx=\"2.5\" />\n        <path className=\"wcb-draw wcb-check\" pathLength={1} d=\"M4.5 12.75 9.25 17.5 19.5 6.75\" />\n        <path className=\"wcb-draw wcb-x\" pathLength={1} d=\"M6.5 6.5 17.5 17.5\" />\n        <path className=\"wcb-draw wcb-x wcb-x2\" pathLength={1} d=\"M17.5 6.5 6.5 17.5\" />\n      </svg>\n\n      {!isIcon && (\n        <span aria-hidden className=\"grid overflow-hidden whitespace-nowrap leading-[1.2]\">\n          <span className=\"wcb-lab wcb-lab-copy [grid-area:1/1]\">{words.copy}</span>\n          <span className=\"wcb-lab wcb-lab-copied [grid-area:1/1] font-semibold\">{words.copied}</span>\n          <span className=\"wcb-lab wcb-lab-failed [grid-area:1/1] font-semibold\">{words.failed}</span>\n        </span>\n      )}\n\n      {!isIcon && <span className=\"sr-only\">{label}</span>}\n      <span className=\"sr-only\" role=\"status\" aria-live=\"polite\">\n        {state === \"copied\" ? `${words.copied} to clipboard` : state === \"error\" ? `Copy ${words.failed.toLowerCase()}` : \"\"}\n      </span>\n    </button>\n  );\n});\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/copy-button.tsx. For Pro components and updates, use pnpm dlx wensity@latest add copy-button.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "copy-button",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/copy-button",
+      "shadcnUrl": "https://ui.wensity.com/r/copy-button",
+      "cliInstall": "pnpm dlx wensity@latest add copy-button"
+    }
+  }
+}
