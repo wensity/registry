@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 98,
+  "count": 99,
   "items": [
     {
       "name": "font-inter",
@@ -1970,6 +1970,28 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/color-picker",
         "cliInstall": "pnpm dlx wensity@latest add color-picker"
+      }
+    },
+    {
+      "name": "number-input",
+      "type": "registry:block",
+      "title": "Number Input",
+      "description": "React number input on Base UI with carved plus and minus buttons, press and hold, arrow and scroll stepping, rolling digits and a cart quantity mode.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/number-input.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/number-input",
+        "cliInstall": "pnpm dlx wensity@latest add number-input"
       }
     }
   ]

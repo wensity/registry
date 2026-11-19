@@ -1,0 +1,496 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "number-input",
+  "type": "registry:block",
+  "title": "Number Input",
+  "description": "A React number input and quantity stepper built on Base UI NumberField, with press and hold repeat, keyboard and mouse wheel stepping, Intl number formatting, digits that roll in the direction the value moved, and a cart variant whose minus button becomes a remove button at the minimum.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/number-input.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/number-input.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { NumberField } from \"@base-ui/react/number-field\";\nimport { AnimatePresence, motion, useReducedMotion } from \"framer-motion\";\nimport { IconMinus, IconPlus, IconTrash } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type NumberInputSize = \"sm\" | \"md\" | \"lg\";\nexport type NumberInputVariant = \"default\" | \"cart\";\nexport type NumberInputLayout = \"split\" | \"trailing\";\n\ntype ChangeReason = NumberField.Root.ChangeEventDetails[\"reason\"];\n\nexport interface NumberInputProps {\n  /** Controlled value. `null` means the field is empty. */\n  value?: number | null;\n  /** Uncontrolled starting value. */\n  defaultValue?: number;\n  onValueChange?: (value: number | null, reason: ChangeReason) => void;\n  /** Fires on blur after typing, and on pointer release after a press or hold. */\n  onValueCommitted?: (value: number | null) => void;\n  min?: number;\n  max?: number;\n  step?: number;\n  /** Step while Shift is held. */\n  largeStep?: number;\n  /** Step while Alt is held. */\n  smallStep?: number;\n  /** Intl.NumberFormat options: currency, percent, units, fraction digits. */\n  format?: Intl.NumberFormatOptions;\n  locale?: Intl.LocalesArgument;\n  /** `cart` swaps minus for a remove button once the value sits at `min`. */\n  variant?: NumberInputVariant;\n  /** Called when the remove button is pressed in the cart variant. */\n  onRemove?: () => void;\n  /** `split` puts minus and plus either side, `trailing` groups both on the right. */\n  layout?: NumberInputLayout;\n  size?: NumberInputSize;\n  /** Rolls each digit up or down as the value changes. */\n  rolling?: boolean;\n  /** Steps with the mouse wheel while the field is focused and hovered. */\n  wheelStep?: boolean;\n  label?: React.ReactNode;\n  hint?: React.ReactNode;\n  error?: React.ReactNode;\n  placeholder?: string;\n  disabled?: boolean;\n  readOnly?: boolean;\n  required?: boolean;\n  name?: string;\n  id?: string;\n  fullWidth?: boolean;\n  incrementLabel?: string;\n  decrementLabel?: string;\n  removeLabel?: string;\n  \"aria-label\"?: string;\n  className?: string;\n  inputClassName?: string;\n}\n\n// Motion tiers shared by every primitive. No bounce anywhere.\nconst SPRING = {\n  fast: { type: \"spring\", duration: 0.08, bounce: 0 },\n  moderate: { type: \"spring\", duration: 0.16, bounce: 0 },\n  slow: { type: \"spring\", duration: 0.24, bounce: 0 },\n} as const;\n\nconst FIELD_HEIGHT: Record<NumberInputSize, string> = {\n  sm: \"h-[var(--primitive-control-height-sm)]\",\n  md: \"h-[var(--primitive-control-height-md)]\",\n  lg: \"h-[var(--primitive-control-height-lg)]\",\n};\n\n// Buttons sit 3px inside the field so the field rim frames them.\nconst BUTTON_SIZE: Record<NumberInputSize, string> = {\n  sm: \"size-[calc(var(--primitive-control-height-sm)-6px)]\",\n  md: \"size-[calc(var(--primitive-control-height-md)-6px)]\",\n  lg: \"size-[calc(var(--primitive-control-height-lg)-6px)]\",\n};\n\nconst ICON_SIZE: Record<NumberInputSize, number> = { sm: 13, md: 14, lg: 16 };\n\nconst TEXT_SIZE: Record<NumberInputSize, string> = {\n  sm: \"text-xs\",\n  md: \"text-sm\",\n  lg: \"text-[15px]\",\n};\n\nconst fieldClass = cn(\n  \"group/number relative isolate inline-flex items-center gap-[3px] p-[3px]\",\n  // Recess and depth come from data-surface=\"well\".\n  \"rounded-[var(--primitive-radius-control)]\",\n  \"transition-[box-shadow] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease)]\",\n  \"motion-reduce:transition-none\",\n);\n\nconst fieldFocus = cn(\n  \"has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-[var(--primitive-ring)]\",\n  \"has-[input:focus-visible]:ring-offset-2 has-[input:focus-visible]:ring-offset-[var(--background)]\",\n);\n\nconst fieldError = cn(\n  \"[--surface-rim:var(--primitive-destructive-border)]\",\n  \"has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-[color-mix(in_srgb,var(--primitive-destructive)_45%,transparent)]\",\n  \"has-[input:focus-visible]:ring-offset-2 has-[input:focus-visible]:ring-offset-[var(--background)]\",\n);\n\nconst buttonClass = cn(\n  \"relative grid shrink-0 place-items-center overflow-hidden select-none touch-manipulation\",\n  // Carved: face, rim, catchlight and press recess come from data-surface=\"control\".\n  \"rounded-[calc(var(--primitive-radius-control)-3px)]\",\n  \"text-[var(--muted-foreground)]\",\n  \"transition-[color,background-color,box-shadow,opacity,translate] duration-[var(--primitive-motion-moderate)] ease-[var(--primitive-ease)]\",\n  \"hover:text-[var(--foreground)]\",\n  \"active:translate-y-px active:[transition-duration:var(--primitive-motion-fast)]\",\n  \"motion-reduce:transition-none motion-reduce:active:translate-y-0\",\n  \"outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background)]\",\n  \"disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--muted-foreground)]\",\n);\n\nconst removeClass = cn(\n  buttonClass,\n  \"hover:text-[var(--primitive-destructive)] focus-visible:text-[var(--primitive-destructive)]\",\n);\n\n// Cart icon swap: CSS transitions, so a fast toggle retargets mid-way.\nconst swapIconClass = cn(\n  \"grid place-items-center\",\n  \"transition-[opacity,scale,rotate] duration-[var(--primitive-motion-moderate)] ease-[var(--primitive-ease)]\",\n  \"motion-reduce:transition-none\",\n);\nconst swapIconIn = \"opacity-100 scale-100 rotate-0\";\nconst swapIconOut = \"opacity-0 scale-[0.6]\";\nconst swapIconOutRotated = \"opacity-0 scale-[0.6] -rotate-[24deg]\";\n\nfunction formatValue(\n  value: number | null,\n  locale: Intl.LocalesArgument | undefined,\n  format: Intl.NumberFormatOptions | undefined,\n) {\n  if (value == null || Number.isNaN(value)) return \"\";\n  try {\n    return new Intl.NumberFormat(locale, format).format(value);\n  } catch {\n    return String(value);\n  }\n}\n\nfunction isDigit(char: string) {\n  return char >= \"0\" && char <= \"9\";\n}\n\n/* ─── Rolling digits ───────────────────────────────────────── */\n\nfunction RollingDigit({\n  char,\n  direction,\n  reduceMotion,\n}: {\n  char: string;\n  direction: number;\n  reduceMotion: boolean;\n}) {\n  if (reduceMotion) return <span className=\"inline-block\">{char}</span>;\n  return (\n    <span className=\"relative inline-flex h-[1lh] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,#000_12%,#000_88%,transparent)]\">\n      <AnimatePresence initial={false} mode=\"popLayout\" custom={direction}>\n        <motion.span\n          key={char}\n          custom={direction}\n          variants={{\n            enter: (dir: number) => ({\n              transform: dir >= 0 ? \"translateY(100%)\" : \"translateY(-100%)\",\n              opacity: 0,\n            }),\n            center: { transform: \"translateY(0%)\", opacity: 1 },\n            exit: (dir: number) => ({\n              transform: dir >= 0 ? \"translateY(-100%)\" : \"translateY(100%)\",\n              opacity: 0,\n            }),\n          }}\n          initial=\"enter\"\n          animate=\"center\"\n          exit=\"exit\"\n          transition={SPRING.moderate}\n          className=\"inline-block\"\n        >\n          {char}\n        </motion.span>\n      </AnimatePresence>\n    </span>\n  );\n}\n\nfunction RollingValue({\n  text,\n  direction,\n  reduceMotion,\n}: {\n  text: string;\n  direction: number;\n  reduceMotion: boolean;\n}) {\n  const chars = Array.from(text);\n  // Slots are keyed from the right, so 9 → 10 rolls the ones digit and adds a\n  // tens slot on the left instead of shifting every digit one place.\n  return (\n    <>\n      {chars.map((char, index) => {\n        const slot = chars.length - index;\n        return isDigit(char) ? (\n          <RollingDigit\n            key={`d${slot}`}\n            char={char}\n            direction={direction}\n            reduceMotion={reduceMotion}\n          />\n        ) : (\n          <span key={`s${slot}`} className=\"inline-block whitespace-pre\">\n            {char}\n          </span>\n        );\n      })}\n    </>\n  );\n}\n\n/* ─── <NumberInput> ────────────────────────────────────────── */\n\nexport const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(\n  (\n    {\n      value: valueProp,\n      defaultValue,\n      onValueChange,\n      onValueCommitted,\n      min: minProp,\n      max,\n      step = 1,\n      largeStep,\n      smallStep,\n      format,\n      locale,\n      variant = \"default\",\n      onRemove,\n      layout = \"split\",\n      size = \"md\",\n      rolling = true,\n      wheelStep = true,\n      label,\n      hint,\n      error,\n      placeholder,\n      disabled,\n      readOnly,\n      required,\n      name,\n      id,\n      fullWidth = false,\n      incrementLabel = \"Increase\",\n      decrementLabel = \"Decrease\",\n      removeLabel = \"Remove\",\n      \"aria-label\": ariaLabel,\n      className,\n      inputClassName,\n    },\n    ref,\n  ) => {\n    const reduceMotion = useReducedMotion() ?? false;\n    const reactId = React.useId();\n    const inputId = id ?? `wensity-number-${reactId}`;\n    const hintId = hint ? `${inputId}-hint` : undefined;\n    const errorId = error ? `${inputId}-error` : undefined;\n    const describedBy = [errorId, hintId].filter(Boolean).join(\" \") || undefined;\n\n    // A cart line never goes below one unless told otherwise.\n    const min = minProp ?? (variant === \"cart\" ? 1 : undefined);\n\n    const isControlled = valueProp !== undefined;\n    const [inner, setInner] = React.useState<number | null>(defaultValue ?? null);\n    const current = isControlled ? (valueProp ?? null) : inner;\n\n    // While the user types, show the real input text. Stepping hands the\n    // display back to the rolling digits.\n    const [editing, setEditing] = React.useState(false);\n    // Direction is set during render, before the new digit mounts, so the\n    // first press after a change of direction already rolls the right way.\n    const [prevValue, setPrevValue] = React.useState<number | null>(current);\n    const [direction, setDirection] = React.useState(1);\n    if (current !== prevValue) {\n      if (prevValue != null && current != null) {\n        setDirection(current > prevValue ? 1 : -1);\n      }\n      setPrevValue(current);\n    }\n\n    const handleChange = React.useCallback(\n      (next: number | null, details: NumberField.Root.ChangeEventDetails) => {\n        const reason = details.reason;\n        setEditing(\n          reason === \"input-change\" || reason === \"input-clear\" || reason === \"input-paste\",\n        );\n        if (!isControlled) setInner(next);\n        onValueChange?.(next, reason);\n      },\n      [isControlled, onValueChange],\n    );\n\n    const formatted = formatValue(current, locale, format);\n    const showRoll = rolling && !editing && formatted !== \"\";\n\n    // Size the field to the widest value it can hold, so it never jumps.\n    const widest = Math.max(\n      3,\n      // Without a max there is no widest value, so leave room to grow.\n      formatted.length + (max == null ? 2 : 0),\n      max != null && Number.isFinite(max) ? formatValue(max, locale, format).length : 0,\n      min != null && Number.isFinite(min) ? formatValue(min, locale, format).length : 0,\n      placeholder?.length ?? 0,\n    );\n\n    const atMin = current != null && min != null && current <= min;\n    const showRemove = variant === \"cart\" && atMin && !disabled && !readOnly;\n    const iconSize = ICON_SIZE[size];\n\n    const minusButton = (\n      <NumberField.Decrement\n        data-surface=\"control\"\n        data-slot=\"number-input-decrement\"\n        aria-label={decrementLabel}\n        aria-hidden={showRemove ? true : undefined}\n        className={cn(\n          buttonClass,\n          BUTTON_SIZE[size],\n          // Under the remove button its face stays solid, so the swap only\n          // ever changes the icon, never dims the button.\n          showRemove && \"opacity-100!\",\n        )}\n      >\n        <span className={cn(swapIconClass, showRemove ? swapIconOut : swapIconIn)}>\n          <IconMinus size={iconSize} stroke={2} aria-hidden=\"true\" />\n        </span>\n      </NumberField.Decrement>\n    );\n\n    // Cart: both buttons stay mounted in one slot and the remove button fades\n    // in on top at the minimum. A held minus stops at the minimum and never\n    // deletes, because the release lands on a different element.\n    const decrement =\n      variant === \"cart\" ? (\n        <span className=\"grid shrink-0 [&>*]:[grid-area:1/1]\">\n          {minusButton}\n          <button\n            type=\"button\"\n            data-surface=\"control\"\n            data-slot=\"number-input-remove\"\n            aria-label={removeLabel}\n            aria-hidden={showRemove ? undefined : true}\n            tabIndex={showRemove ? 0 : -1}\n            onClick={showRemove ? onRemove : undefined}\n            className={cn(\n              removeClass,\n              BUTTON_SIZE[size],\n              \"transition-[color,background-color,box-shadow,opacity,translate]\",\n              showRemove ? \"opacity-100\" : \"pointer-events-none opacity-0\",\n            )}\n          >\n            <span className={cn(swapIconClass, showRemove ? swapIconIn : swapIconOutRotated)}>\n              <IconTrash size={iconSize} stroke={1.75} aria-hidden=\"true\" />\n            </span>\n          </button>\n        </span>\n      ) : (\n        minusButton\n      );\n\n    const increment = (\n      <NumberField.Increment\n        data-surface=\"control\"\n        data-slot=\"number-input-increment\"\n        aria-label={incrementLabel}\n        className={cn(buttonClass, BUTTON_SIZE[size])}\n      >\n        <IconPlus size={iconSize} stroke={2} aria-hidden=\"true\" />\n      </NumberField.Increment>\n    );\n\n    const trailing = layout === \"trailing\";\n\n    return (\n      <div\n        data-wensity-primitive=\"\"\n        className={cn(\"flex flex-col gap-2\", fullWidth ? \"w-full\" : \"w-fit\", className)}\n      >\n        {label ? (\n          <label\n            htmlFor={inputId}\n            className=\"text-[13px] font-medium leading-none tracking-[-0.01em] text-[var(--foreground)]\"\n          >\n            {label}\n          </label>\n        ) : null}\n\n        <NumberField.Root\n          id={inputId}\n          value={current}\n          onValueChange={handleChange}\n          onValueCommitted={(next) => {\n            setEditing(false);\n            onValueCommitted?.(next);\n          }}\n          min={min}\n          max={max}\n          step={step}\n          largeStep={largeStep}\n          smallStep={smallStep}\n          format={format}\n          locale={locale}\n          allowWheelScrub={wheelStep}\n          disabled={disabled}\n          readOnly={readOnly}\n          required={required}\n          name={name}\n          className={fullWidth ? \"w-full\" : \"w-fit\"}\n        >\n          <NumberField.Group\n            // A recessed track with the carved buttons raised inside it, like a\n            // segmented control: one lit edge per layer, never two.\n            data-surface=\"well\"\n            data-slot=\"number-input\"\n            data-variant={variant}\n            className={cn(\n              fieldClass,\n              FIELD_HEIGHT[size],\n              fullWidth && \"flex w-full\",\n              !disabled && !readOnly && (error ? fieldError : fieldFocus),\n              disabled && \"cursor-not-allowed opacity-45\",\n              readOnly && \"[--surface-face:var(--muted)]\",\n            )}\n          >\n            {trailing ? null : decrement}\n\n            <div\n              className={cn(\n                \"relative flex h-full min-w-0 items-center\",\n                fullWidth && \"flex-1\",\n                TEXT_SIZE[size],\n              )}\n            >\n              <NumberField.Input\n                ref={ref}\n                placeholder={placeholder}\n                aria-label={label ? undefined : ariaLabel}\n                aria-invalid={error ? true : undefined}\n                aria-describedby={describedBy}\n                style={fullWidth ? undefined : { width: `calc(${widest}ch + 1rem)` }}\n                className={cn(\n                  \"h-full min-w-0 border-0 bg-transparent px-2 font-medium tabular-nums outline-none\",\n                  trailing ? \"text-left pl-2.5\" : \"text-center\",\n                  fullWidth && \"w-full\",\n                  \"text-[var(--foreground)] caret-[var(--foreground)]\",\n                  // 16px on touch screens: iOS zooms into any field set smaller.\n                  \"pointer-coarse:text-base\",\n                  \"placeholder:font-normal placeholder:text-[var(--primitive-text-placeholder)]\",\n                  \"selection:bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)]\",\n                  \"disabled:cursor-not-allowed read-only:text-[var(--muted-foreground)]\",\n                  showRoll && \"text-transparent\",\n                  inputClassName,\n                )}\n              />\n              {showRoll ? (\n                <span\n                  aria-hidden=\"true\"\n                  className={cn(\n                    \"pointer-events-none absolute inset-0 flex items-center px-2 font-medium tabular-nums whitespace-nowrap\",\n                    trailing ? \"justify-start pl-2.5\" : \"justify-center\",\n                    \"pointer-coarse:text-base\",\n                    readOnly ? \"text-[var(--muted-foreground)]\" : \"text-[var(--foreground)]\",\n                  )}\n                >\n                  <RollingValue\n                    text={formatted}\n                    direction={direction}\n                    reduceMotion={reduceMotion}\n                  />\n                </span>\n              ) : null}\n            </div>\n\n            {trailing ? (\n              <>\n                {decrement}\n                {increment}\n              </>\n            ) : (\n              increment\n            )}\n          </NumberField.Group>\n        </NumberField.Root>\n\n        {error ? (\n          <p id={errorId} className=\"text-[12px] leading-[1.45] text-[var(--primitive-destructive)]\">\n            {error}\n          </p>\n        ) : hint ? (\n          <p id={hintId} className=\"text-[12px] leading-[1.45] text-[var(--primitive-text-secondary)]\">\n            {hint}\n          </p>\n        ) : null}\n      </div>\n    );\n  },\n);\n\nNumberInput.displayName = \"NumberInput\";\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/number-input.tsx. For Pro components and updates, use pnpm dlx wensity@latest add number-input.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "number-input",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/number-input",
+      "shadcnUrl": "https://ui.wensity.com/r/number-input",
+      "cliInstall": "pnpm dlx wensity@latest add number-input"
+    }
+  }
+}
