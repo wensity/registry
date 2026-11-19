@@ -77,7 +77,7 @@ those for you at add time.
 
 ## What is in here
 
-98 registry items across six groups.
+99 registry items across six groups.
 
 ### Agentic AI Interfaces
 
@@ -157,7 +157,7 @@ Larger composed blocks for dashboards and product pages.
 The standard set, built on Base UI with Wensity's token contract. Accessible,
 unstyled-first, and themeable through the primitive CSS block.
 
-`button`, `button-group`, `input`, `text-area`, `select`, `form-field`, `badge`, `checkbox`, `switch`, `radio-group`, `toggle`, `label`, `input-otp`, `combobox`, `avatar`, `table`, `progress`, `alert`, `skeleton`, `spinner`, `toast`, `dialog`, `sheet`, `drawer`, `popover`, `tooltip`, `tabs`, `breadcrumb`, `pagination`, `card`, `separator`, `scroll-area`, `resizable`, `hover-card`, `accordion`, `aspect-ratio`, `attachment`, `calendar`, `carousel`, `chart`, `collapsible`, `slider`, `command`, `context-menu`, `data-table`, `date-picker`, `direction`, `dropdown-menu`, `empty-state`, `field`, `kbd`, `marker`, `native-select`, `navigation-menu`, `sidebar`, `typography`
+`button`, `button-group`, `input`, `number-input`, `text-area`, `select`, `form-field`, `badge`, `checkbox`, `switch`, `radio-group`, `toggle`, `label`, `input-otp`, `combobox`, `avatar`, `table`, `progress`, `alert`, `skeleton`, `spinner`, `toast`, `dialog`, `sheet`, `drawer`, `popover`, `tooltip`, `tabs`, `breadcrumb`, `pagination`, `card`, `separator`, `scroll-area`, `resizable`, `hover-card`, `accordion`, `aspect-ratio`, `attachment`, `calendar`, `carousel`, `chart`, `collapsible`, `slider`, `command`, `context-menu`, `data-table`, `date-picker`, `direction`, `dropdown-menu`, `empty-state`, `field`, `kbd`, `marker`, `native-select`, `navigation-menu`, `sidebar`, `typography`
 
 Install any of them the same way:
 
