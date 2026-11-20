@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 101,
+  "count": 102,
   "items": [
     {
       "name": "font-inter",
@@ -431,6 +431,26 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/components/copy-button",
         "cliInstall": "pnpm dlx wensity@latest add copy-button"
+      }
+    },
+    {
+      "name": "cookie-banner",
+      "type": "registry:block",
+      "title": "Cookie Banner",
+      "description": "React cookie banner with accept, reject and per-category switches, a saved choice and a cookie that takes a bite.",
+      "categories": [
+        "Elite Micro-Interactions",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "framer-motion"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/cookie-banner.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/components/cookie-banner",
+        "cliInstall": "pnpm dlx wensity@latest add cookie-banner"
       }
     },
     {

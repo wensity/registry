@@ -1,0 +1,494 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "cookie-banner",
+  "type": "registry:block",
+  "title": "Cookie Banner",
+  "description": "Cookie Banner is a free React cookie consent banner for Next.js and Tailwind CSS, shown as a corner card or a bottom bar, with Accept all and Reject all side by side, an options panel with a switch per category, a choice saved to localStorage with a version and an expiry, a useCookieConsent hook for holding scripts until the visitor agrees, and a cookie icon that loses a bite as they accept. It works as a cookie popup in a corner or a full width notice, and installs with the shadcn CLI.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/cookie-banner.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/cookie-banner.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { AnimatePresence, motion, useReducedMotion } from \"framer-motion\";\n\nimport { cn } from \"@/lib/utils\";\n\n/**\n * Cookie Banner\n *\n * A cookie consent banner with three equal ways out: accept everything,\n * reject everything, or open the options and choose per category. Reject is\n * as easy to reach as accept, which is what GDPR style consent asks for.\n *\n * The choice is saved to localStorage with a version and an expiry. The\n * banner renders nothing on the server and nothing for a visitor who has\n * already chosen, so it never flashes on load. Change `version` to ask\n * everyone again, for example after adding a new category.\n *\n * `useCookieConsent` reads the saved choice anywhere in the app, so scripts\n * can wait for it, and its `reset` brings the banner back (for a \"Cookie\n * settings\" link in a footer).\n *\n * The cookie in the corner loses a bite when the pointer rests on Accept and\n * two more as the banner leaves. With reduced motion nothing slides and the\n * bites appear at once.\n *\n * The banner is a non-modal dialog: it is labelled, it never traps or steals\n * focus, and every category is a real switch.\n */\n\nexport type CookieBannerVariant = \"card\" | \"bar\";\nexport type CookieBannerPosition = \"bottom-left\" | \"bottom-center\" | \"bottom-right\";\nexport type CookieBannerPlacement = \"fixed\" | \"inline\";\nexport type CookieBannerTone = \"neutral\" | \"blue\" | \"emerald\" | \"orange\";\nexport type CookieConsentAction = \"accept\" | \"reject\" | \"save\";\n\nexport interface CookieCategory {\n  /** Key used in the saved consent, for example \"analytics\". */\n  id: string;\n  label: string;\n  description?: string;\n  /** Always on and not switchable. */\n  required?: boolean;\n  /** Starting position of the switch. Off unless set. */\n  defaultValue?: boolean;\n}\n\n/** Category id to allowed or not. */\nexport type CookieConsent = Record<string, boolean>;\n\nexport interface CookieBannerProps\n  extends Omit<React.HTMLAttributes<HTMLDivElement>, \"title\" | \"children\"> {\n  /** A compact corner card or a wide strip along the bottom. */\n  variant?: CookieBannerVariant;\n  /** Corner the card sits in. The bar is always centred. */\n  position?: CookieBannerPosition;\n  /** `fixed` pins it to the viewport. `inline` renders it in the page flow. */\n  placement?: CookieBannerPlacement;\n  /** Colour of the main button and the switches. */\n  tone?: CookieBannerTone;\n  title?: string;\n  description?: React.ReactNode;\n  /** Adds a link to your policy after the description. */\n  policyHref?: string;\n  policyLabel?: string;\n  categories?: CookieCategory[];\n  acceptLabel?: string;\n  rejectLabel?: string;\n  customizeLabel?: string;\n  saveLabel?: string;\n  requiredLabel?: string;\n  /** localStorage key. Pass `null` to keep nothing. */\n  storageKey?: string | null;\n  /** Change it to ask every visitor again. */\n  version?: string;\n  /** Days before the saved choice expires and the banner returns. */\n  expiresDays?: number;\n  /** Control visibility yourself. Leave unset to follow the saved choice. */\n  open?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  /** Runs once the visitor has chosen. */\n  onConsent?: (consent: CookieConsent, action: CookieConsentAction) => void;\n  /** The cookie loses bites as the visitor accepts. */\n  bite?: boolean;\n}\n\nconst DEFAULT_STORAGE_KEY = \"cookie-consent\";\nconst CHANGE_EVENT = \"cookie-banner:change\";\nconst DAY = 86_400_000;\nconst EASE = [0.32, 0.72, 0, 1] as const;\nconst EASE_OUT = [0.23, 1, 0.32, 1] as const;\n\nconst DEFAULT_CATEGORIES: CookieCategory[] = [\n  {\n    id: \"necessary\",\n    label: \"Necessary\",\n    description: \"Sign in, security and saving this choice.\",\n    required: true,\n  },\n  {\n    id: \"analytics\",\n    label: \"Analytics\",\n    description: \"Anonymous counts of visits and page views.\",\n  },\n  {\n    id: \"preferences\",\n    label: \"Preferences\",\n    description: \"Remembers settings like theme and language.\",\n  },\n  {\n    id: \"marketing\",\n    label: \"Marketing\",\n    description: \"Measures ads and limits how often you see them.\",\n  },\n];\n\ninterface StoredRecord {\n  version: string | null;\n  expires: number;\n  consent: CookieConsent;\n}\n\nfunction readRecord(storageKey: string, version?: string): StoredRecord | null {\n  if (typeof window === \"undefined\") return null;\n  try {\n    const raw = window.localStorage.getItem(storageKey);\n    if (!raw) return null;\n    const record = JSON.parse(raw) as Partial<StoredRecord> | null;\n    if (!record || typeof record !== \"object\" || !record.consent || typeof record.consent !== \"object\") return null;\n    if (typeof record.expires !== \"number\" || record.expires < Date.now()) return null;\n    if (version !== undefined && record.version !== version) return null;\n    return record as StoredRecord;\n  } catch {\n    // Blocked storage or a damaged value: treat as no choice yet.\n    return null;\n  }\n}\n\nfunction announceChange() {\n  window.dispatchEvent(new Event(CHANGE_EVENT));\n}\n\n/** The saved choice, or null when the visitor has not chosen (or it expired). */\nexport function readCookieConsent(storageKey: string = DEFAULT_STORAGE_KEY, version?: string): CookieConsent | null {\n  return readRecord(storageKey, version)?.consent ?? null;\n}\n\n/**\n * Follows the saved choice from anywhere in the app. `consent` is null until\n * the visitor chooses. `reset` forgets the choice, which brings the banner back.\n */\nexport function useCookieConsent(storageKey: string = DEFAULT_STORAGE_KEY, version?: string) {\n  const [consent, setConsent] = React.useState<CookieConsent | null>(null);\n\n  React.useEffect(() => {\n    const sync = () => setConsent(readCookieConsent(storageKey, version));\n    sync();\n    window.addEventListener(CHANGE_EVENT, sync);\n    window.addEventListener(\"storage\", sync);\n    return () => {\n      window.removeEventListener(CHANGE_EVENT, sync);\n      window.removeEventListener(\"storage\", sync);\n    };\n  }, [storageKey, version]);\n\n  const reset = React.useCallback(() => {\n    try {\n      window.localStorage.removeItem(storageKey);\n    } catch {\n      // Nothing was saved if storage is blocked.\n    }\n    announceChange();\n  }, [storageKey]);\n\n  return { consent, reset };\n}\n\n/* Hover is light catching the top of the key and falling off down its face. */\nconst LIGHT_UP = \"before:bg-[linear-gradient(180deg,rgba(255,255,255,.2)_0%,rgba(255,255,255,0)_75%)]\";\n\nconst TONES: Record<CookieBannerTone, { primary: string; switchOn: string; knobOn: string; focus: string }> = {\n  neutral: {\n    primary: cn(\n      \"bg-[linear-gradient(180deg,#45454d_0%,#18181b_100%)] text-white\",\n      \"shadow-[inset_0_1px_0_rgba(255,255,255,.2),0_0_0_1px_rgba(0,0,0,.75),0_1px_2px_rgba(0,0,0,.3),0_4px_8px_-4px_rgba(0,0,0,.4)]\",\n      \"dark:bg-[linear-gradient(180deg,#ffffff_0%,#f1f1f3_45%,#d2d2d8_100%)] dark:text-neutral-900\",\n      \"dark:shadow-[inset_0_1px_0_#fff,inset_0_-1px_0_rgba(0,0,0,.18),0_0_0_1px_rgba(0,0,0,.8),0_2px_3px_rgba(0,0,0,.6),0_6px_12px_-6px_rgba(0,0,0,.9)]\",\n      // Graphite catches light; white cannot brighten, so it dims toward the bottom instead.\n      LIGHT_UP,\n      \"dark:before:bg-[linear-gradient(180deg,rgba(0,0,0,.03)_0%,rgba(0,0,0,.11)_100%)]\",\n      \"active:shadow-[inset_0_2px_4px_rgba(0,0,0,.45),0_0_0_1px_rgba(0,0,0,.75)] dark:active:shadow-[inset_0_2px_5px_rgba(0,0,0,.28),0_0_0_1px_rgba(0,0,0,.8)]\",\n    ),\n    switchOn: \"bg-neutral-900 dark:bg-white\",\n    knobOn:\n      \"dark:bg-[linear-gradient(180deg,#3d3d44_0%,#18181b_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,.2),0_0_0_1px_rgba(0,0,0,.6),0_1px_2px_rgba(0,0,0,.3)]\",\n    focus: \"focus-visible:outline-neutral-900/60 dark:focus-visible:outline-white/70\",\n  },\n  blue: {\n    primary: \"bg-[linear-gradient(180deg,#5b9dff_0%,#2f6fed_48%,#1d4ed8_100%)] text-white\",\n    switchOn: \"bg-blue-600 dark:bg-blue-500\",\n    knobOn: \"\",\n    focus: \"focus-visible:outline-blue-600/70 dark:focus-visible:outline-blue-400/80\",\n  },\n  emerald: {\n    primary: \"bg-[linear-gradient(180deg,#34d399_0%,#10a56f_48%,#047857_100%)] text-white\",\n    switchOn: \"bg-emerald-600 dark:bg-emerald-500\",\n    knobOn: \"\",\n    focus: \"focus-visible:outline-emerald-600/70 dark:focus-visible:outline-emerald-400/80\",\n  },\n  orange: {\n    primary: \"bg-[linear-gradient(180deg,#fb923c_0%,#f26a1b_48%,#c2410c_100%)] text-white\",\n    switchOn: \"bg-orange-600 dark:bg-orange-500\",\n    knobOn: \"\",\n    focus: \"focus-visible:outline-orange-600/70 dark:focus-visible:outline-orange-400/80\",\n  },\n};\n\n/* Raised edge, hover light and sunk press shared by the coloured main buttons. */\nconst COLOURED_EDGE =\n  LIGHT_UP +\n  \" active:shadow-[inset_0_2px_4px_rgba(0,0,0,.4),0_0_0_1px_rgba(0,0,0,.3)] dark:active:shadow-[inset_0_2px_4px_rgba(0,0,0,.45),0_0_0_1px_rgba(0,0,0,.8)] \" +\n  \"shadow-[inset_0_1px_0_rgba(255,255,255,.35),inset_0_-1px_0_rgba(0,0,0,.2),0_0_0_1px_rgba(0,0,0,.3),0_1px_2px_rgba(0,0,0,.3),0_4px_8px_-4px_rgba(0,0,0,.4)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,.35),inset_0_-1px_0_rgba(0,0,0,.25),0_0_0_1px_rgba(0,0,0,.8),0_2px_3px_rgba(0,0,0,.6),0_6px_12px_-6px_rgba(0,0,0,.9)]\";\n\nconst BUTTON_BASE =\n  \"inline-flex h-9 shrink-0 select-none items-center justify-center whitespace-nowrap rounded-[10px] px-3.5 text-[13px] font-medium outline-none transition-[box-shadow,background-color,color] duration-100 focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:transition-none relative isolate before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-0 before:transition-opacity before:duration-150 hover:before:opacity-100 motion-reduce:before:transition-none\";\n\nconst SECONDARY = cn(\n  \"bg-[linear-gradient(180deg,#ffffff_0%,#f0f0f2_100%)] text-neutral-900\",\n  \"shadow-[inset_0_1px_0_#fff,0_0_0_1px_rgba(0,0,0,.12),0_1px_2px_rgba(0,0,0,.08)]\",\n  \"dark:bg-[linear-gradient(180deg,#2c2c31_0%,#1c1c20_100%)] dark:text-white\",\n  \"dark:shadow-[inset_0_1px_0_rgba(255,255,255,.1),0_0_0_1px_rgba(0,0,0,.85),0_2px_3px_rgba(0,0,0,.5)]\",\n  \"before:bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,.05)_100%)] dark:before:bg-[linear-gradient(180deg,rgba(255,255,255,.09)_0%,rgba(255,255,255,.02)_100%)]\",\n  \"active:shadow-[inset_0_1px_3px_rgba(0,0,0,.16),0_0_0_1px_rgba(0,0,0,.12)] dark:active:shadow-[inset_0_2px_5px_rgba(0,0,0,.6),0_0_0_1px_rgba(0,0,0,.85)]\",\n);\n\nconst GHOST =\n  \"text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-900 dark:text-white/55 dark:hover:bg-white/[0.07] dark:hover:text-white\";\n\nconst SURFACE = cn(\n  \"bg-[linear-gradient(180deg,#ffffff_0%,#f8f8f9_100%)] text-neutral-900\",\n  \"shadow-[0_0_0_1px_rgba(0,0,0,.08),0_1px_2px_rgba(0,0,0,.06),0_12px_32px_-12px_rgba(0,0,0,.22)]\",\n  \"dark:bg-[linear-gradient(180deg,#1d1d20_0%,#121214_100%)] dark:text-white\",\n  \"dark:shadow-[inset_0_1px_0_rgba(255,255,255,.09),0_0_0_1px_rgba(0,0,0,.9),0_2px_4px_rgba(0,0,0,.5),0_20px_40px_-16px_rgba(0,0,0,.9)]\",\n);\n\nconst JUSTIFY: Record<CookieBannerPosition, string> = {\n  \"bottom-left\": \"justify-start\",\n  \"bottom-center\": \"justify-center\",\n  \"bottom-right\": \"justify-end\",\n};\n\n/* Where each bite lands on the cookie's rim. They overlap, so the edge reads as chewed. */\nconst BITES = [\n  { cx: 25.2, cy: 6.8, r: 5.6 },\n  { cx: 29, cy: 16, r: 5 },\n  { cx: 26, cy: 24.4, r: 5 },\n];\n\nconst CHIPS = [\n  { cx: 11, cy: 10.5, r: 1.7 },\n  { cx: 17.5, cy: 8.5, r: 1.2 },\n  { cx: 9.5, cy: 17.5, r: 1.3 },\n  { cx: 17.5, cy: 15.5, r: 1.8 },\n  { cx: 14, cy: 22.5, r: 1.5 },\n  { cx: 20.5, cy: 21, r: 1.1 },\n];\n\nfunction Cookie({ bites, leaving, instant }: { bites: number; leaving: boolean; instant: boolean }) {\n  const maskId = `cookie-${React.useId().replace(/:/g, \"\")}`;\n\n  return (\n    <svg\n      aria-hidden=\"true\"\n      viewBox=\"0 0 32 32\"\n      className=\"mt-0.5 size-7 shrink-0 text-neutral-900 dark:text-white\"\n    >\n      <mask id={maskId} maskUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"32\" height=\"32\">\n        <rect width=\"32\" height=\"32\" fill=\"#fff\" />\n        {CHIPS.map((chip) => (\n          <circle key={`${chip.cx}-${chip.cy}`} cx={chip.cx} cy={chip.cy} r={chip.r} fill=\"#000\" />\n        ))}\n        {BITES.map((spot, index) => {\n          const bitten = index < bites;\n          // A bite opens from most of its size, never from a point. Resting on Accept takes the\n          // first one after a short pause, so a pointer passing over the button changes nothing.\n          const transition = instant\n            ? { duration: 0 }\n            : bitten\n              ? { duration: 0.14, ease: EASE_OUT, delay: leaving ? index * 0.05 : 0.06 }\n              : { duration: 0.1, ease: EASE_OUT };\n\n          return (\n            <motion.circle\n              key={spot.cy}\n              cx={spot.cx}\n              cy={spot.cy}\n              fill=\"#000\"\n              initial={false}\n              animate={{ r: bitten ? spot.r : spot.r * 0.6, opacity: bitten ? 1 : 0 }}\n              transition={transition}\n            />\n          );\n        })}\n      </mask>\n      <circle cx=\"16\" cy=\"16\" r=\"13\" fill=\"currentColor\" mask={`url(#${maskId})`} />\n    </svg>\n  );\n}\n\nfunction Switch({\n  checked,\n  onChange,\n  tone,\n  labelledBy,\n  describedBy,\n}: {\n  checked: boolean;\n  onChange: (next: boolean) => void;\n  tone: CookieBannerTone;\n  labelledBy: string;\n  describedBy?: string;\n}) {\n  const tones = TONES[tone];\n\n  return (\n    <button\n      type=\"button\"\n      role=\"switch\"\n      aria-checked={checked}\n      aria-labelledby={labelledBy}\n      aria-describedby={describedBy}\n      onClick={() => onChange(!checked)}\n      className={cn(\n        \"relative mt-0.5 h-5 w-9 shrink-0 rounded-full outline-none transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:transition-none\",\n        \"shadow-[inset_0_1px_2px_rgba(0,0,0,.18)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,.7),0_1px_0_rgba(255,255,255,.06)]\",\n        checked ? tones.switchOn : \"bg-black/[0.14] dark:bg-white/[0.14]\",\n        tones.focus,\n      )}\n    >\n      <span\n        aria-hidden=\"true\"\n        className={cn(\n          \"absolute left-0.5 top-0.5 size-4 rounded-full transition-transform duration-150 ease-[cubic-bezier(.32,.72,0,1)] motion-reduce:transition-none\",\n          \"bg-[linear-gradient(180deg,#ffffff_0%,#e4e4e8_100%)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_rgba(0,0,0,.22),0_1px_2px_rgba(0,0,0,.3)]\",\n          checked ? cn(\"translate-x-4\", tones.knobOn) : \"translate-x-0\",\n        )}\n      />\n    </button>\n  );\n}\n\nfunction initialChoices(categories: CookieCategory[]): CookieConsent {\n  const choices: CookieConsent = {};\n  for (const category of categories) choices[category.id] = Boolean(category.required || category.defaultValue);\n  return choices;\n}\n\nexport function CookieBanner({\n  variant = \"card\",\n  position = \"bottom-left\",\n  placement = \"fixed\",\n  tone = \"neutral\",\n  title = \"We use cookies\",\n  description = \"Some keep the site working. Others measure traffic and remember your settings, and those are up to you.\",\n  policyHref,\n  policyLabel = \"Cookie policy\",\n  categories = DEFAULT_CATEGORIES,\n  acceptLabel = \"Accept all\",\n  rejectLabel = \"Reject all\",\n  customizeLabel = \"Customize\",\n  saveLabel = \"Save choices\",\n  requiredLabel = \"Always on\",\n  storageKey = DEFAULT_STORAGE_KEY,\n  version,\n  expiresDays = 180,\n  open,\n  onOpenChange,\n  onConsent,\n  bite = true,\n  className,\n  ...rest\n}: CookieBannerProps) {\n  const reduced = useReducedMotion() ?? false;\n  const uid = React.useId();\n  const titleId = `${uid}-title`;\n  const descriptionId = `${uid}-description`;\n  const panelId = `${uid}-options`;\n\n  const [mounted, setMounted] = React.useState(false);\n  const [internalOpen, setInternalOpen] = React.useState(false);\n  const [expanded, setExpanded] = React.useState(false);\n  const [choices, setChoices] = React.useState<CookieConsent>(() => initialChoices(categories));\n  const [nearAccept, setNearAccept] = React.useState(false);\n  const [eating, setEating] = React.useState(false);\n  const commitFrame = React.useRef<number | null>(null);\n  const customizeRef = React.useRef<HTMLButtonElement>(null);\n\n  // Follow the saved choice: open when there is none, closed once there is.\n  React.useEffect(() => {\n    const sync = () => {\n      if (storageKey === null) return;\n      const record = readRecord(storageKey, version);\n      if (record) setChoices((current) => ({ ...current, ...record.consent }));\n      setInternalOpen(!record);\n    };\n\n    if (storageKey === null) setInternalOpen(true);\n    else sync();\n    setMounted(true);\n\n    window.addEventListener(CHANGE_EVENT, sync);\n    window.addEventListener(\"storage\", sync);\n    return () => {\n      window.removeEventListener(CHANGE_EVENT, sync);\n      window.removeEventListener(\"storage\", sync);\n    };\n  }, [storageKey, version]);\n\n  React.useEffect(\n    () => () => {\n      if (commitFrame.current !== null) window.cancelAnimationFrame(commitFrame.current);\n    },\n    [],\n  );\n\n  const visible = mounted && (open ?? internalOpen);\n\n  // Each time the banner returns it starts collapsed with a whole cookie.\n  React.useEffect(() => {\n    if (!visible) return;\n    setExpanded(false);\n    setEating(false);\n    setNearAccept(false);\n  }, [visible]);\n\n  const commit = (action: CookieConsentAction) => {\n    const consent: CookieConsent = {};\n    for (const category of categories) {\n      if (category.required) consent[category.id] = true;\n      else if (action === \"accept\") consent[category.id] = true;\n      else if (action === \"reject\") consent[category.id] = false;\n      else consent[category.id] = Boolean(choices[category.id]);\n    }\n\n    setChoices(consent);\n    setInternalOpen(false);\n\n    if (storageKey !== null) {\n      try {\n        const record: StoredRecord = {\n          version: version ?? null,\n          expires: Date.now() + expiresDays * DAY,\n          consent,\n        };\n        window.localStorage.setItem(storageKey, JSON.stringify(record));\n      } catch {\n        // Storage is blocked: the choice still applies for this visit.\n      }\n      announceChange();\n    }\n\n    onConsent?.(consent, action);\n    onOpenChange?.(false);\n  };\n\n  const choose = (action: CookieConsentAction) => {\n    if (commitFrame.current !== null) return;\n    // Accepting closes on the next frame, so the last bites are drawn and land as the banner leaves.\n    if (action === \"accept\" && bite) {\n      setEating(true);\n      commitFrame.current = window.requestAnimationFrame(() => {\n        commitFrame.current = null;\n        commit(\"accept\");\n      });\n      return;\n    }\n    commit(action);\n  };\n\n  // Escape folds the options away again and returns focus to the button that opened them.\n  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {\n    rest.onKeyDown?.(event);\n    if (event.key !== \"Escape\" || !expanded || event.defaultPrevented) return;\n    setExpanded(false);\n    customizeRef.current?.focus();\n  };\n\n  const tones = TONES[tone];\n  const isBar = variant === \"bar\";\n  const bites = !bite ? 0 : eating ? BITES.length : nearAccept ? 1 : 0;\n\n  const actions = (\n    <div className={cn(\"flex flex-wrap items-center gap-2\", isBar ? \"shrink-0 max-md:w-full\" : \"mt-5\")}>\n      {/* The quiet button opens the options, then saves them. Reject and Accept never move. */}\n      <button\n        ref={customizeRef}\n        type=\"button\"\n        aria-expanded={expanded ? undefined : false}\n        aria-controls={expanded ? undefined : panelId}\n        onClick={() => (expanded ? choose(\"save\") : setExpanded(true))}\n        className={cn(\n          BUTTON_BASE,\n          GHOST,\n          tones.focus,\n          \"-ml-2 px-2\",\n          isBar && \"md:mr-1\",\n          expanded && \"text-neutral-900 dark:text-white\",\n        )}\n      >\n        <span className=\"relative\">{expanded ? saveLabel : customizeLabel}</span>\n      </button>\n      <div className={cn(\"ml-auto flex gap-2\", isBar ? \"max-md:grow\" : \"max-sm:grow\")}>\n        <button\n          type=\"button\"\n          onClick={() => choose(\"reject\")}\n          className={cn(BUTTON_BASE, SECONDARY, tones.focus, isBar ? \"max-md:flex-1\" : \"max-sm:flex-1\")}\n        >\n          <span className=\"relative\">{rejectLabel}</span>\n        </button>\n        <button\n          type=\"button\"\n          onClick={() => choose(\"accept\")}\n          onPointerEnter={() => setNearAccept(true)}\n          onPointerLeave={() => setNearAccept(false)}\n          onFocus={() => setNearAccept(true)}\n          onBlur={() => setNearAccept(false)}\n          className={cn(\n            BUTTON_BASE,\n            tones.primary,\n            tone !== \"neutral\" && COLOURED_EDGE,\n            tones.focus,\n            isBar ? \"max-md:flex-1\" : \"max-sm:flex-1\",\n          )}\n        >\n          <span className=\"relative\">{acceptLabel}</span>\n        </button>\n      </div>\n    </div>\n  );\n\n  const options = (\n    <AnimatePresence initial={false}>\n      {expanded ? (\n        <motion.div\n          key=\"options\"\n          id={panelId}\n          initial={{ height: 0, opacity: 0 }}\n          animate={{ height: \"auto\", opacity: 1 }}\n          exit={{ height: 0, opacity: 0 }}\n          transition={\n            reduced\n              ? { duration: 0 }\n              : { height: { duration: 0.24, ease: EASE }, opacity: { duration: 0.16, ease: \"easeOut\" } }\n          }\n          className=\"overflow-hidden\"\n        >\n          <ul className={cn(\"pt-5\", isBar ? \"grid gap-x-10 gap-y-4 sm:grid-cols-2\" : \"flex flex-col gap-4\")}>\n            {categories.map((category) => {\n              const labelId = `${uid}-${category.id}-label`;\n              const detailId = category.description ? `${uid}-${category.id}-detail` : undefined;\n\n              return (\n                <li key={category.id} className=\"flex items-start justify-between gap-5\">\n                  <div className=\"min-w-0\">\n                    <p id={labelId} className=\"text-[13.5px] font-medium leading-5\">\n                      {category.label}\n                    </p>\n                    {category.description ? (\n                      <p id={detailId} className=\"mt-0.5 text-pretty text-[13px] leading-[1.45] text-neutral-500 dark:text-white/50\">\n                        {category.description}\n                      </p>\n                    ) : null}\n                  </div>\n                  {category.required ? (\n                    <span className=\"shrink-0 text-[12.5px] leading-5 text-neutral-500 dark:text-white/50\">{requiredLabel}</span>\n                  ) : (\n                    <Switch\n                      checked={Boolean(choices[category.id])}\n                      onChange={(next) => setChoices((current) => ({ ...current, [category.id]: next }))}\n                      tone={tone}\n                      labelledBy={labelId}\n                      describedBy={detailId}\n                    />\n                  )}\n                </li>\n              );\n            })}\n          </ul>\n        </motion.div>\n      ) : null}\n    </AnimatePresence>\n  );\n\n  const intro = (\n    <div className=\"flex min-w-0 flex-1 items-start gap-3.5\">\n      <Cookie bites={bites} leaving={eating} instant={reduced} />\n      <div className=\"min-w-0\">\n        <h2 id={titleId} className=\"text-[15px] font-semibold leading-5 tracking-[-0.01em]\">\n          {title}\n        </h2>\n        <p id={descriptionId} className=\"mt-1 text-pretty text-[13.5px] leading-[1.5] text-neutral-600 dark:text-white/60\">\n          {description}\n          {policyHref ? (\n            <>\n              {\" \"}\n              <a\n                href={policyHref}\n                className={cn(\n                  \"rounded-sm text-neutral-900 underline decoration-black/25 underline-offset-[3px] outline-none transition-colors duration-150 hover:decoration-black/60 focus-visible:outline-2 focus-visible:outline-offset-2 dark:text-white dark:decoration-white/30 dark:hover:decoration-white/70\",\n                  tones.focus,\n                )}\n              >\n                {policyLabel}\n              </a>\n            </>\n          ) : null}\n        </p>\n      </div>\n    </div>\n  );\n\n  return (\n    <AnimatePresence>\n      {visible ? (\n        <motion.div\n          key=\"cookie-banner\"\n          initial={{ opacity: 0 }}\n          animate={{ opacity: 1 }}\n          exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.18, ease: \"easeOut\" } }}\n          transition={{ duration: reduced ? 0 : 0.22, ease: \"easeOut\" }}\n          className={cn(\n            \"flex font-sans\",\n            isBar ? \"justify-center\" : JUSTIFY[position],\n            placement === \"fixed\" ? \"pointer-events-none fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4\" : \"w-full\",\n          )}\n        >\n          <motion.div\n            {...(rest as React.ComponentProps<typeof motion.div>)}\n            role=\"dialog\"\n            aria-modal=\"false\"\n            aria-labelledby={titleId}\n            aria-describedby={descriptionId}\n            onKeyDown={onKeyDown}\n            initial={{ y: reduced ? 0 : 8 }}\n            animate={{ y: 0 }}\n            exit={{ y: reduced ? 0 : 8, transition: { duration: reduced ? 0 : 0.18, ease: EASE_OUT } }}\n            transition={{ duration: reduced ? 0 : 0.28, ease: EASE }}\n            className={cn(\n              \"pointer-events-auto w-full\",\n              isBar ? \"max-w-[880px] rounded-[18px] p-4 sm:p-5\" : \"max-w-[384px] rounded-[18px] p-5\",\n              SURFACE,\n              className,\n            )}\n          >\n            {isBar ? (\n              <>\n                <div className=\"flex flex-col gap-4 md:flex-row md:items-center md:gap-8\">\n                  {intro}\n                  {actions}\n                </div>\n                {options}\n              </>\n            ) : (\n              <>\n                {intro}\n                {options}\n                {actions}\n              </>\n            )}\n          </motion.div>\n        </motion.div>\n      ) : null}\n    </AnimatePresence>\n  );\n}\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/cookie-banner.tsx. For Pro components and updates, use pnpm dlx wensity@latest add cookie-banner.",
+  "categories": [
+    "Elite Micro-Interactions",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "cookie-banner",
+      "access": "free",
+      "category": "Elite Micro-Interactions",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/components/cookie-banner",
+      "shadcnUrl": "https://ui.wensity.com/r/cookie-banner",
+      "cliInstall": "pnpm dlx wensity@latest add cookie-banner"
+    }
+  }
+}
