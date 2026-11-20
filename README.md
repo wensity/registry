@@ -77,7 +77,7 @@ those for you at add time.
 
 ## What is in here
 
-101 registry items across six groups.
+102 registry items across six groups.
 
 ### Agentic AI Interfaces
 
@@ -145,6 +145,7 @@ Small, high-polish interaction details.
 | [`animated-hamburger-menu`](https://ui.wensity.com/components/animated-hamburger-menu) | Animated Hamburger Menu | Eight animated hamburger menu icons that morph into a close X or back arrow in CSS. | `npx shadcn@latest add @wensity/animated-hamburger-menu` |
 | [`star-rating`](https://ui.wensity.com/components/star-rating) | Star Rating | React star rating with half stars, drag to rate, and cut stars that catch the light. | `npx shadcn@latest add @wensity/star-rating` |
 | [`copy-button`](https://ui.wensity.com/components/copy-button) | Copy Button | React copy to clipboard button whose icon morphs into a check as it turns green. | `npx shadcn@latest add @wensity/copy-button` |
+| [`cookie-banner`](https://ui.wensity.com/components/cookie-banner) | Cookie Banner | React cookie banner with accept, reject and per-category switches, a saved choice and a cookie that takes a bite. | `npx shadcn@latest add @wensity/cookie-banner` |
 
 ### Heavy SaaS Blocks
 
