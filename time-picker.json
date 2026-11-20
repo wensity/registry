@@ -1,0 +1,496 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "time-picker",
+  "type": "registry:block",
+  "title": "Time Picker",
+  "description": "A React time picker with typeable hour, minute, second and AM/PM parts, arrow key stepping, rolling digits, and a popover of scrolling columns, with 12 and 24 hour clocks, min and max limits and an inline list variant.",
+  "author": "Wensity <hey@wensity.com>",
+  "dependencies": [
+    "@base-ui/react",
+    "@tabler/icons-react",
+    "clsx",
+    "framer-motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/wensity/lib/utils.ts",
+      "type": "registry:lib",
+      "target": "@lib/utils.ts",
+      "content": "import { type ClassValue, clsx } from \"clsx\";\nimport { twMerge } from \"tailwind-merge\";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    },
+    {
+      "path": "registry/wensity/time-picker.tsx",
+      "type": "registry:component",
+      "target": "@components/wensity/time-picker.tsx",
+      "content": "\"use client\";\n\nimport * as React from \"react\";\nimport { Popover } from \"@base-ui/react/popover\";\nimport { AnimatePresence, motion, useReducedMotion } from \"framer-motion\";\nimport { IconClock } from \"@tabler/icons-react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type TimePickerSize = \"sm\" | \"md\" | \"lg\";\nexport type TimePickerVariant = \"field\" | \"inline\";\nexport type TimePickerHourCycle = 12 | 24;\n\nexport interface TimePickerProps {\n  /** Controlled value in 24 hour form: \"HH:mm\", or \"HH:mm:ss\" with `seconds`. `null` is empty. */\n  value?: string | null;\n  /** Uncontrolled starting value, same form as `value`. */\n  defaultValue?: string;\n  /** Fires with the 24 hour string, or `null` while any part is still empty. */\n  onValueChange?: (value: string | null) => void;\n  /** 12 shows an AM/PM part, 24 runs 00 to 23. The value is 24 hour either way. */\n  hourCycle?: TimePickerHourCycle;\n  /** Adds a seconds part. */\n  seconds?: boolean;\n  /** Minutes between options in the list and per arrow key press. Typing takes any minute. */\n  minuteStep?: number;\n  /** Seconds between options in the list and per arrow key press. */\n  secondStep?: number;\n  /** Earliest time, \"HH:mm\". Earlier options are disabled and typed times snap up on blur. */\n  min?: string;\n  /** Latest time, \"HH:mm\". Later options are disabled and typed times snap down on blur. */\n  max?: string;\n  /** `field` is a typeable field with a popover list, `inline` is the list on its own. */\n  variant?: TimePickerVariant;\n  size?: TimePickerSize;\n  /** Rolls each digit up or down as the value changes. */\n  rolling?: boolean;\n  /** Controlled popover state. */\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  label?: React.ReactNode;\n  hint?: React.ReactNode;\n  error?: React.ReactNode;\n  disabled?: boolean;\n  readOnly?: boolean;\n  required?: boolean;\n  /** Submits the 24 hour string with a form through a hidden input. */\n  name?: string;\n  id?: string;\n  fullWidth?: boolean;\n  /** Accessible name for the clock button. */\n  openLabel?: string;\n  \"aria-label\"?: string;\n  className?: string;\n  popupClassName?: string;\n}\n\n/* ─── Time maths ───────────────────────────────────────────── */\n\ntype Period = \"AM\" | \"PM\";\ntype NumericPart = \"hour\" | \"minute\" | \"second\";\ntype PartKind = NumericPart | \"period\";\n\n/** What the field shows. `hour` is the displayed hour: 1 to 12, or 0 to 23. */\ntype Parts = {\n  hour: number | null;\n  minute: number | null;\n  second: number | null;\n  period: Period | null;\n};\n\nconst EMPTY: Parts = { hour: null, minute: null, second: null, period: null };\nconst DAY_END = 24 * 3600 - 1;\n\nfunction pad(value: number) {\n  return String(value).padStart(2, \"0\");\n}\n\n/** Seconds since midnight, or null when the string is not a time. */\nfunction parseTime(value: string | null | undefined): number | null {\n  if (!value) return null;\n  const match = /^(\\d{1,2}):(\\d{2})(?::(\\d{2}))?$/.exec(value.trim());\n  if (!match) return null;\n  const h = Number(match[1]);\n  const m = Number(match[2]);\n  const s = match[3] ? Number(match[3]) : 0;\n  if (h > 23 || m > 59 || s > 59) return null;\n  return h * 3600 + m * 60 + s;\n}\n\nfunction formatTime(total: number, withSeconds: boolean) {\n  const h = Math.floor(total / 3600);\n  const m = Math.floor((total % 3600) / 60);\n  const base = `${pad(h)}:${pad(m)}`;\n  return withSeconds ? `${base}:${pad(total % 60)}` : base;\n}\n\nfunction displayHour(h24: number, cycle: TimePickerHourCycle) {\n  if (cycle === 24) return { hour: h24, period: null };\n  return { hour: h24 % 12 || 12, period: (h24 < 12 ? \"AM\" : \"PM\") as Period };\n}\n\nfunction hour24(parts: Parts, cycle: TimePickerHourCycle): number | null {\n  if (parts.hour == null) return null;\n  if (cycle === 24) return parts.hour;\n  if (parts.period == null) return null;\n  return (parts.hour % 12) + (parts.period === \"PM\" ? 12 : 0);\n}\n\nfunction partsFromSeconds(\n  total: number | null,\n  cycle: TimePickerHourCycle,\n  withSeconds: boolean,\n): Parts {\n  if (total == null) return EMPTY;\n  return {\n    ...displayHour(Math.floor(total / 3600), cycle),\n    minute: Math.floor((total % 3600) / 60),\n    second: withSeconds ? total % 60 : null,\n  };\n}\n\n/** Seconds since midnight once every shown part is filled. */\nfunction secondsFromParts(\n  parts: Parts,\n  cycle: TimePickerHourCycle,\n  withSeconds: boolean,\n): number | null {\n  const h = hour24(parts, cycle);\n  if (h == null || parts.minute == null) return null;\n  if (withSeconds && parts.second == null) return null;\n  return h * 3600 + parts.minute * 60 + (withSeconds ? (parts.second ?? 0) : 0);\n}\n\nfunction cleanStep(step: number) {\n  return Number.isFinite(step) ? Math.min(30, Math.max(1, Math.floor(step))) : 1;\n}\n\n/** 0 to 59 in steps, keeping an off-step current value in the list. */\nfunction steppedOptions(step: number, current: number | null) {\n  const list: number[] = [];\n  for (let value = 0; value < 60; value += step) list.push(value);\n  if (current != null && !list.includes(current)) {\n    list.push(current);\n    list.sort((a, b) => a - b);\n  }\n  return list;\n}\n\nfunction stepPart(current: number | null, dir: 1 | -1, lo: number, hi: number, step: number) {\n  const last = lo + Math.floor((hi - lo) / step) * step;\n  if (current == null) return dir > 0 ? lo : last;\n  const next =\n    dir > 0\n      ? Math.floor(current / step) * step + step\n      : Math.ceil(current / step) * step - step;\n  if (next > hi) return lo;\n  if (next < lo) return last;\n  return next;\n}\n\n/* ─── Styles ───────────────────────────────────────────────── */\n\n// Motion tiers shared by every primitive. No bounce anywhere.\nconst SPRING = {\n  fast: { type: \"spring\", duration: 0.08, bounce: 0 },\n  moderate: { type: \"spring\", duration: 0.16, bounce: 0 },\n  slow: { type: \"spring\", duration: 0.24, bounce: 0 },\n} as const;\n\nconst FIELD_HEIGHT: Record<TimePickerSize, string> = {\n  sm: \"h-[var(--primitive-control-height-sm)]\",\n  md: \"h-[var(--primitive-control-height-md)]\",\n  lg: \"h-[var(--primitive-control-height-lg)]\",\n};\n\n// The clock button sits 3px inside the field rim.\nconst BUTTON_SIZE: Record<TimePickerSize, string> = {\n  sm: \"size-[calc(var(--primitive-control-height-sm)-8px)]\",\n  md: \"size-[calc(var(--primitive-control-height-md)-8px)]\",\n  lg: \"size-[calc(var(--primitive-control-height-lg)-8px)]\",\n};\n\nconst ICON_SIZE: Record<TimePickerSize, number> = { sm: 14, md: 15, lg: 17 };\n\nconst TEXT_SIZE: Record<TimePickerSize, string> = {\n  sm: \"text-xs\",\n  md: \"text-sm\",\n  lg: \"text-[15px]\",\n};\n\nconst FIELD_PAD: Record<TimePickerSize, string> = {\n  sm: \"pl-1.5\",\n  md: \"pl-2\",\n  lg: \"pl-2.5\",\n};\n\nconst OPTION_SIZE: Record<TimePickerSize, string> = {\n  sm: \"h-7 w-11 text-xs\",\n  md: \"h-8 w-12 text-[13px]\",\n  lg: \"h-9 w-14 text-sm\",\n};\n\n// Six and a half rows tall, so the cut-off row says the list scrolls.\nconst COLUMN_HEIGHT: Record<TimePickerSize, string> = {\n  sm: \"max-h-[194px]\",\n  md: \"max-h-[220px]\",\n  lg: \"max-h-[246px]\",\n};\n\nconst fieldClass = cn(\n  \"relative isolate inline-flex items-center justify-between gap-2 pr-[3px]\",\n  // Face, rim, lit top edge and depth come from data-surface=\"field\".\n  \"rounded-[var(--primitive-radius-control)]\",\n  \"transition-[box-shadow] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease)]\",\n  \"motion-reduce:transition-none\",\n);\n\nconst fieldFocus = cn(\n  \"has-[[role=spinbutton]:focus]:ring-2 has-[[role=spinbutton]:focus]:ring-[var(--primitive-ring)]\",\n  \"has-[[role=spinbutton]:focus]:ring-offset-2 has-[[role=spinbutton]:focus]:ring-offset-[var(--background)]\",\n);\n\nconst fieldError = cn(\n  \"[--surface-rim:var(--primitive-destructive-border)] [--surface-rim-top:var(--primitive-destructive-border)]\",\n  \"has-[[role=spinbutton]:focus]:ring-2 has-[[role=spinbutton]:focus]:ring-[color-mix(in_srgb,var(--primitive-destructive)_45%,transparent)]\",\n  \"has-[[role=spinbutton]:focus]:ring-offset-2 has-[[role=spinbutton]:focus]:ring-offset-[var(--background)]\",\n);\n\nconst segmentClass = cn(\n  \"relative inline-flex h-[1.7em] min-w-[calc(2ch+8px)] items-center justify-center px-1\",\n  \"rounded-[calc(var(--primitive-radius-control)-4px)] font-medium tabular-nums\",\n  \"cursor-text select-none outline-none\",\n  \"transition-[background-color] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease)]\",\n  \"focus:bg-[var(--primitive-surface-selected)]\",\n  \"motion-reduce:transition-none\",\n  // 16px on touch screens, matching the other fields.\n  \"pointer-coarse:text-base\",\n);\n\nconst triggerClass = cn(\n  \"grid shrink-0 place-items-center select-none touch-manipulation\",\n  // Painted by data-surface=\"flat\": no face, a tint on hover and press.\n  \"rounded-[calc(var(--primitive-radius-control)-3px)] text-[var(--muted-foreground)]\",\n  \"transition-[color,background-color] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease)]\",\n  \"hover:text-[var(--foreground)] data-[popup-open]:text-[var(--foreground)]\",\n  \"data-[popup-open]:[--surface-tint:var(--primitive-tint-press)]\",\n  \"motion-reduce:transition-none\",\n  \"outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)]\",\n  \"disabled:cursor-not-allowed disabled:hover:text-[var(--muted-foreground)]\",\n);\n\nconst popupClass = cn(\n  \"rounded-[var(--primitive-radius-popup)] p-1.5 text-[var(--foreground)]\",\n  \"origin-[var(--transform-origin)] transform-gpu outline-none\",\n  \"transition-[opacity,scale] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease,cubic-bezier(0.23,1,0.32,1))]\",\n  \"data-[ending-style]:duration-[var(--primitive-motion-fast-exit)]\",\n  \"data-[starting-style]:opacity-0 data-[ending-style]:opacity-0\",\n  \"data-[starting-style]:scale-[0.96] data-[ending-style]:scale-[0.96]\",\n  \"motion-reduce:transition-none motion-reduce:data-[starting-style]:scale-100 motion-reduce:data-[ending-style]:scale-100\",\n);\n\nconst columnClass = cn(\n  \"relative flex flex-col gap-0.5 overflow-y-auto overscroll-contain outline-none\",\n  \"[scrollbar-width:none] [&::-webkit-scrollbar]:hidden\",\n);\n\nconst optionClass = cn(\n  \"grid shrink-0 place-items-center font-medium tabular-nums select-none touch-manipulation\",\n  // flat when idle, fill when selected: the role paints face, rim and hover.\n  \"rounded-[var(--primitive-radius-item)] text-[var(--muted-foreground)]\",\n  \"transition-[color] duration-[var(--primitive-motion-fast)] ease-[var(--primitive-ease)]\",\n  \"hover:text-[var(--foreground)]\",\n  \"aria-selected:text-[var(--primitive-control-solid-foreground)] aria-selected:hover:text-[var(--primitive-control-solid-foreground)]\",\n  \"motion-reduce:transition-none\",\n  \"outline-none focus-visible:ring-2 focus-visible:ring-[var(--primitive-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background)]\",\n  \"disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-[var(--muted-foreground)]\",\n);\n\n/* ─── Rolling digits ───────────────────────────────────────── */\n\nfunction RollingUnit({\n  text,\n  direction,\n}: {\n  text: string;\n  direction: number;\n}) {\n  return (\n    <span className=\"relative inline-flex h-[1lh] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,#000_12%,#000_88%,transparent)]\">\n      <AnimatePresence initial={false} mode=\"popLayout\" custom={direction}>\n        <motion.span\n          key={text}\n          custom={direction}\n          variants={{\n            enter: (dir: number) => ({\n              transform: dir >= 0 ? \"translateY(100%)\" : \"translateY(-100%)\",\n              opacity: 0,\n            }),\n            center: { transform: \"translateY(0%)\", opacity: 1 },\n            exit: (dir: number) => ({\n              transform: dir >= 0 ? \"translateY(-100%)\" : \"translateY(100%)\",\n              opacity: 0,\n            }),\n          }}\n          initial=\"enter\"\n          animate=\"center\"\n          exit=\"exit\"\n          transition={SPRING.moderate}\n          className=\"inline-block\"\n        >\n          {text}\n        </motion.span>\n      </AnimatePresence>\n    </span>\n  );\n}\n\n/* ─── Option column ────────────────────────────────────────── */\n\ntype ColumnOption<T> = { value: T; text: string; disabled: boolean };\n\nfunction OptionColumn<T extends string | number>({\n  label,\n  options,\n  selected,\n  onPick,\n  onMove,\n  onAdvance,\n  size,\n  locked,\n  reduceMotion,\n}: {\n  label: string;\n  options: ColumnOption<T>[];\n  selected: T | null;\n  onPick: (value: T) => void;\n  /** Left and right arrows walk between columns. */\n  onMove: (from: HTMLElement, dir: 1 | -1) => void;\n  /** Enter picks, then steps to the next column or closes on the last. */\n  onAdvance: (from: HTMLElement) => void;\n  size: TimePickerSize;\n  locked: boolean;\n  reduceMotion: boolean;\n}) {\n  const listRef = React.useRef<HTMLDivElement>(null);\n  const settled = React.useRef(false);\n  // Rows fade out at an edge only while more rows sit past it.\n  const [fade, setFade] = React.useState({ top: false, bottom: false });\n\n  const measureFade = React.useCallback(() => {\n    const list = listRef.current;\n    if (!list) return;\n    const top = list.scrollTop > 1;\n    const bottom = list.scrollTop + list.clientHeight < list.scrollHeight - 1;\n    setFade((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));\n  }, []);\n\n  // Centre the selected row: at once when the list appears, eased after that.\n  React.useEffect(() => {\n    const list = listRef.current;\n    const row = list?.querySelector<HTMLElement>('[aria-selected=\"true\"]');\n    if (!list || !row) return;\n    const top = row.offsetTop - (list.clientHeight - row.offsetHeight) / 2;\n    list.scrollTo({ top, behavior: settled.current && !reduceMotion ? \"smooth\" : \"auto\" });\n  }, [selected, reduceMotion]);\n\n  React.useEffect(() => {\n    measureFade();\n  }, [measureFade, options.length]);\n\n  React.useEffect(() => {\n    settled.current = true;\n    return () => {\n      settled.current = false;\n    };\n  }, []);\n\n  const selectedOption = options.find((option) => option.value === selected);\n  const tabStop =\n    selectedOption && !selectedOption.disabled\n      ? selectedOption.value\n      : options.find((option) => !option.disabled)?.value;\n\n  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {\n    const list = event.currentTarget;\n    const rows = Array.from(\n      list.querySelectorAll<HTMLButtonElement>('[role=\"option\"]:not(:disabled)'),\n    );\n    const index = rows.indexOf(event.target as HTMLButtonElement);\n    let target: HTMLButtonElement | undefined;\n    switch (event.key) {\n      case \"ArrowDown\":\n        target = rows[Math.min(rows.length - 1, index + 1)];\n        break;\n      case \"ArrowUp\":\n        target = rows[Math.max(0, index - 1)];\n        break;\n      case \"Home\":\n        target = rows[0];\n        break;\n      case \"End\":\n        target = rows[rows.length - 1];\n        break;\n      case \"ArrowRight\":\n        event.preventDefault();\n        onMove(list, 1);\n        return;\n      case \"ArrowLeft\":\n        event.preventDefault();\n        onMove(list, -1);\n        return;\n      case \"Enter\":\n        event.preventDefault();\n        if (index >= 0) rows[index].click();\n        onAdvance(list);\n        return;\n      default:\n        return;\n    }\n    event.preventDefault();\n    target?.focus();\n  }\n\n  return (\n    <div\n      ref={listRef}\n      role=\"listbox\"\n      aria-label={label}\n      data-slot=\"time-picker-column\"\n      onKeyDown={handleKeyDown}\n      onScroll={measureFade}\n      style={\n        fade.top || fade.bottom\n          ? {\n              maskImage: `linear-gradient(to bottom, ${fade.top ? \"transparent\" : \"#000\"}, #000 22px, #000 calc(100% - 22px), ${fade.bottom ? \"transparent\" : \"#000\"})`,\n            }\n          : undefined\n      }\n      className={cn(columnClass, COLUMN_HEIGHT[size])}\n    >\n      {options.map((option) => {\n        const isSelected = option.value === selected;\n        return (\n          <button\n            key={option.value}\n            type=\"button\"\n            role=\"option\"\n            aria-selected={isSelected}\n            data-surface={isSelected ? \"fill\" : \"flat\"}\n            tabIndex={option.value === tabStop ? 0 : -1}\n            disabled={option.disabled || locked}\n            onClick={() => onPick(option.value)}\n            className={cn(optionClass, OPTION_SIZE[size])}\n          >\n            {option.text}\n          </button>\n        );\n      })}\n    </div>\n  );\n}\n\n/* ─── <TimePicker> ─────────────────────────────────────────── */\n\nconst PART_LABEL: Record<PartKind, string> = {\n  hour: \"Hours\",\n  minute: \"Minutes\",\n  second: \"Seconds\",\n  period: \"AM or PM\",\n};\n\nexport const TimePicker = React.forwardRef<HTMLDivElement, TimePickerProps>(\n  (\n    {\n      value: valueProp,\n      defaultValue,\n      onValueChange,\n      hourCycle = 12,\n      seconds = false,\n      minuteStep = 5,\n      secondStep = 5,\n      min,\n      max,\n      variant = \"field\",\n      size = \"md\",\n      rolling = true,\n      open: openProp,\n      defaultOpen = false,\n      onOpenChange,\n      label,\n      hint,\n      error,\n      disabled = false,\n      readOnly = false,\n      required,\n      name,\n      id,\n      fullWidth = false,\n      openLabel = \"Choose time\",\n      \"aria-label\": ariaLabel,\n      className,\n      popupClassName,\n    },\n    ref,\n  ) => {\n    const reduceMotion = useReducedMotion() ?? false;\n    const reactId = React.useId();\n    const baseId = id ?? `wensity-time-${reactId}`;\n    const labelId = label ? `${baseId}-label` : undefined;\n    const hintId = hint ? `${baseId}-hint` : undefined;\n    const errorId = error ? `${baseId}-error` : undefined;\n    const describedBy = [errorId, hintId].filter(Boolean).join(\" \") || undefined;\n\n    const locked = disabled || readOnly;\n    const minuteJump = cleanStep(minuteStep);\n    const secondJump = cleanStep(secondStep);\n    const minSeconds = parseTime(min) ?? 0;\n    const maxSeconds = parseTime(max) ?? DAY_END;\n\n    const isControlled = valueProp !== undefined;\n    const external = isControlled ? parseTime(valueProp) : null;\n\n    const [parts, setParts] = React.useState<Parts>(() =>\n      partsFromSeconds(\n        parseTime(isControlled ? valueProp : defaultValue),\n        hourCycle,\n        seconds,\n      ),\n    );\n    const [shape, setShape] = React.useState({ hourCycle, seconds });\n    // +1 rolls digits up, -1 rolls them down.\n    const [direction, setDirection] = React.useState(1);\n\n    // Keep the parts in step with the props during render: a new hour cycle\n    // or seconds setting re-expresses the same time, and a controlled value\n    // that disagrees with the parts wins.\n    let synced = parts;\n    if (shape.hourCycle !== hourCycle || shape.seconds !== seconds) {\n      const h = hour24(parts, shape.hourCycle);\n      synced = {\n        ...parts,\n        ...(h == null ? { hour: null, period: null } : displayHour(h, hourCycle)),\n        second: seconds ? (parts.second ?? (parts.minute != null ? 0 : null)) : null,\n      };\n      setShape({ hourCycle, seconds });\n    }\n    if (isControlled) {\n      const shown = secondsFromParts(synced, hourCycle, seconds);\n      const wanted = external == null ? null : seconds ? external : external - (external % 60);\n      if (shown !== wanted) synced = partsFromSeconds(wanted, hourCycle, seconds);\n    }\n    if (synced !== parts) setParts(synced);\n\n    const current = secondsFromParts(synced, hourCycle, seconds);\n    const currentValue = current == null ? null : formatTime(current, seconds);\n\n    const [openInner, setOpenInner] = React.useState(defaultOpen);\n    const open = (openProp ?? openInner) && !locked;\n    const setOpen = React.useCallback(\n      (next: boolean) => {\n        if (openProp === undefined) setOpenInner(next);\n        onOpenChange?.(next);\n      },\n      [openProp, onOpenChange],\n    );\n\n    const update = (next: Parts, dir: number) => {\n      setDirection(dir);\n      setParts(next);\n      const total = secondsFromParts(next, hourCycle, seconds);\n      const nextValue = total == null ? null : formatTime(total, seconds);\n      if (nextValue !== currentValue) onValueChange?.(nextValue);\n    };\n\n    /* ── Field: typing and arrow keys ── */\n\n    const fieldRef = React.useRef<HTMLDivElement | null>(null);\n    const typed = React.useRef(\"\");\n    const lastPointer = React.useRef(\"mouse\");\n\n    const kinds: PartKind[] = [\"hour\", \"minute\"];\n    if (seconds) kinds.push(\"second\");\n    if (hourCycle === 12) kinds.push(\"period\");\n\n    const focusPart = (kind: PartKind | undefined) => {\n      if (!kind) return;\n      fieldRef.current\n        ?.querySelector<HTMLElement>(`[data-part=\"${kind}\"]`)\n        ?.focus();\n    };\n    const sibling = (kind: PartKind, dir: 1 | -1) => kinds[kinds.indexOf(kind) + dir];\n\n    const bounds = (kind: NumericPart) => {\n      if (kind !== \"hour\") return { lo: 0, hi: 59, step: kind === \"minute\" ? minuteJump : secondJump };\n      return hourCycle === 12 ? { lo: 1, hi: 12, step: 1 } : { lo: 0, hi: 23, step: 1 };\n    };\n\n    const typeDigit = (kind: NumericPart, digit: string) => {\n      const { lo, hi } = bounds(kind);\n      let buffer = typed.current + digit;\n      let next = Number(buffer);\n      if (buffer.length > 2 || next > hi) {\n        buffer = digit;\n        next = Number(digit);\n      }\n      typed.current = buffer;\n      if (next < lo) {\n        // A leading zero on a 12 hour clock: wait for the next digit, and\n        // read \"00\" as twelve.\n        if (buffer.length < 2) return;\n        next = hi;\n      }\n      update({ ...synced, [kind]: next }, 1);\n      if (buffer.length >= 2 || next * 10 > hi) {\n        typed.current = \"\";\n        focusPart(sibling(kind, 1));\n      }\n    };\n\n    const handlePartKeyDown = (kind: PartKind, event: React.KeyboardEvent<HTMLDivElement>) => {\n      if (event.metaKey || event.ctrlKey || event.altKey) return;\n      const key = event.key;\n\n      if (key === \"ArrowLeft\" || key === \"ArrowRight\") {\n        event.preventDefault();\n        typed.current = \"\";\n        focusPart(sibling(kind, key === \"ArrowRight\" ? 1 : -1));\n        return;\n      }\n      if (locked) return;\n\n      if (key === \"ArrowUp\" || key === \"ArrowDown\") {\n        event.preventDefault();\n        typed.current = \"\";\n        const dir = key === \"ArrowUp\" ? 1 : -1;\n        if (kind === \"period\") {\n          const next: Period =\n            synced.period == null ? (dir > 0 ? \"AM\" : \"PM\") : synced.period === \"AM\" ? \"PM\" : \"AM\";\n          update({ ...synced, period: next }, dir);\n        } else {\n          const { lo, hi, step } = bounds(kind);\n          update({ ...synced, [kind]: stepPart(synced[kind], dir, lo, hi, step) }, dir);\n        }\n        return;\n      }\n\n      if (key === \"Backspace\" || key === \"Delete\") {\n        event.preventDefault();\n        typed.current = \"\";\n        if (synced[kind] == null) {\n          if (key === \"Backspace\") focusPart(sibling(kind, -1));\n        } else {\n          update({ ...synced, [kind]: null }, -1);\n        }\n        return;\n      }\n\n      if (kind === \"period\") {\n        const letter = key.toLowerCase();\n        if (letter === \"a\" || letter === \"p\") {\n          event.preventDefault();\n          const next: Period = letter === \"a\" ? \"AM\" : \"PM\";\n          if (next !== synced.period) update({ ...synced, period: next }, next === \"PM\" ? 1 : -1);\n        }\n        return;\n      }\n\n      if (key === \"Home\" || key === \"End\") {\n        event.preventDefault();\n        typed.current = \"\";\n        const { lo, hi } = bounds(kind);\n        update({ ...synced, [kind]: key === \"Home\" ? lo : hi }, key === \"Home\" ? -1 : 1);\n        return;\n      }\n      if (key === \":\" || key === \".\") {\n        event.preventDefault();\n        typed.current = \"\";\n        focusPart(sibling(kind, 1));\n        return;\n      }\n      if (key.length === 1 && key >= \"0\" && key <= \"9\") {\n        event.preventDefault();\n        typeDigit(kind, key);\n      }\n    };\n\n    // Leaving the field snaps a finished time back inside min and max.\n    const handleFieldBlur = (event: React.FocusEvent<HTMLDivElement>) => {\n      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;\n      typed.current = \"\";\n      if (current == null || locked) return;\n      const clamped = Math.min(maxSeconds, Math.max(minSeconds, current));\n      if (clamped !== current) {\n        update(partsFromSeconds(clamped, hourCycle, seconds), clamped > current ? 1 : -1);\n      }\n    };\n\n    /* ── List: picking from the columns ── */\n\n    const pick = (change: Partial<Parts>) => {\n      // One pick is enough for a full time: empty parts start at the top.\n      const filled: Parts = {\n        hour: synced.hour ?? (hourCycle === 12 ? 12 : 0),\n        minute: synced.minute ?? 0,\n        second: seconds ? (synced.second ?? 0) : null,\n        period: hourCycle === 12 ? (synced.period ?? \"AM\") : null,\n        ...change,\n      };\n      const total = secondsFromParts(filled, hourCycle, seconds) ?? 0;\n      const clamped = Math.min(maxSeconds, Math.max(minSeconds, total));\n      const next = clamped === total ? filled : partsFromSeconds(clamped, hourCycle, seconds);\n      update(next, current == null || clamped >= current ? 1 : -1);\n    };\n\n    const within = (from: number, to: number) => to >= minSeconds && from <= maxSeconds;\n    const shownHour24 = hour24(synced, hourCycle);\n\n    const hourOptions: ColumnOption<number>[] = (\n      hourCycle === 12\n        ? [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]\n        : Array.from({ length: 24 }, (_, index) => index)\n    ).map((value) => {\n      const candidates =\n        hourCycle === 24\n          ? [value]\n          : synced.period == null\n            ? [value % 12, (value % 12) + 12]\n            : [(value % 12) + (synced.period === \"PM\" ? 12 : 0)];\n      return {\n        value,\n        text: pad(value),\n        disabled: !candidates.some((h) => within(h * 3600, h * 3600 + 3599)),\n      };\n    });\n\n    const minuteOptions: ColumnOption<number>[] = steppedOptions(minuteJump, synced.minute).map(\n      (value) => {\n        const from = (shownHour24 ?? 0) * 3600 + value * 60;\n        return {\n          value,\n          text: pad(value),\n          disabled: shownHour24 != null && !within(from, from + 59),\n        };\n      },\n    );\n\n    const secondOptions: ColumnOption<number>[] = steppedOptions(secondJump, synced.second).map(\n      (value) => {\n        const at = (shownHour24 ?? 0) * 3600 + (synced.minute ?? 0) * 60 + value;\n        return {\n          value,\n          text: pad(value),\n          disabled: shownHour24 != null && synced.minute != null && !within(at, at),\n        };\n      },\n    );\n\n    const periodOptions: ColumnOption<Period>[] = [\n      { value: \"AM\", text: \"AM\", disabled: !within(0, 12 * 3600 - 1) },\n      { value: \"PM\", text: \"PM\", disabled: !within(12 * 3600, DAY_END) },\n    ];\n\n    const moveColumn = (from: HTMLElement, dir: 1 | -1) => {\n      const columns = Array.from(\n        from.parentElement?.querySelectorAll<HTMLElement>('[role=\"listbox\"]') ?? [],\n      );\n      columns[columns.indexOf(from) + dir]\n        ?.querySelector<HTMLElement>('[tabindex=\"0\"]')\n        ?.focus();\n    };\n\n    const advanceColumn = (from: HTMLElement) => {\n      const columns = Array.from(\n        from.parentElement?.querySelectorAll<HTMLElement>('[role=\"listbox\"]') ?? [],\n      );\n      const next = columns[columns.indexOf(from) + 1];\n      if (next) next.querySelector<HTMLElement>('[tabindex=\"0\"]')?.focus();\n      else if (variant === \"field\") setOpen(false);\n    };\n\n    const columnProps = {\n      onMove: moveColumn,\n      onAdvance: advanceColumn,\n      size,\n      locked,\n      reduceMotion,\n    };\n\n    const columns = (\n      <div className=\"flex gap-1\" data-slot=\"time-picker-columns\">\n        <OptionColumn\n          label={PART_LABEL.hour}\n          options={hourOptions}\n          selected={synced.hour}\n          onPick={(hour) => pick({ hour })}\n          {...columnProps}\n        />\n        <OptionColumn\n          label={PART_LABEL.minute}\n          options={minuteOptions}\n          selected={synced.minute}\n          onPick={(minute) => pick({ minute })}\n          {...columnProps}\n        />\n        {seconds ? (\n          <OptionColumn\n            label={PART_LABEL.second}\n            options={secondOptions}\n            selected={synced.second}\n            onPick={(second) => pick({ second })}\n            {...columnProps}\n          />\n        ) : null}\n        {hourCycle === 12 ? (\n          <OptionColumn\n            label={PART_LABEL.period}\n            options={periodOptions}\n            selected={synced.period}\n            onPick={(period) => pick({ period })}\n            {...columnProps}\n          />\n        ) : null}\n      </div>\n    );\n\n    /* ── Render ── */\n\n    const renderPart = (kind: PartKind) => {\n      const raw = synced[kind];\n      const text = raw == null ? \"--\" : typeof raw === \"number\" ? pad(raw) : raw;\n      const numeric = kind === \"period\" ? null : bounds(kind);\n      const roll = rolling && !reduceMotion && raw != null;\n      // Digits roll one at a time, AM and PM roll as a word.\n      const units = kind === \"period\" ? [text] : Array.from(text);\n\n      return (\n        <div\n          key={kind}\n          role=\"spinbutton\"\n          tabIndex={disabled ? -1 : 0}\n          data-part={kind}\n          aria-label={PART_LABEL[kind]}\n          aria-valuenow={typeof raw === \"number\" ? raw : raw == null ? undefined : raw === \"AM\" ? 0 : 1}\n          aria-valuetext={raw == null ? \"Empty\" : text}\n          aria-valuemin={numeric ? numeric.lo : 0}\n          aria-valuemax={numeric ? numeric.hi : 1}\n          aria-disabled={disabled || undefined}\n          aria-readonly={readOnly || undefined}\n          aria-required={required || undefined}\n          aria-invalid={error ? true : undefined}\n          aria-describedby={describedBy}\n          onKeyDown={(event) => handlePartKeyDown(kind, event)}\n          onFocus={() => {\n            typed.current = \"\";\n          }}\n          className={cn(\n            segmentClass,\n            // Wide enough for AM and PM, so filling it in never moves the clock.\n            kind === \"period\" && \"min-w-[calc(3ch+8px)]\",\n            raw == null\n              ? \"font-normal text-[var(--primitive-text-placeholder)]\"\n              : readOnly\n                ? \"text-[var(--muted-foreground)]\"\n                : \"text-[var(--foreground)]\",\n            disabled && \"cursor-not-allowed\",\n          )}\n        >\n          {roll\n            ? units.map((unit, index) => (\n                <RollingUnit key={index} text={unit} direction={direction} />\n              ))\n            : text}\n        </div>\n      );\n    };\n\n    const field = (\n      <div\n        ref={(node) => {\n          fieldRef.current = node;\n          if (typeof ref === \"function\") ref(node);\n          else if (ref) ref.current = node;\n        }}\n        role=\"group\"\n        id={baseId}\n        aria-labelledby={labelId}\n        aria-label={label ? undefined : ariaLabel}\n        data-surface=\"field\"\n        data-slot=\"time-picker\"\n        data-disabled={disabled ? \"\" : undefined}\n        onBlur={handleFieldBlur}\n        onPointerDown={(event) => {\n          lastPointer.current = event.pointerType;\n        }}\n        onMouseDown={(event) => {\n          // A press on the padding lands on the first part.\n          if (event.target === event.currentTarget && !disabled) {\n            event.preventDefault();\n            focusPart(\"hour\");\n          }\n        }}\n        onClick={(event) => {\n          // No hardware keys on touch, so a tap on the time opens the list.\n          const onPart = (event.target as HTMLElement).closest(\"[data-part]\");\n          if (onPart && lastPointer.current === \"touch\" && !locked && !open) setOpen(true);\n        }}\n        className={cn(\n          fieldClass,\n          FIELD_HEIGHT[size],\n          FIELD_PAD[size],\n          TEXT_SIZE[size],\n          fullWidth ? \"flex w-full\" : \"w-fit\",\n          !disabled && (error ? fieldError : fieldFocus),\n          disabled && \"cursor-not-allowed opacity-45\",\n          readOnly && \"[--surface-face:var(--muted)]\",\n        )}\n      >\n        <div className=\"flex items-center\">\n          {kinds.map((kind, index) => (\n            <React.Fragment key={kind}>\n              {index > 0 && kind !== \"period\" ? (\n                <span aria-hidden=\"true\" className=\"text-[var(--muted-foreground)]\">\n                  :\n                </span>\n              ) : null}\n              {renderPart(kind)}\n            </React.Fragment>\n          ))}\n        </div>\n\n        <Popover.Trigger\n          data-surface=\"flat\"\n          data-slot=\"time-picker-trigger\"\n          aria-label={openLabel}\n          disabled={locked}\n          className={cn(triggerClass, BUTTON_SIZE[size])}\n        >\n          <IconClock size={ICON_SIZE[size]} stroke={1.75} aria-hidden=\"true\" />\n        </Popover.Trigger>\n      </div>\n    );\n\n    return (\n      <div\n        data-wensity-primitive=\"\"\n        className={cn(\"flex flex-col gap-2\", fullWidth ? \"w-full\" : \"w-fit\", className)}\n      >\n        {label ? (\n          <span\n            id={labelId}\n            onClick={() => {\n              if (variant === \"field\" && !disabled) focusPart(\"hour\");\n            }}\n            className=\"w-fit text-[13px] font-medium leading-none tracking-[-0.01em] text-[var(--foreground)]\"\n          >\n            {label}\n          </span>\n        ) : null}\n\n        {variant === \"inline\" ? (\n          <div\n            ref={ref}\n            role=\"group\"\n            id={baseId}\n            aria-labelledby={labelId}\n            aria-label={label ? undefined : ariaLabel}\n            aria-describedby={describedBy}\n            data-surface=\"frame\"\n            data-slot=\"time-picker\"\n            data-disabled={disabled ? \"\" : undefined}\n            className={cn(\n              \"w-fit rounded-[var(--primitive-radius-popup)] p-1.5\",\n              error &&\n                \"[--surface-rim:var(--primitive-destructive-border)] [--surface-rim-top:var(--primitive-destructive-border)]\",\n              disabled && \"cursor-not-allowed opacity-45\",\n            )}\n          >\n            {columns}\n          </div>\n        ) : (\n          <Popover.Root open={open} onOpenChange={(next) => setOpen(next)}>\n            {field}\n            <Popover.Portal>\n              <Popover.Positioner\n                anchor={fieldRef}\n                side=\"bottom\"\n                align=\"start\"\n                sideOffset={6}\n                collisionPadding={12}\n                className=\"z-[var(--primitive-z-popover)] outline-none\"\n              >\n                <Popover.Popup\n                  data-wensity-primitive=\"\"\n                  data-surface=\"overlay\"\n                  aria-label={openLabel}\n                  className={cn(popupClass, popupClassName)}\n                >\n                  {columns}\n                </Popover.Popup>\n              </Popover.Positioner>\n            </Popover.Portal>\n          </Popover.Root>\n        )}\n\n        {error ? (\n          <p id={errorId} className=\"text-[12px] leading-[1.45] text-[var(--primitive-destructive)]\">\n            {error}\n          </p>\n        ) : hint ? (\n          <p id={hintId} className=\"text-[12px] leading-[1.45] text-[var(--primitive-text-secondary)]\">\n            {hint}\n          </p>\n        ) : null}\n\n        {name ? <input type=\"hidden\" name={name} value={currentValue ?? \"\"} disabled={disabled} /> : null}\n      </div>\n    );\n  },\n);\n\nTimePicker.displayName = \"TimePicker\";\n"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "font-sans": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-display": "var(--font-satoshi, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif)",
+      "font-heading": "var(--font-cabinet, ui-sans-serif, system-ui, sans-serif)",
+      "color-background": "var(--background)",
+      "color-foreground": "var(--foreground)",
+      "color-surface": "var(--surface)",
+      "color-surface-muted": "var(--surface-muted)",
+      "color-border": "var(--border)",
+      "color-border-strong": "var(--border-strong)",
+      "color-muted": "var(--muted)",
+      "color-muted-foreground": "var(--muted-foreground)",
+      "color-ring": "var(--ring)",
+      "color-chili-50": "#fff1ee",
+      "color-chili-100": "#ffe2db",
+      "color-chili-200": "#ffa896",
+      "color-chili-300": "#ff8a73",
+      "color-chili-400": "#f15a45",
+      "color-chili-500": "#cd1c18",
+      "color-chili-600": "#b31614",
+      "color-chili-700": "#9b1313",
+      "color-chili-800": "#6a0d0e",
+      "color-chili-900": "#38000a",
+      "color-chili-950": "#1f0006",
+      "color-primitive-surface-elevated": "var(--primitive-surface-elevated)",
+      "color-primitive-surface-overlay": "var(--primitive-surface-overlay)",
+      "color-primitive-surface-hover": "var(--primitive-surface-hover)",
+      "color-primitive-surface-active": "var(--primitive-surface-active)",
+      "color-primitive-surface-selected": "var(--primitive-surface-selected)",
+      "color-primitive-border-subtle": "var(--primitive-border-subtle)",
+      "color-primitive-ring": "var(--primitive-ring)",
+      "color-primitive-text-secondary": "var(--primitive-text-secondary)",
+      "color-primitive-text-placeholder": "var(--primitive-text-placeholder)",
+      "color-primitive-text-inverse": "var(--primitive-text-inverse)",
+      "color-primitive-destructive": "var(--primitive-destructive)",
+      "color-primitive-destructive-hover": "var(--primitive-destructive-hover)",
+      "color-primitive-destructive-active": "var(--primitive-destructive-active)",
+      "color-primitive-destructive-foreground": "var(--primitive-destructive-foreground)",
+      "color-primitive-destructive-surface": "var(--primitive-destructive-surface)",
+      "color-primitive-destructive-border": "var(--primitive-destructive-border)",
+      "color-primitive-success": "var(--primitive-success)",
+      "color-primitive-warning": "var(--primitive-warning)",
+      "color-primitive-info": "var(--primitive-info)",
+      "color-primitive-control-solid": "var(--primitive-control-solid)",
+      "color-primitive-control-solid-hover": "var(--primitive-control-solid-hover)",
+      "color-primitive-control-solid-active": "var(--primitive-control-solid-active)",
+      "color-primitive-control-solid-foreground": "var(--primitive-control-solid-foreground)",
+      "color-primitive-chart-1": "var(--primitive-chart-1)",
+      "color-primitive-chart-2": "var(--primitive-chart-2)",
+      "color-primitive-chart-3": "var(--primitive-chart-3)",
+      "color-primitive-chart-4": "var(--primitive-chart-4)",
+      "color-primitive-chart-5": "var(--primitive-chart-5)",
+      "color-primitive-chart-6": "var(--primitive-chart-6)",
+      "radius-primitive": "var(--primitive-radius)",
+      "radius-primitive-control": "var(--primitive-radius-control)",
+      "radius-primitive-control-sm": "var(--primitive-radius-control-sm)",
+      "radius-primitive-surface": "var(--primitive-radius-surface)",
+      "radius-primitive-popup": "var(--primitive-radius-popup)",
+      "radius-primitive-item": "var(--primitive-radius-item)",
+      "font-primitive-sans": "var(--primitive-font-sans)",
+      "font-primitive-display": "var(--primitive-font-display)",
+      "font-primitive-mono": "var(--primitive-font-mono)",
+      "spacing-primitive-control-height-sm": "var(--primitive-control-height-sm)",
+      "spacing-primitive-control-height-md": "var(--primitive-control-height-md)",
+      "spacing-primitive-control-height-lg": "var(--primitive-control-height-lg)"
+    },
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#0a0a0a",
+      "surface": "#ffffff",
+      "surface-muted": "#f4f4f5",
+      "border": "rgba(10, 10, 10, 0.08)",
+      "border-strong": "rgba(10, 10, 10, 0.16)",
+      "muted": "#f4f4f5",
+      "muted-foreground": "#52525b",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(10, 10, 10, 0.07)",
+      "llb-primary": "#18181b",
+      "llb-primary-fg": "#ffffff",
+      "llb-success": "#1f883d",
+      "llb-error": "#cf222e",
+      "primitive-surface-elevated": "#ffffff",
+      "primitive-surface-overlay": "#ffffff",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 6%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#24292d",
+      "primitive-control-solid-hover": "#2c3237",
+      "primitive-control-solid-active": "#1e2326",
+      "primitive-control-solid-foreground": "#ffffff",
+      "primitive-chart-1": "#2a78d6",
+      "primitive-chart-2": "#1baf7a",
+      "primitive-chart-3": "#eda100",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#4a3aa7",
+      "primitive-chart-6": "#e34948",
+      "primitive-text-inverse": "#ffffff",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#dc2626",
+      "primitive-destructive-hover": "#b91c1c",
+      "primitive-destructive-active": "#991b1b",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(220, 38, 38, 0.10)",
+      "primitive-destructive-border": "rgba(220, 38, 38, 0.45)",
+      "primitive-success": "#047857",
+      "primitive-success-surface": "rgba(4, 120, 87, 0.10)",
+      "primitive-success-border": "rgba(4, 120, 87, 0.45)",
+      "primitive-warning": "#b45309",
+      "primitive-warning-surface": "rgba(180, 83, 9, 0.10)",
+      "primitive-warning-border": "rgba(180, 83, 9, 0.45)",
+      "primitive-info": "#0369a1",
+      "primitive-info-surface": "rgba(3, 105, 161, 0.10)",
+      "primitive-info-border": "rgba(3, 105, 161, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "0 1px 1px -0.5px rgba(10, 10, 10, 0.08), 0 2px 6px -2px rgba(10, 10, 10, 0.08)",
+      "primitive-shadow-overlay": "0 2px 4px -1px rgba(10, 10, 10, 0.06), 0 8px 16px -4px rgba(10, 10, 10, 0.08), 0 16px 32px -8px rgba(10, 10, 10, 0.14)",
+      "primitive-shadow-modal": "0 4px 8px -2px rgba(10, 10, 10, 0.06), 0 16px 32px -8px rgba(10, 10, 10, 0.12), 0 32px 64px -16px rgba(10, 10, 10, 0.2)",
+      "primitive-edge": "rgba(10, 10, 10, 0.1)",
+      "primitive-catchlight": "rgba(10, 10, 10, 0.06)",
+      "primitive-groove-shadow": "rgba(10, 10, 10, 0.08)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.85)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(10, 10, 10, 0.1), 0 2px 4px -1px rgba(10, 10, 10, 0.06)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(10, 10, 10, 0.1)",
+      "primitive-control-face": "var(--primitive-surface-elevated)",
+      "primitive-field-face": "var(--primitive-surface-elevated)",
+      "primitive-well": "rgba(10, 10, 10, 0.045)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(10, 10, 10, 0.06)",
+      "primitive-tint-hover": "rgba(10, 10, 10, 0.045)",
+      "primitive-tint-press": "rgba(10, 10, 10, 0.06)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-overlay-face": "var(--primitive-surface-overlay)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, black)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    },
+    "dark": {
+      "background": "#0a0a0b",
+      "foreground": "#f5f5f6",
+      "surface": "#111113",
+      "surface-muted": "#18181b",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "border-strong": "rgba(255, 255, 255, 0.14)",
+      "muted": "#1c1c1f",
+      "muted-foreground": "#a1a1aa",
+      "ring": "#cd1c18",
+      "pattern-fg": "rgba(255, 255, 255, 0.06)",
+      "llb-primary": "#f5f5f6",
+      "llb-primary-fg": "#0a0a0b",
+      "llb-success": "#2da44e",
+      "llb-error": "#f85149",
+      "primitive-surface-elevated": "#0f0f10",
+      "primitive-surface-overlay": "#141415",
+      "primitive-surface-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
+      "primitive-surface-active": "color-mix(in srgb, var(--foreground) 10%, transparent)",
+      "primitive-surface-selected": "color-mix(in srgb, var(--foreground) 8%, transparent)",
+      "primitive-border-subtle": "color-mix(in srgb, var(--border) 60%, transparent)",
+      "primitive-ring": "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      "primitive-text-secondary": "color-mix(in srgb, var(--foreground) 72%, transparent)",
+      "primitive-text-placeholder": "color-mix(in srgb, var(--muted-foreground) 85%, transparent)",
+      "primitive-radius": "0.75rem",
+      "primitive-font-sans": "var(--font-sans)",
+      "primitive-font-display": "var(--font-display)",
+      "primitive-font-mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "primitive-control-solid": "#f5f3ee",
+      "primitive-control-solid-hover": "#ffffff",
+      "primitive-control-solid-active": "#e8e4da",
+      "primitive-control-solid-foreground": "#151719",
+      "primitive-chart-1": "#3987e5",
+      "primitive-chart-2": "#199e70",
+      "primitive-chart-3": "#c98500",
+      "primitive-chart-4": "#008300",
+      "primitive-chart-5": "#9085e9",
+      "primitive-chart-6": "#e66767",
+      "primitive-text-inverse": "#151719",
+      "primitive-text-hint": "0.6875rem",
+      "primitive-destructive": "#e11d2e",
+      "primitive-destructive-hover": "#c1121f",
+      "primitive-destructive-active": "#a4161a",
+      "primitive-destructive-foreground": "#ffffff",
+      "primitive-destructive-surface": "rgba(225, 29, 46, 0.12)",
+      "primitive-destructive-border": "rgba(225, 29, 46, 0.52)",
+      "primitive-success": "#34d399",
+      "primitive-success-surface": "rgba(52, 211, 153, 0.12)",
+      "primitive-success-border": "rgba(52, 211, 153, 0.45)",
+      "primitive-warning": "#fbbf24",
+      "primitive-warning-surface": "rgba(251, 191, 36, 0.12)",
+      "primitive-warning-border": "rgba(251, 191, 36, 0.45)",
+      "primitive-info": "#38bdf8",
+      "primitive-info-surface": "rgba(56, 189, 248, 0.12)",
+      "primitive-info-border": "rgba(56, 189, 248, 0.45)",
+      "primitive-radius-control": "var(--primitive-radius)",
+      "primitive-radius-control-sm": "min(calc(var(--primitive-radius) * 0.8), 12px)",
+      "primitive-radius-surface": "calc(var(--primitive-radius) * 1.4)",
+      "primitive-radius-popup": "var(--primitive-radius)",
+      "primitive-radius-item": "calc(var(--primitive-radius) * 0.8)",
+      "primitive-control-height-sm": "2rem",
+      "primitive-control-height-md": "2.25rem",
+      "primitive-control-height-lg": "2.5rem",
+      "primitive-shadow-raised": "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5)",
+      "primitive-shadow-overlay": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.4), 0 8px 16px -4px rgba(0, 0, 0, 0.45), 0 16px 32px -8px rgba(0, 0, 0, 0.65)",
+      "primitive-shadow-modal": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 32px 64px -16px rgba(0, 0, 0, 0.75)",
+      "primitive-edge": "rgba(255, 255, 255, 0.09)",
+      "primitive-catchlight": "rgba(255, 255, 255, 0.16)",
+      "primitive-groove-shadow": "rgba(0, 0, 0, 0.55)",
+      "primitive-groove-highlight": "rgba(255, 255, 255, 0.05)",
+      "primitive-shadow-drop": "0 1px 1px -0.5px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4)",
+      "primitive-shadow-recess": "inset 0 2px 3px -1px rgba(0, 0, 0, 0.5)",
+      "primitive-control-face": "var(--primitive-frame-face)",
+      "primitive-field-face": "var(--primitive-frame-face)",
+      "primitive-well": "rgba(0, 0, 0, 0.35)",
+      "primitive-shadow-well": "inset 0 1px 2px 0 rgba(0, 0, 0, 0.45)",
+      "primitive-tint-hover": "rgba(255, 255, 255, 0.06)",
+      "primitive-tint-press": "rgba(0, 0, 0, 0.2)",
+      "primitive-footer": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-overlay-face": "color-mix(in srgb, var(--primitive-surface-overlay) 94%, white)",
+      "primitive-frame-face": "color-mix(in srgb, var(--primitive-surface-elevated) 97%, white)",
+      "primitive-z-overlay": "100",
+      "primitive-z-popover": "130",
+      "primitive-z-toast": "140",
+      "primitive-backdrop": "rgba(0, 0, 0, 0.6)",
+      "primitive-motion-fast": "80ms",
+      "primitive-motion-fast-exit": "60ms",
+      "primitive-motion-moderate": "160ms",
+      "primitive-motion-moderate-exit": "120ms",
+      "primitive-motion-slow": "240ms",
+      "primitive-motion-slow-exit": "160ms",
+      "primitive-ease": "cubic-bezier(0.23, 1, 0.32, 1)"
+    }
+  },
+  "css": {
+    "@layer components": {
+      "[data-surface]": {
+        "--surface-tint": "transparent",
+        "border-width": "1px",
+        "border-style": "solid",
+        "border-color": "var(--surface-rim)",
+        "border-top-color": "var(--surface-rim-top)",
+        "background-color": "var(--surface-face)",
+        "background-image": "linear-gradient(var(--surface-tint), var(--surface-tint))",
+        "--tw-shadow": "var(--surface-depth)",
+        "box-shadow": "var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)"
+      },
+      "[data-surface=\"control\"]": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"field\"]": {
+        "--surface-face": "var(--primitive-field-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"fill\"]": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"flat\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]": {
+        "--surface-face": "transparent",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"toggle\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"toggle-fill\"]:is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-face": "var(--primitive-control-solid)",
+        "--surface-rim": "color-mix(in srgb, var(--surface-face) 88%, black)",
+        "--surface-rim-top": "color-mix(in srgb, var(--surface-face) 80%, white)",
+        "--surface-depth": "var(--primitive-shadow-drop)"
+      },
+      "[data-surface=\"well\"]": {
+        "--surface-face": "var(--primitive-well)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "var(--primitive-shadow-well)"
+      },
+      "[data-surface=\"frame\"]": {
+        "--surface-face": "var(--primitive-frame-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-catchlight)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-surface=\"panel\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-raised)"
+      },
+      "[data-surface=\"overlay\"]": {
+        "--surface-face": "var(--primitive-overlay-face)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-overlay)"
+      },
+      "[data-surface=\"modal\"]": {
+        "--surface-face": "var(--primitive-surface-elevated)",
+        "--surface-rim": "var(--primitive-edge)",
+        "--surface-rim-top": "var(--primitive-edge)",
+        "--surface-depth": "var(--primitive-shadow-modal)"
+      },
+      "[data-surface=\"footer\"]": {
+        "--surface-face": "var(--primitive-footer)",
+        "--surface-rim": "transparent",
+        "--surface-rim-top": "transparent",
+        "--surface-depth": "0 0 #0000",
+        "border-width": "0",
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-size": "100% 2px",
+        "background-repeat": "no-repeat",
+        "background-position": "top"
+      },
+      "@media (hover: hover)": {
+        "[data-surface]:where(button, a[href], summary, label, [role=\"button\"], [role=\"tab\"], [role=\"combobox\"], [role=\"option\"], [role=\"menuitem\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        },
+        ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):hover": {
+          "--surface-tint": "var(--primitive-tint-hover)"
+        }
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"]):is([data-pressed]:not([data-pressed=\"false\"]), [aria-pressed=\"true\"])": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):is([aria-expanded=\"true\"], [data-popup-open]):not(input, textarea)": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      ":is([data-surface=\"control\"], [data-surface=\"field\"], [data-surface=\"fill\"], [data-surface=\"toggle\"], [data-surface=\"toggle-fill\"]):where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "var(--primitive-shadow-recess)"
+      },
+      "[data-surface=\"flat\"]:where(button, a[href], summary, [role=\"button\"], [role=\"tab\"]):where(:not(:disabled, [data-disabled], [aria-disabled=\"true\"])):active": {
+        "--surface-tint": "var(--primitive-tint-press)"
+      },
+      "[data-surface]:is([aria-invalid=\"true\"], :has(> :is(input, textarea)[aria-invalid=\"true\"]))": {
+        "--surface-rim": "var(--primitive-destructive-border)",
+        "--surface-rim-top": "var(--primitive-destructive-border)"
+      },
+      "[data-surface][data-surface]:is(:disabled, [data-disabled], [aria-disabled=\"true\"])": {
+        "--surface-tint": "transparent",
+        "--surface-rim-top": "var(--surface-rim)",
+        "--surface-depth": "0 0 #0000"
+      },
+      "[data-groove]": {
+        "flex-shrink": "0",
+        "border-width": "0",
+        "background-image": "linear-gradient(var(--groove-direction, to bottom), var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)"
+      },
+      "[data-groove=\"horizontal\"]": {
+        "height": "2px"
+      },
+      "[data-groove=\"vertical\"]": {
+        "--groove-direction": "to right",
+        "width": "2px",
+        "align-self": "stretch"
+      },
+      "[data-carve]": {
+        "background-image": "linear-gradient(to bottom, var(--primitive-groove-shadow) 0 1px, var(--primitive-groove-highlight) 1px 2px)",
+        "background-repeat": "no-repeat",
+        "background-size": "100% 2px"
+      },
+      "[data-carve=\"top\"]": {
+        "background-position": "top"
+      },
+      "[data-carve=\"bottom\"]": {
+        "background-position": "bottom"
+      }
+    },
+    "@layer base": {
+      ":where([data-wensity-primitive])": {
+        "font-family": "var(--primitive-font-sans)"
+      }
+    },
+    "@utility scrollbar-hidden": {
+      "scrollbar-width": "none",
+      "-ms-overflow-style": "none",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "@keyframes wensity-marquee-x": {
+      "from": {
+        "transform": "translate3d(0, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(-50%, 0, 0)"
+      }
+    },
+    "@keyframes wensity-marquee-x-reverse": {
+      "from": {
+        "transform": "translate3d(-50%, 0, 0)"
+      },
+      "to": {
+        "transform": "translate3d(0, 0, 0)"
+      }
+    },
+    "@keyframes wensity-morph-rot-cw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(360deg)"
+      }
+    },
+    "@keyframes wensity-morph-rot-ccw": {
+      "from": {
+        "transform": "rotate(0deg)"
+      },
+      "to": {
+        "transform": "rotate(-360deg)"
+      }
+    }
+  },
+  "docs": "Free Wensity component. Installs to @components/wensity/time-picker.tsx. For Pro components and updates, use pnpm dlx wensity@latest add time-picker.",
+  "categories": [
+    "UI Primitives",
+    "wensity",
+    "free"
+  ],
+  "meta": {
+    "wensity": {
+      "slug": "time-picker",
+      "access": "free",
+      "category": "UI Primitives",
+      "kind": "component",
+      "componentUrl": "https://ui.wensity.com/primitives/time-picker",
+      "shadcnUrl": "https://ui.wensity.com/r/time-picker",
+      "cliInstall": "pnpm dlx wensity@latest add time-picker"
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "wensity",
   "homepage": "https://ui.wensity.com",
-  "count": 102,
+  "count": 103,
   "items": [
     {
       "name": "font-inter",
@@ -2048,6 +2048,28 @@
         "kind": "component",
         "componentUrl": "https://ui.wensity.com/primitives/number-input",
         "cliInstall": "pnpm dlx wensity@latest add number-input"
+      }
+    },
+    {
+      "name": "time-picker",
+      "type": "registry:block",
+      "title": "Time Picker",
+      "description": "React time picker on Base UI with a typeable time input, rolling digits, a popover of scrolling columns, 12 and 24 hour clocks and min and max times.",
+      "categories": [
+        "UI Primitives",
+        "wensity",
+        "free"
+      ],
+      "dependencies": [
+        "@base-ui/react",
+        "framer-motion",
+        "@tabler/icons-react"
+      ],
+      "href": "https://raw.githubusercontent.com/wensity/registry/main/time-picker.json",
+      "meta": {
+        "kind": "component",
+        "componentUrl": "https://ui.wensity.com/primitives/time-picker",
+        "cliInstall": "pnpm dlx wensity@latest add time-picker"
       }
     }
   ]
